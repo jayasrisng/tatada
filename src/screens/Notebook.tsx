@@ -3,6 +3,7 @@ import type { Category, ResearchOption, Trip } from '../types'
 import { useStore } from '../state/store'
 import { go, useUI } from '../state/ui'
 import { AddStay } from '../components/AddStay'
+import { DecisionPanel } from '../components/DecisionPanel'
 import { AddRow } from '../components/Checklist'
 import { Doodle } from '../components/Doodle'
 import { Btn, Chip, Paper, SampleNote } from '../components/ui'
@@ -32,6 +33,8 @@ export function Notebook({ trip }: { trip: Trip }) {
           </button>
         ))}
       </div>
+
+      {cat === 'stay' && trip.status !== 'past' && trip.bookings.some((b) => b.kind === 'stay') && <DecisionPanel trip={trip} />}
 
       {summary && (
         <Paper className="take" tilt={-0.8}>

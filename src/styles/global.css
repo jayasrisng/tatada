@@ -586,3 +586,38 @@ input[type='range'] { width: 100%; accent-color: var(--yellow); height: 30px; }
 .tag { font-size: 12px; padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; }
 .tag.ok { color: var(--green); }
 .tag.warn { color: var(--orange); }
+
+/* ── decision record (diverge → collide → converge → validate) ── */
+.decision { margin: 4px 0 22px; padding: 14px 14px 16px; border-radius: 16px; position: relative; }
+.decision::before { content: ''; position: absolute; inset: 0; border: 2px dashed var(--chalk-line); border-radius: var(--wobble); filter: url(#rough); pointer-events: none; }
+.decision-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.decision-head h3 { font-family: var(--title); font-size: 30px; }
+.dcv { display: flex; flex-direction: column; gap: 14px; margin-top: 10px; }
+.dcv h4 { margin: 0 0 6px; font-weight: 400; font-size: 15px; color: var(--chalk-2); display: flex; gap: 8px; align-items: center; }
+.step { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--yellow); color: var(--yellow); display: inline-grid; place-items: center; font-size: 13px; flex: none; }
+.claims { display: flex; flex-direction: column; gap: 8px; }
+.claim { padding: 8px 10px; border-left: 3px solid var(--chalk-line); background: color-mix(in srgb, var(--chalk) 4%, transparent); border-radius: 4px 10px 10px 4px; }
+.claim.fact { border-left-color: var(--blue); }
+.claim.hypothesis { border-left-style: dashed; border-left-color: var(--orange); }
+.claim.outcome { border-left-color: var(--green); }
+.claim.disqualified .claim-text, .claim.refuted .claim-text { text-decoration: line-through; text-decoration-color: var(--pink); color: var(--chalk-3); }
+.claim-top { display: flex; gap: 6px; }
+.claim-text { font-size: 17px; margin-top: 2px; }
+.claim-src { font-size: 13px; color: var(--chalk-3); }
+.claim-unc { font-size: 13px; color: var(--orange); }
+.claim-ev { font-size: 13px; color: var(--chalk-2); display: flex; gap: 4px; align-items: center; }
+.tag.kind-fact { color: var(--blue); }
+.tag.kind-hypothesis { color: var(--orange); border-style: dashed; }
+.tag.kind-outcome { color: var(--green); }
+.tag.st-confirmed { color: var(--green); }
+.tag.st-refuted, .tag.st-disqualified { color: var(--pink); }
+.collisions { display: flex; flex-direction: column; gap: 6px; font-size: 16px; }
+.collisions li { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.collisions li.dq { color: var(--pink); }
+.converge { font-size: 18px; }
+.decision-input { display: flex; gap: 10px; align-items: flex-end; margin-top: 8px; }
+.decision-input label, .decision-policy { display: flex; flex-direction: column; font-size: 14px; color: var(--chalk-2); }
+.decision-policy { margin-top: 8px; }
+.decision-policy select { margin-top: 4px; background: transparent; color: var(--chalk); border: 0; border-bottom: 2px solid var(--chalk-2); font: inherit; font-size: 17px; padding: 4px 0; }
+.decision-policy select option { color: #222; }
+.dcv .btn { margin-top: 8px; }

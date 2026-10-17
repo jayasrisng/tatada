@@ -89,5 +89,23 @@ function useServerSync() {
       if (item.actionId === a.id && item.note === r.itemNote && (item.done || !r.itemDone)) continue
       dispatch({ type: 'applyServerOutcome', tripId: a.draft.tripId, itemId, actionId: a.id, done: r.itemDone, note: r.itemNote })
     }
+    // Validate step: Fo results feed the trip's early check-in decision record.
+    for (const a of Object.values(actions)) {
+      if (a.draft.intent !== 'early_checkin' || (a.status !== 'verified' && a.status !== 'unverified')) continue
+      const r = a.result
+      dispatch({
+        type: 'recordValidation',
+        tripId: a.draft.tripId,
+        validation: {
+          actionId: a.id,
+          provider: a.provider,
+          status: a.status,
+          outcome: r?.outcome,
+          summary: r?.summary ?? a.error ?? 'No proof found.',
+          evidence: (r?.evidence ?? []).map((e) => (e.kind === 'email_sent' ? `Send record: ${e.detail}${e.messageId ? ` (${e.messageId})` : ''}` : `Reply: "${e.detail}"`)),
+          at: a.progress.at(-1)?.at ?? Date.now(),
+        },
+      })
+    }
   }, [actions, state.items])
 }

@@ -1,4 +1,5 @@
-import type { Booking, ChecklistItem, DetailsForm, EmailDraft, FoAction, Profile, StayDetails, StayIntent, Trip } from '../types'
+import type { Booking, ChecklistItem, DecisionRecord, DetailsForm, EmailDraft, FoAction, Profile, StayDetails, StayIntent, Trip } from '../types'
+import { decideEarlyCheckin } from './decision'
 import { blockingFields, draftStayEmail, knownStay, missingFields, sharedData, shiftedArrival } from './stay'
 
 /*
@@ -34,6 +35,8 @@ export interface ThinkContext {
   details?: StayDetails
   /** Existing checklist items, used to avoid duplicates. */
   items?: ChecklistItem[]
+  /** The trip's early check-in decision record, if any. */
+  decision?: DecisionRecord
 }
 
 const NO_PROFILE: Profile = { name: '', homeAirport: '', style: [], diet: [], memberships: [] }
@@ -92,12 +95,23 @@ function stayRequest(intent: StayIntent, prompt: string, trip: Trip | undefined,
     }
   }
 
+  // Converge before acting: don't email about something already settled or ruled out.
+  let why = ''
+  if (intent === 'early_checkin') {
+    const withArrival = details.checkIn && details.arrivalTime ? { ...trip, arrival: `${details.checkIn}T${details.arrivalTime}` } : trip
+    const d = decideEarlyCheckin(withArrival, ctx.decision)
+    if (['not_needed', 'dont_ask', 'confirmed', 'declined'].includes(d.verdict) && !/\banyway\b/i.test(prompt)) {
+      return { text: `${d.rationale} The full reasoning is in the Stay notebook. Say "ask anyway" if you still want Fo to email them.` }
+    }
+    why = ` Why ask: ${d.rationale}`
+  }
+
   const transfer = intent === 'early_checkin' && has(prompt.toLowerCase(), 'transfer', 'pickup', 'pick-up', 'shuttle')
   const email: EmailDraft = draftStayEmail(intent, trip, profile, details as Required<StayDetails>, transfer)
   const demo = !!trip.demoScenario
   return {
     text: intent === 'early_checkin'
-      ? `Here's the email Fo would send to ${email.toName}, based on your ${trip.destination} booking. Nothing goes out until you approve.`
+      ? `Here's the email Fo would send to ${email.toName}, based on your ${trip.destination} booking. Nothing goes out until you approve.${why}`
       : `Here's a heads-up for ${email.toName} about your new arrival time. Nothing goes out until you approve.`,
     action: {
       tripId: trip.id,

@@ -42,7 +42,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const ask = async (prompt: string, tripId?: string, checklistItemId?: string, details?: StayDetails, echo = true, viaServer?: ViaServer) => {
     const trip = state.trips.find((t) => t.id === tripId)
-    const reply = think(prompt, trip, checklistItemId, { profile: state.profile, details, items: state.items })
+    const decision = state.decisions?.find((d) => d.tripId === tripId && d.topic === 'early_checkin')
+    const reply = think(prompt, trip, checklistItemId, { profile: state.profile, details, items: state.items, decision })
     let fallbackNote = ''
     if (reply.action?.email && trip && viaServer) {
       const mine = echo ? [{ id: uid(), from: 'me' as const, text: prompt }] : []

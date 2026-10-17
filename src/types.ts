@@ -192,6 +192,64 @@ export interface Profile {
   memberships: string[]
 }
 
+/* ── Decision records (Diverge → Collide → Converge → Validate) ── */
+
+/** hypothesis: plausible, unconfirmed · fact: from your trip or your own entry · outcome: what execution actually produced */
+export type ClaimKind = 'hypothesis' | 'fact' | 'outcome'
+export type ClaimStatus = 'open' | 'holds' | 'disqualified' | 'confirmed' | 'refuted'
+
+export interface Provenance {
+  kind: 'trip' | 'you' | 'demo' | 'general' | 'fo_live' | 'fo_mock'
+  label: string
+  /** When the source said it (ms). Absent for timeless general knowledge. */
+  at?: number
+}
+
+export interface Claim {
+  id: string
+  text: string
+  kind: ClaimKind
+  status: ClaimStatus
+  source: Provenance
+  /** Why this isn't settled, in words. No numeric confidence. */
+  uncertainty?: string
+  evidence?: string[]
+}
+
+export interface Collision {
+  between: string[]
+  note: string
+  disqualifier: boolean
+}
+
+export type Verdict = 'ask' | 'not_needed' | 'dont_ask' | 'need_info' | 'awaiting_reply' | 'confirmed' | 'declined'
+
+export interface DecisionInput<T extends string = string> {
+  value: T
+  source: 'you' | 'demo'
+  at: number
+}
+
+/** What persists: the traveler's inputs and the validation result. Claims are derived. */
+export interface DecisionRecord {
+  tripId: string
+  topic: 'early_checkin'
+  inputs: {
+    standardCheckIn?: DecisionInput
+    policy?: DecisionInput<'on_request' | 'not_offered'>
+  }
+  validation?: {
+    actionId: string
+    provider: 'live' | 'mock'
+    status: 'verified' | 'unverified'
+    outcome?: string
+    summary: string
+    evidence: string[]
+    at: number
+  }
+  updatedAt: number
+}
+
 export interface CanvasPos {
   x: number
   y: number
@@ -206,4 +264,5 @@ export interface AppState {
   actions: FoAction[]
   chat: ChatMessage[]
   canvas: Record<string, CanvasPos>
+  decisions?: DecisionRecord[]
 }

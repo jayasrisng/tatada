@@ -1,4 +1,4 @@
-import type { AppState, Booking, CanvasPos, ChatMessage, ChecklistItem, FoAction, Memory, Profile, StayDetails, Trip } from '../types'
+import type { AppState, Booking, CanvasPos, ChatMessage, ChecklistItem, DecisionRecord, FoAction, Memory, Profile, StayDetails, Trip } from '../types'
 import { outcome } from '../magic/engine'
 import { uid } from './id'
 
@@ -22,6 +22,8 @@ export type Act =
   | { type: 'saveStayDetails'; tripId: string; details: StayDetails; messageId?: string }
   | { type: 'addBooking'; tripId: string; booking: Booking }
   | { type: 'applyServerOutcome'; tripId: string; itemId: string; actionId: string; done: boolean; note: string }
+  | { type: 'setDecisionInput'; tripId: string; key: 'standardCheckIn' | 'policy'; value?: string; at: number }
+  | { type: 'recordValidation'; tripId: string; validation: NonNullable<DecisionRecord['validation']> }
 
 const patchAction = (s: AppState, id: string, fn: (a: FoAction) => FoAction): AppState => ({
   ...s,
@@ -78,6 +80,22 @@ export function reducer(s: AppState, a: Act): AppState {
       return saveStayDetails(s, a.tripId, a.details, a.messageId)
     case 'addBooking':
       return { ...s, trips: s.trips.map((t) => (t.id === a.tripId ? { ...t, bookings: [...t.bookings, a.booking] } : t)) }
+    case 'setDecisionInput':
+      return withDecision(s, a.tripId, (d) => {
+        const inputs = { ...d.inputs }
+        if (!a.value) delete inputs[a.key]
+        else if (a.key === 'policy') inputs.policy = { value: a.value as 'on_request' | 'not_offered', source: 'you', at: a.at }
+        else inputs.standardCheckIn = { value: a.value, source: 'you', at: a.at }
+        return { ...d, inputs, updatedAt: a.at }
+      })
+    case 'recordValidation': {
+      const cur = s.decisions?.find((d) => d.tripId === a.tripId && d.topic === 'early_checkin')?.validation
+      const v = a.validation
+      if (cur && cur.actionId === v.actionId && cur.status === v.status && cur.outcome === v.outcome) return s
+      // A real (live) result is never replaced by a mock one.
+      if (cur?.provider === 'live' && cur.status === 'verified' && v.provider === 'mock') return s
+      return withDecision(s, a.tripId, (d) => ({ ...d, validation: v, updatedAt: v.at }))
+    }
     case 'applyServerOutcome':
       return {
         ...s,
@@ -202,4 +220,12 @@ function saveStayDetails(s: AppState, tripId: string, d: StayDetails, messageId?
       return { ...t, bookings, arrival }
     }),
   }
+}
+
+function withDecision(s: AppState, tripId: string, fn: (d: DecisionRecord) => DecisionRecord): AppState {
+  if (!s.trips.some((t) => t.id === tripId)) return s
+  const list = s.decisions ?? []
+  const cur = list.find((d) => d.tripId === tripId && d.topic === 'early_checkin') ?? { tripId, topic: 'early_checkin' as const, inputs: {}, updatedAt: 0 }
+  const next = fn(cur)
+  return { ...s, decisions: [...list.filter((d) => d !== cur), next] }
 }

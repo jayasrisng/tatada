@@ -13,7 +13,7 @@ try {
   if (compiled.status !== 0) process.exitCode = compiled.status ?? 1
   else {
     writeFileSync(join(output, 'package.json'), '{"type":"commonjs"}')
-    const tests = spawnSync(process.execPath, ['--test', 'tests/state.test.mjs', 'tests/trip.test.mjs'], {
+    const tests = spawnSync(process.execPath, ['--test', 'tests/state.test.mjs', 'tests/trip.test.mjs', 'tests/decision.test.mjs'], {
       stdio: 'inherit', env: { ...process.env, TATADA_TEST_BUILD: output },
     })
     // The server runs as TypeScript directly (Node type stripping).
