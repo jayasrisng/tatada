@@ -1,4 +1,4 @@
-import type { AppState, CanvasPos, ChatMessage, ChecklistItem, FoAction, Memory, Profile, Trip } from '../types'
+import type { AppState, Booking, CanvasPos, ChatMessage, ChecklistItem, FoAction, Memory, Profile, StayDetails, Trip } from '../types'
 import { outcome } from '../magic/engine'
 import { uid } from './id'
 
@@ -19,6 +19,9 @@ export type Act =
   | { type: 'cancel'; id: string }
   | { type: 'answer'; id: string; answer: string }
   | { type: 'tick'; id: string }
+  | { type: 'saveStayDetails'; tripId: string; details: StayDetails; messageId?: string }
+  | { type: 'addBooking'; tripId: string; booking: Booking }
+  | { type: 'applyServerOutcome'; tripId: string; itemId: string; actionId: string; done: boolean; note: string }
 
 const patchAction = (s: AppState, id: string, fn: (a: FoAction) => FoAction): AppState => ({
   ...s,
@@ -69,7 +72,19 @@ export function reducer(s: AppState, a: Act): AppState {
         ...s,
         chat: [...s.chat, ...a.messages],
         actions: a.action ? [...s.actions, a.action] : s.actions,
-        items: a.items ? [...s.items, ...a.items] : s.items,
+        items: a.items ? addUnique(s.items, a.items) : s.items,
+      }
+    case 'saveStayDetails':
+      return saveStayDetails(s, a.tripId, a.details, a.messageId)
+    case 'addBooking':
+      return { ...s, trips: s.trips.map((t) => (t.id === a.tripId ? { ...t, bookings: [...t.bookings, a.booking] } : t)) }
+    case 'applyServerOutcome':
+      return {
+        ...s,
+        items: s.items.map((i) =>
+          // Only the same trip's task, and never re-open a finished one.
+          i.id === a.itemId && i.tripId === a.tripId ? { ...i, done: i.done || a.done, note: a.note, actionId: a.actionId } : i,
+        ),
       }
     case 'clearChat':
       return { ...s, chat: [] }
@@ -108,7 +123,7 @@ function tick(s: AppState, id: string): AppState {
       }
       return patchAction(s, id, (x) => ({ ...x, cursor: x.cursor + 1, log: [...x.log, { text: step.text, at: now }] }))
     }
-    const res = outcome(act.outcomeKey, act.answers)
+    const res = outcome(act.outcomeKey, act.answers, act.outcomeData)
     if (res === 'cancelled') {
       return patchAction(s, id, (x) => ({
         ...x,
@@ -124,14 +139,16 @@ function tick(s: AppState, id: string): AppState {
     if (!act.result?.evidence.some((e) => e.trim())) {
       return patchAction(s, id, (x) => ({ ...x, status: 'failed', log: [...x.log, { text: 'No evidence was provided; outcome could not be verified', at: now }] }))
     }
-    const res = outcome(act.outcomeKey, act.answers)
+    const res = outcome(act.outcomeKey, act.answers, act.outcomeData)
     let next = patchAction(s, id, (x) => ({ ...x, status: 'verified', log: [...x.log, { text: 'Outcome verified against evidence', at: now }] }))
     if (res === 'cancelled') return patchAction(s, id, (x) => ({ ...x, status: 'cancelled' }))
     if (act.checklistItemId) {
       next = {
         ...next,
         items: next.items.map((i) =>
-          i.id === act.checklistItemId ? { ...i, done: true, note: res.booking?.ref ?? 'done by Fo', actionId: act.id } : i,
+          i.id === act.checklistItemId && i.tripId === act.tripId
+            ? { ...i, done: i.done || res.itemDone, note: res.booking?.ref ?? res.itemNote ?? i.note, actionId: act.id }
+            : i,
         ),
       }
     }
@@ -144,3 +161,45 @@ function tick(s: AppState, id: string): AppState {
   return s
 }
 
+
+const key = (i: Pick<ChecklistItem, 'tripId' | 'text'>) => `${i.tripId ?? ''}::${i.text.trim().toLowerCase()}`
+
+/** Adds items, skipping any the same trip already has. */
+function addUnique(existing: ChecklistItem[], incoming: ChecklistItem[]): ChecklistItem[] {
+  const seen = new Set(existing.map(key))
+  const out = [...existing]
+  for (const item of incoming) {
+    if (seen.has(key(item))) continue
+    seen.add(key(item))
+    out.push(item)
+  }
+  return out
+}
+
+/** Stores booking details the traveler typed in, so we never ask twice. */
+function saveStayDetails(s: AppState, tripId: string, d: StayDetails, messageId?: string): AppState {
+  const val = (v?: string) => (v && v.trim() ? v.trim() : undefined)
+  const chat = messageId ? s.chat.map((m) => (m.id === messageId && m.form ? { ...m, form: { ...m.form, submitted: true } } : m)) : s.chat
+  return {
+    ...s,
+    chat,
+    trips: s.trips.map((t) => {
+      if (t.id !== tripId) return t
+      const stay = t.bookings.find((b) => b.kind === 'stay')
+      const patch = {
+        ...(val(d.hotelName) && { title: val(d.hotelName)! }),
+        ...(val(d.hotelEmail) && { contact: val(d.hotelEmail) }),
+        ...(val(d.checkIn) && { checkIn: val(d.checkIn) }),
+        ...(val(d.ref) && { ref: val(d.ref)! }),
+      }
+      const bookings = stay
+        ? t.bookings.map((b) => (b === stay ? { ...b, ...patch } : b))
+        : val(d.hotelName)
+          ? [...t.bookings, { id: uid(), kind: 'stay' as const, title: val(d.hotelName)!, when: val(d.checkIn) ?? '', ref: val(d.ref) ?? '', detail: 'added by you', simulated: false, ...patch }]
+          : t.bookings
+      const day = val(d.checkIn) ?? stay?.checkIn ?? t.arrival?.split('T')[0]
+      const arrival = val(d.arrivalTime) && day ? `${day}T${val(d.arrivalTime)}` : t.arrival
+      return { ...t, bookings, arrival }
+    }),
+  }
+}

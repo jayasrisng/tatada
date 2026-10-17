@@ -21,6 +21,8 @@ const lisbon: Trip = {
   status: 'upcoming',
   tint: 'yellow',
   localAddress: 'Largo do Chafariz de Dentro 12, 1100-139 Lisboa',
+  arrival: '2026-11-07T11:30',
+  demoScenario: 'lisbon',
   summary: {
     flight:
       'Nonstop wins: it lands mid-morning, you skip a connection, and it respects your no-early-flights rule. It costs $140 more than the cheapest fare that still fits.',
@@ -162,9 +164,10 @@ const lisbon: Trip = {
     },
   ],
   bookings: [
-    { id: 'b1', kind: 'flight', title: 'TAP · SFO → LIS', when: 'Fri Nov 6 · 3:45pm', ref: 'K7Q2ZP', detail: 'Seats 23A / 23B', simulated: true },
-    { id: 'b2', kind: 'stay', title: 'Casa do Largo', when: 'Nov 7 → Nov 11 · 4 nights', ref: 'CDL-48213', detail: 'Room 3, rooftop breakfast', simulated: true },
-    { id: 'b3', kind: 'flight', title: 'TAP · LIS → SFO', when: 'Wed Nov 11 · 12:40pm', ref: 'K7Q2ZP', detail: 'Seats 31C / 31D', simulated: true },
+    { id: 'b1', kind: 'flight', title: 'TAP · SFO → LIS', when: 'Fri, Nov 6 · 3:45pm', at: '2026-11-06T15:45', ref: 'K7Q2ZP', detail: 'Seats 23A / 23B', simulated: true },
+    // .example is a reserved domain: the fixture contact can never reach a real inbox.
+    { id: 'b2', kind: 'stay', title: 'Casa do Largo', when: 'Sat, Nov 7 → Wed, Nov 11 · 4 nights', checkIn: '2026-11-07', checkOut: '2026-11-11', contact: 'reservas@casadolargo.example', ref: 'CDL-48213', detail: 'Room 3, rooftop breakfast', simulated: true },
+    { id: 'b3', kind: 'flight', title: 'TAP · LIS → SFO', when: 'Wed, Nov 11 · 12:40pm', at: '2026-11-11T12:40', ref: 'K7Q2ZP', detail: 'Seats 31C / 31D', simulated: true },
   ],
   memories: [
     { id: 'lm1', day: 'Oct 12', text: 'Started a list of miradouros to watch the sunset from.', kind: 'note', tint: 'yellow' },
@@ -188,7 +191,7 @@ const kyoto: Trip = {
   summary: {},
   options: [],
   bookings: [
-    { id: 'kb1', kind: 'stay', title: 'Ryokan in Higashiyama', when: 'Apr 3 → Apr 9', ref: 'RYK-2207', detail: 'Tatami room, kaiseki dinner', simulated: true },
+    { id: 'kb1', kind: 'stay', title: 'Ryokan in Higashiyama', when: 'Fri, Apr 3 → Thu, Apr 9', checkIn: '2026-04-03', checkOut: '2026-04-09', ref: 'RYK-2207', detail: 'Tatami room, kaiseki dinner', simulated: true },
   ],
   memories: [
     { id: 'km1', day: 'Apr 4', text: 'Philosopher\'s Path at 7am. Empty, petals everywhere.', kind: 'photo', place: 'Philosopher\'s Path', tint: 'pink' },
@@ -242,8 +245,8 @@ const item = (
   extra: Partial<ChecklistItem> = {},
 ): ChecklistItem => ({ id: `i${++n}`, tripId, phase, text, done, kind, ...extra })
 
-export const LISBON_EARLY_CHECKIN = 'Email Casa do Largo to ask for early check-in on Nov 7 and an airport transfer quote'
-export const LISBON_DINNER = 'Call Horta da Graça to book a table for 2 on Saturday Nov 8, vegetarian tasting menu'
+export const LISBON_EARLY_CHECKIN = 'Email Casa do Largo to ask for early check-in on Sat, Nov 7 and an airport transfer quote'
+export const LISBON_DINNER = 'Call Horta da Graça to book a table for 2 on Saturday, Nov 7, vegetarian tasting menu'
 
 const items: ChecklistItem[] = [
   item('lisbon', 'discover', 'Pick a neighborhood: Alfama vs Príncipe Real', true, 'idea'),

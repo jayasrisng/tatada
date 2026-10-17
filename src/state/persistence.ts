@@ -18,6 +18,11 @@ const tint = oneOf('yellow', 'pink', 'blue', 'green', 'orange')
 const phase = oneOf('discover', 'plan', 'prepare', 'travel', 'remember')
 const category = oneOf('flight', 'stay', 'move', 'eat')
 const result = shape({ summary: str, evidence: strings })
+const intent = oneOf('early_checkin', 'delay')
+const email = shape({ intent, to: str, toName: str, subject: str, body: str, transferQuote: bool })
+const form = shape({ intent, tripId: str, itemId: optional(str), prompt: str, submitted: optional(bool),
+  fields: list(shape({ key: oneOf('hotelName', 'hotelEmail', 'checkIn', 'arrivalTime', 'ref'), label: str,
+    type: oneOf('text', 'email', 'date', 'time'), required: bool, placeholder: optional(str) })) })
 const action = shape({
   id: str, tripId: optional(str), title: str, channel: oneOf('email', 'call', 'fo'),
   recipient: shape({ name: str, contact: str }), script: str, dataShared: strings, cost: str,
@@ -27,15 +32,18 @@ const action = shape({
   cursor: (v) => num(v) && Number.isInteger(v) && (v as number) >= 0,
   log: list(shape({ text: str, at: num })), answers: strings, result: optional(result),
   outcomeKey: optional(str), checklistItemId: optional(str), createdAt: num,
+  outcomeData: optional(shape({ demo: bool, transfer: optional(bool) })), email: optional(email),
 })
 const trip = shape({
   id: str, destination: str, country: str, start: str, end: str, travelers: num, companions: str,
   budget: num, vibe: strings, constraints: strings, discounts: strings,
   status: oneOf('planning', 'upcoming', 'past'), tint, summary: record(str), localAddress: optional(str),
+  arrival: optional(str), demoScenario: optional(oneOf('lisbon')),
   options: list(shape({ id: str, category, title: str, subtitle: str, price: str,
     status: oneOf('chosen', 'considering', 'rejected'), reason: optional(str), highlights: strings,
     tradeoffs: strings, metrics: record(str), sources: list(shape({ label: str, kind: oneOf('reviews', 'official', 'fares', 'forum', 'map') })) })),
-  bookings: list(shape({ id: str, kind: oneOf('flight', 'stay', 'dinner', 'transfer', 'activity'), title: str, when: str, ref: str, detail: str, simulated: bool })),
+  bookings: list(shape({ id: str, kind: oneOf('flight', 'stay', 'dinner', 'transfer', 'activity'), title: str, when: str, ref: str, detail: str, simulated: bool,
+    checkIn: optional(str), checkOut: optional(str), contact: optional(str), at: optional(str) })),
   memories: list(shape({ id: str, day: str, text: str, kind: oneOf('note', 'photo', 'receipt'), place: optional(str), tint: optional(tint) })),
 })
 const stateShape = shape({
@@ -45,7 +53,8 @@ const stateShape = shape({
   items: list(shape({ id: str, tripId: optional(str), text: str, phase, done: bool,
     kind: oneOf('booking', 'task', 'doc', 'pack', 'idea', 'memory'), note: optional(str), magicPrompt: optional(str), actionId: optional(str) })),
   actions: list(action),
-  chat: list(shape({ id: str, from: oneOf('me', 'tatada'), text: str, actionId: optional(str), bullets: optional(strings), addedItems: optional(strings) })),
+  chat: list(shape({ id: str, from: oneOf('me', 'tatada'), text: str, actionId: optional(str), bullets: optional(strings), addedItems: optional(strings),
+    form: optional(form), serverActionId: optional(str) })),
   canvas: record(shape({ x: num, y: num, r: num })),
 })
 export const isAppState = (value: unknown): value is AppState => stateShape(value)

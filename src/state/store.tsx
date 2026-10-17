@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useReducer, useState, type ReactNode } from 'react'
-import type { AppState, FoAction } from '../types'
+import type { AppState, FoAction, StayDetails } from '../types'
 import { seed } from '../data/seed'
 import { think } from '../magic/engine'
 
@@ -12,7 +12,7 @@ interface Store {
   state: AppState
   storageWarning: string | null
   dispatch: React.Dispatch<Act>
-  ask: (prompt: string, tripId?: string, checklistItemId?: string) => void
+  ask: (prompt: string, tripId?: string, checklistItemId?: string, details?: StayDetails, echo?: boolean) => void
   resetDemo: (fresh?: boolean) => void
 }
 
@@ -37,9 +37,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => timers.forEach(clearTimeout)
   }, [state.actions])
 
-  const ask = (prompt: string, tripId?: string, checklistItemId?: string) => {
+  const ask = (prompt: string, tripId?: string, checklistItemId?: string, details?: StayDetails, echo = true) => {
     const trip = state.trips.find((t) => t.id === tripId)
-    const reply = think(prompt, trip, checklistItemId)
+    const reply = think(prompt, trip, checklistItemId, { profile: state.profile, details, items: state.items })
     const action: FoAction | undefined = reply.action && {
       ...reply.action,
       id: uid(),
@@ -54,8 +54,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dispatch({
       type: 'chat',
       messages: [
-        { id: uid(), from: 'me', text: prompt },
-        { id: uid(), from: 'tatada', text: reply.text, bullets: reply.bullets, actionId: action?.id, addedItems: items?.map((i) => i.text) },
+        ...(echo ? [{ id: uid(), from: 'me' as const, text: prompt }] : []),
+        { id: uid(), from: 'tatada', text: reply.text, bullets: reply.bullets, actionId: action?.id, addedItems: items?.length ? items.map((i) => i.text) : undefined, form: reply.form },
       ],
       action,
       items,

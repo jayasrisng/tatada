@@ -53,6 +53,13 @@ export interface Booking {
   ref: string
   detail: string
   simulated: boolean
+  /** Stay bookings: ISO dates. */
+  checkIn?: string
+  checkOut?: string
+  /** Email address the traveler supplied for this booking. */
+  contact?: string
+  /** Local start time, 'YYYY-MM-DDTHH:mm'. */
+  at?: string
 }
 
 export interface Memory {
@@ -83,6 +90,10 @@ export interface Trip {
   bookings: Booking[]
   memories: Memory[]
   localAddress?: string
+  /** Expected arrival at the destination, local 'YYYY-MM-DDTHH:mm'. */
+  arrival?: string
+  /** Scripted sample scenarios exist only for fixture trips. */
+  demoScenario?: 'lisbon'
 }
 
 export type ActionStatus =
@@ -118,8 +129,47 @@ export interface FoAction {
   result?: { summary: string; evidence: string[] }
   /** Builds the outcome from the user's answers once the plan finishes. */
   outcomeKey?: string
+  outcomeData?: { demo: boolean; transfer?: boolean }
+  /** Structured email for stay requests; the server path sends exactly this. */
+  email?: EmailDraft
   checklistItemId?: string
   createdAt: number
+}
+
+export type StayIntent = 'early_checkin' | 'delay'
+
+export interface EmailDraft {
+  intent: StayIntent
+  to: string
+  toName: string
+  subject: string
+  body: string
+  transferQuote: boolean
+}
+
+export interface StayDetails {
+  hotelName?: string
+  hotelEmail?: string
+  checkIn?: string
+  arrivalTime?: string
+  ref?: string
+}
+
+export interface DetailsField {
+  key: keyof StayDetails
+  label: string
+  type: 'text' | 'email' | 'date' | 'time'
+  required: boolean
+  placeholder?: string
+}
+
+export interface DetailsForm {
+  intent: StayIntent
+  tripId: string
+  itemId?: string
+  prompt: string
+  fields: DetailsField[]
+  submitted?: boolean
 }
 
 export interface ChatMessage {
@@ -129,6 +179,9 @@ export interface ChatMessage {
   actionId?: string
   bullets?: string[]
   addedItems?: string[]
+  form?: DetailsForm
+  /** Action owned by the Tatada server (real or mock Fo). */
+  serverActionId?: string
 }
 
 export interface Profile {
