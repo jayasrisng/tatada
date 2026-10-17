@@ -289,3 +289,12 @@ export const seed = (): AppState => ({
   chat: [],
   canvas: {},
 })
+
+/** Demo fixture: sample outfits for the Lisbon trip, keyed by date. Not a real forecast. */
+export const LISBON_STYLE: Record<string, { temp: string; sky: string; look: string[]; note: string }> = {
+  '2026-11-07': { temp: '19° / 13°', sky: 'sun', look: ['linen shirt', 'light chinos', 'white sneakers'], note: 'hills all day: comfy shoes' },
+  '2026-11-08': { temp: '17° / 12°', sky: 'umbrella', look: ['knit sweater', 'dark jeans', 'rain shell'], note: 'showers after 3pm' },
+  '2026-11-09': { temp: '18° / 12°', sky: 'sun', look: ['striped tee', 'overshirt', 'loafers'], note: 'Sintra: layers for the hilltop' },
+  '2026-11-10': { temp: '18° / 13°', sky: 'sun', look: ['slip dress or chinos', 'light jacket'], note: 'nice dinner night' },
+}
+export const LISBON_GAPS = ['Grippy walking shoes', 'Packable rain shell', 'Type F plug adapter']

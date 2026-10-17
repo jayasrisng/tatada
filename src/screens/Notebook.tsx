@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import type { Category, ResearchOption, Trip } from '../types'
 import { useStore } from '../state/store'
-import { useUI } from '../state/ui'
+import { go, useUI } from '../state/ui'
+import { AddStay } from '../components/AddStay'
+import { AddRow } from '../components/Checklist'
 import { Doodle } from '../components/Doodle'
 import { Btn, Chip, Paper, SampleNote } from '../components/ui'
 
@@ -15,7 +17,6 @@ const CATS: { id: Category; label: string; icon: string }[] = [
 export function Notebook({ trip }: { trip: Trip }) {
   const [cat, setCat] = useState<Category>('flight')
   const [compare, setCompare] = useState(false)
-  const { openMagic } = useUI()
   const opts = trip.options.filter((o) => o.category === cat)
   const live = opts.filter((o) => o.status !== 'rejected')
   const rejected = opts.filter((o) => o.status === 'rejected')
@@ -40,12 +41,7 @@ export function Notebook({ trip }: { trip: Trip }) {
       )}
 
       {opts.length === 0 ? (
-        <div className="empty">
-          <p>Nothing here yet.</p>
-          <Btn icon="search" onClick={() => openMagic({ tripId: trip.id, prefill: `Research ${CATS.find((c) => c.id === cat)?.label.toLowerCase()} options for ${trip.destination}` })}>
-            research this
-          </Btn>
-        </div>
+        <NextSteps trip={trip} cat={cat} />
       ) : (
         <>
           <div className="nb-toolbar">
@@ -81,7 +77,7 @@ export function Notebook({ trip }: { trip: Trip }) {
           )}
         </>
       )}
-      <SampleNote>sample research · prices & ratings are illustrative, not live</SampleNote>
+      {opts.length > 0 && <SampleNote>sample research · prices & ratings are illustrative, not live</SampleNote>}
     </div>
   )
 }
@@ -161,6 +157,41 @@ function Compare({ options }: { options: ResearchOption[] }) {
           ))}
         </div>
       ))}
+    </div>
+  )
+}
+
+/* No live research yet, so say so and offer real next steps instead of made-up options. */
+function NextSteps({ trip, cat }: { trip: Trip; cat: Category }) {
+  const { openMagic } = useUI()
+  const hasStay = trip.bookings.some((b) => b.kind === 'stay')
+  return (
+    <div className="next-steps">
+      <p className="dim">Live research isn't connected yet, so this page stays empty instead of showing made-up options.</p>
+      {cat === 'stay' &&
+        (hasStay ? (
+          <p>
+            Your stay is saved.{' '}
+            <button className="linkbtn" onClick={() => openMagic({ tripId: trip.id, prefill: 'Ask my stay for early check-in' })}>
+              ask about early check-in
+            </button>
+          </p>
+        ) : (
+          <>
+            <h3 className="section-h">already booked somewhere?</h3>
+            <AddStay trip={trip} />
+          </>
+        ))}
+      {cat === 'flight' && (
+        <p>
+          Note flight ideas in your{' '}
+          <button className="linkbtn" onClick={() => go(`/trip/${trip.id}/plan`)}>
+            plan checklist
+          </button>
+          , or add one here:
+        </p>
+      )}
+      {cat !== 'stay' && <AddRow tripId={trip.id} phase={cat === 'flight' ? 'plan' : 'discover'} placeholder={cat === 'eat' ? 'a place you want to try…' : cat === 'move' ? 'how you might get around…' : 'a flight to look at…'} />}
     </div>
   )
 }

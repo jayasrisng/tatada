@@ -3,7 +3,6 @@ import { useStore } from '../state/store'
 import { go, useUI } from '../state/ui'
 import { CurvyArrow, Doodle } from '../components/Doodle'
 import { daysUntil } from '../components/ui'
-import { LISBON_DINNER } from '../data/seed'
 import type { CanvasPos } from '../types'
 
 /* Default spots on the board, as fractions of its width/height. */
@@ -81,6 +80,9 @@ export function Home() {
   const done = state.items.filter((i) => i.done).length
   const needsYou = state.actions.filter((a) => a.status === 'needs_input' || a.status === 'proposed').length
   const days = next ? daysUntil(next.start) : 0
+  // The next trip's most useful open task: one Fo can help with, else the first open booking.
+  const nextOpen = state.items.filter((i) => i.tripId === next?.id && !i.done)
+  const nudge = nextOpen.find((i) => i.magicPrompt) ?? nextOpen.find((i) => i.kind === 'booking')
 
   return (
     <div className="screen home">
@@ -126,16 +128,18 @@ export function Home() {
           </Draggable>
         )}
 
-        <Draggable
-          id="note"
-          onTap={() => openMagic({ tripId: 'lisbon', prefill: LISBON_DINNER, itemId: state.items.find((i) => i.magicPrompt === LISBON_DINNER && !i.done)?.id })}
-          className="cc-note"
-        >
-          <span>Saturday dinner isn't booked yet</span>
-          <em>
-            <Doodle name="sparkle" size={14} /> Fo can call
-          </em>
-        </Draggable>
+        {nudge && next && (
+          <Draggable
+            id="note"
+            onTap={() => (nudge.magicPrompt ? openMagic({ tripId: next.id, prefill: nudge.magicPrompt, itemId: nudge.id }) : go(`/trip/${next.id}`))}
+            className="cc-note"
+          >
+            <span>{nudge.text}</span>
+            <em>
+              <Doodle name="sparkle" size={14} /> {nudge.magicPrompt ? 'Fo can help' : `still open · ${next.destination}`}
+            </em>
+          </Draggable>
+        )}
 
         <div className="board-magic">
           <CurvyArrow className="magic-arrow" flip />

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { uid, useStore } from '../state/store'
 import { go } from '../state/ui'
 import { Doodle } from '../components/Doodle'
 import { Btn, Chip, TopBar } from '../components/ui'
 import type { ChecklistItem, Trip } from '../types'
+import { addDays, isIsoDate, localToday, nightsBetween } from '../magic/dates'
 
 const PLACES = ['Lisbon', 'Mexico City', 'Kyoto', 'Big Sur', 'Copenhagen']
 const VIBES = ['food', 'slow mornings', 'museums', 'nature', 'nightlife', 'design', 'beaches', 'walkable']
@@ -14,20 +15,29 @@ const TINTS: Trip['tint'][] = ['blue', 'orange', 'pink', 'green', 'yellow']
 
 const toggle = (arr: string[], v: string) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
 
+export function dateProblem(start: string, end: string, today = localToday()): string | null {
+  if (!isIsoDate(start) || !isIsoDate(end)) return 'Pick both dates.'
+  if (start < today) return 'The trip can\'t start in the past.'
+  if (end < start) return 'Coming back has to be on or after leaving.'
+  if (nightsBetween(start, end) > 60) return 'That\'s over 60 nights. Split it into separate trips.'
+  return null
+}
+
 export function NewTrip() {
   const { state, dispatch } = useStore()
   const p = state.profile
   const [step, setStep] = useState(0)
   const [where, setWhere] = useState('')
-  const [start, setStart] = useState('2026-12-04')
-  const [end, setEnd] = useState('2026-12-08')
+  // Rolling defaults: a long weekend about a month out.
+  const [start, setStart] = useState(() => addDays(localToday(), 30))
+  const [end, setEnd] = useState(() => addDays(localToday(), 34))
+  const dateError = dateProblem(start, end)
   const [who, setWho] = useState('with partner')
   const [count, setCount] = useState(2)
   const [budget, setBudget] = useState(2000)
   const [vibe, setVibe] = useState<string[]>(p.style)
   const [needs, setNeeds] = useState<string[]>(p.diet)
   const [deals, setDeals] = useState<string[]>(p.memberships)
-  const [thinking, setThinking] = useState(false)
 
   const steps = [
     {
@@ -48,19 +58,34 @@ export function NewTrip() {
     },
     {
       q: 'when?',
-      ok: !!start && !!end && end >= start,
+      ok: !dateError,
       body: (
-        <div className="date-row">
-          <label>
-            <span>leave</span>
-            <input type="date" className="chalk-input" value={start} onChange={(e) => setStart(e.target.value)} />
-          </label>
-          <Doodle name="arrow" size={28} />
-          <label>
-            <span>back</span>
-            <input type="date" className="chalk-input" value={end} onChange={(e) => setEnd(e.target.value)} />
-          </label>
-        </div>
+        <>
+          <div className="date-row">
+            <label>
+              <span>leave</span>
+              <input
+                type="date"
+                className="chalk-input"
+                value={start}
+                min={localToday()}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setStart(v)
+                  // Keep the trip length when the start moves past the end.
+                  if (isIsoDate(v) && end < v) setEnd(addDays(v, Math.max(0, nightsBetween(start, end))))
+                }}
+                aria-invalid={!!dateError}
+              />
+            </label>
+            <Doodle name="arrow" size={28} />
+            <label>
+              <span>back</span>
+              <input type="date" className="chalk-input" value={end} min={start} onChange={(e) => setEnd(e.target.value)} aria-invalid={!!dateError} />
+            </label>
+          </div>
+          {dateError ? <p className="ac-problem" role="alert">{dateError}</p> : <p className="dim small">{nightsBetween(start, end)} nights</p>}
+        </>
       ),
     },
     {
@@ -136,6 +161,7 @@ export function NewTrip() {
   ]
 
   const create = () => {
+    if (dateError || !where.trim()) return
     const id = uid()
     const dest = where.trim()
     const trip: Trip = {
@@ -152,10 +178,8 @@ export function NewTrip() {
       discounts: deals,
       status: 'planning',
       tint: TINTS[state.trips.length % TINTS.length],
-      summary: {
-        flight: `First pass: I'd look for flights that respect ${needs.filter((n) => n.includes('flight') || n.includes('red-eye')).join(', ') || 'your usual preferences'}. Live fares aren't connected yet, so these are placeholders.`,
-        stay: `Looking for a ${vibe.includes('walkable') ? 'walkable ' : ''}base in ${dest} that fits about $${Math.round((budget * 0.4) / Math.max(1, nightsBetween(start, end)))} a night.`,
-      },
+      // No research has run, so there's no take and no options to show.
+      summary: {},
       options: [],
       bookings: [],
       memories: [],
@@ -173,27 +197,6 @@ export function NewTrip() {
     const items = base.map(([phase, text, kind]) => ({ id: uid(), tripId: id, phase, text, kind, done: false }))
     dispatch({ type: 'addTrip', trip, items })
     go(`/trip/${id}/notebook`)
-  }
-
-  useEffect(() => {
-    if (!thinking) return
-    const t = setTimeout(create, 2600)
-    return () => clearTimeout(t)
-  }, [thinking])
-
-  if (thinking) {
-    return (
-      <div className="screen center thinking">
-        <Doodle name="compass" size={70} className="spin-slow" />
-        <h2 className="chalk-title">starting your notebook…</h2>
-        <ul className="thinking-lines">
-          <li>remembering what you like</li>
-          <li>setting up {where} checklist</li>
-          <li>queuing research</li>
-        </ul>
-        <p className="sample-note">simulated · live research connects next</p>
-      </div>
-    )
   }
 
   const s = steps[step]
@@ -220,7 +223,7 @@ export function NewTrip() {
             next
           </Btn>
         ) : (
-          <Btn kind="solid" icon="sparkle" onClick={() => setThinking(true)}>
+          <Btn kind="solid" icon="sparkle" disabled={!!dateError || !where.trim()} onClick={create}>
             make my trip
           </Btn>
         )}
@@ -229,4 +232,3 @@ export function NewTrip() {
   )
 }
 
-const nightsBetween = (a: string, b: string) => Math.max(1, Math.round((Date.parse(b) - Date.parse(a)) / 86400000))

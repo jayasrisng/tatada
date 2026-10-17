@@ -5,7 +5,9 @@ import { Doodle, Scribble } from '../components/Doodle'
 import { AddRow, ChecklistRow } from '../components/Checklist'
 import { Box, Btn, Chip, Paper, SampleNote, TopBar, daysUntil, fmtRange } from '../components/ui'
 import { Notebook } from './Notebook'
+import { AddStay } from '../components/AddStay'
 import { PHASES, type Trip } from '../types'
+import { fmtDay, fmtTime, isTime } from '../magic/dates'
 
 export function TripWorkspace({ id, tab = 'plan' }: { id: string; tab?: string }) {
   const { state } = useStore()
@@ -67,10 +69,23 @@ export function TripWorkspace({ id, tab = 'plan' }: { id: string; tab?: string }
 
 function Plan({ trip }: { trip: Trip }) {
   const { state } = useStore()
+  const [addingStay, setAddingStay] = useState(false)
   const items = state.items.filter((i) => i.tripId === trip.id)
   return (
     <div className="plan">
       {trip.status !== 'past' && <NowCard trip={trip} />}
+
+      {!trip.bookings.some((b) => b.kind === 'stay') && trip.status !== 'past' && (
+        <section>
+          {addingStay ? (
+            <AddStay trip={trip} onDone={() => setAddingStay(false)} />
+          ) : (
+            <button className="linkbtn" onClick={() => setAddingStay(true)}>
+              + add a stay you've booked
+            </button>
+          )}
+        </section>
+      )}
 
       {trip.bookings.length > 0 && (
         <section>
@@ -87,7 +102,7 @@ function Plan({ trip }: { trip: Trip }) {
               </div>
             ))}
           </div>
-          <SampleNote>confirmation codes are sample data</SampleNote>
+          {trip.bookings.some((b) => b.simulated) && <SampleNote>codes marked from the demo are sample data</SampleNote>}
         </section>
       )}
 
@@ -115,24 +130,40 @@ function Plan({ trip }: { trip: Trip }) {
 /* Proactive "right now" card. The time-travel control is a demo affordance. */
 function NowCard({ trip }: { trip: Trip }) {
   const { openMagic } = useUI()
+  const { state } = useStore()
   const [m, setM] = useState(0)
   const flight = trip.bookings.find((b) => b.kind === 'flight')
   const stay = trip.bookings.find((b) => b.kind === 'stay')
   const dinner = trip.bookings.find((b) => b.kind === 'dinner')
   const transfer = trip.bookings.find((b) => b.kind === 'transfer')
+  const open = state.items.filter((i) => i.tripId === trip.id && !i.done)
+  const before = open.filter((i) => i.phase === 'plan' || i.phase === 'prepare')
+  const packing = open.filter((i) => i.kind === 'pack').map((i) => i.text)
+  const [arrDay, arrTime] = trip.arrival?.split('T') ?? []
 
   const moments = [
     {
       label: 'today',
-      title: 'two things left before you go',
-      body: <p>Saturday dinner and early check-in aren't sorted yet. Fo can handle both. Tap <em>Fo</em> on either one below.</p>,
+      title: before.length ? `${before.length} ${before.length === 1 ? 'thing' : 'things'} left before you go` : 'all set before you go',
+      body: before.length ? (
+        <>
+          <ul className="now-list">
+            {before.slice(0, 3).map((i) => (
+              <li key={i.id}>{i.text}</li>
+            ))}
+          </ul>
+          {before.some((i) => i.magicPrompt) && <p>Tasks marked <em>Fo</em> below can be handed off.</p>}
+        </>
+      ) : (
+        <p>Nothing open in plan or prepare.</p>
+      ),
     },
     {
       label: 'leaving day',
-      title: 'leave for the airport by 1:15pm',
+      title: flight?.at ? `flying ${fmtDay(flight.at.slice(0, 10))}` : 'no flight on file',
       body: (
         <>
-          {flight && (
+          {flight ? (
             <div className="ticket big">
               <Doodle name="plane" size={26} />
               <div>
@@ -141,17 +172,19 @@ function NowCard({ trip }: { trip: Trip }) {
               </div>
               <code>{flight.ref}</code>
             </div>
+          ) : (
+            <p>Add your flight to the checklist and its details will show up here.</p>
           )}
-          <p className="dim">Passports ✓ · rain shell packed? · plug adapter?</p>
+          {packing.length > 0 && <p className="dim">Still to pack: {packing.slice(0, 3).join(' · ')}</p>}
         </>
       ),
     },
     {
       label: 'landing',
-      title: `welcome to ${trip.destination.toLowerCase()} ✶`,
+      title: arrDay && isTime(arrTime) ? `arriving ${fmtDay(arrDay)}, around ${fmtTime(arrTime)}` : `arriving in ${trip.destination.toLowerCase()}`,
       body: (
         <>
-          <p>{transfer ? `Your driver is waiting at arrivals (${transfer.detail}).` : 'No transfer booked: take the metro red line, then a 6-minute walk.'}</p>
+          <p>{transfer ? `Transfer booked: ${transfer.detail}.` : 'No transfer booked.'}</p>
           {trip.localAddress && (
             <Paper tilt={-1} className="address">
               <span className="paper-label">show the driver</span>
@@ -162,15 +195,15 @@ function NowCard({ trip }: { trip: Trip }) {
       ),
     },
     {
-      label: 'saturday eve',
-      title: dinner ? `dinner at ${dinner.when.split('·')[1]?.trim()}` : 'saturday evening is open',
+      label: 'dinner',
+      title: dinner ? `dinner: ${dinner.when}` : 'no dinner booked',
       body: dinner ? (
-        <p>{dinner.title}, a 12-minute walk. Sunset at the viewpoint is at 5:21pm, so go early.</p>
+        <p>{dinner.title} · {dinner.detail}</p>
       ) : (
         <p>
           Nothing's booked yet.{' '}
-          <button className="linkbtn" onClick={() => openMagic({ tripId: trip.id, prefill: 'Book a vegetarian dinner Saturday' })}>
-            ask Fo?
+          <button className="linkbtn" onClick={() => openMagic({ tripId: trip.id, prefill: 'Book a dinner table' })}>
+            ask Magic
           </button>
         </p>
       ),

@@ -10,7 +10,18 @@ export function PrintView({ id, doc }: { id: string; doc?: string }) {
   const { state } = useStore()
   const trip = state.trips.find((t) => t.id === id)
   const [kind, setKind] = useState<'card' | 'journal'>(doc === 'journal' ? 'journal' : 'card')
-  if (!trip) return null
+  if (!trip) {
+    return (
+      <div className="screen center">
+        <Doodle name="printer" size={48} />
+        <h2 className="chalk-title">nothing to print here</h2>
+        <p className="dim">That trip doesn't exist on this device. It may have been deleted, or the link came from somewhere else.</p>
+        <Btn kind="solid" onClick={() => go('/trips')}>
+          pick a trip
+        </Btn>
+      </div>
+    )
+  }
 
   return (
     <div className="screen print-screen">
@@ -44,6 +55,7 @@ export function PrintView({ id, doc }: { id: string; doc?: string }) {
 function TripCard({ trip }: { trip: Trip }) {
   const { state } = useStore()
   const [qr, setQr] = useState('')
+  const [qrFailed, setQrFailed] = useState(false)
   useEffect(() => {
     const text = [
       `TATADA · ${trip.destination} · ${fmtRange(trip.start, trip.end)}`,
@@ -52,7 +64,14 @@ function TripCard({ trip }: { trip: Trip }) {
     ]
       .filter(Boolean)
       .join('\n')
-    QRCode.toDataURL(text, { margin: 1, width: 240, color: { dark: '#1d1d1b', light: '#ffffff' } }).then(setQr)
+    let live = true
+    setQrFailed(false)
+    QRCode.toDataURL(text, { margin: 1, width: 240, color: { dark: '#1d1d1b', light: '#ffffff' } })
+      .then((url) => live && setQr(url))
+      .catch(() => live && (setQr(''), setQrFailed(true)))
+    return () => {
+      live = false
+    }
   }, [trip])
 
   return (
@@ -80,7 +99,7 @@ function TripCard({ trip }: { trip: Trip }) {
         </ul>
         <div className="sheet-qr">
           {qr && <img src={qr} alt="QR code with trip summary" />}
-          <span>scan: trip summary</span>
+          {qrFailed ? <span>QR unavailable. Everything it would hold is printed on this card.</span> : <span>scan: trip summary</span>}
         </div>
       </div>
       {trip.localAddress && (
