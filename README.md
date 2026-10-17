@@ -55,4 +55,8 @@ Vite + React + TypeScript, plain CSS. No UI kit: the chalkboard look is all cust
 
 Saved browser state is validated before use. Invalid data is backed up under `tatada:v1:recovery`; storage failures show a warning while the app continues in memory. This is local-only persistence, with no account sync or cloud backup.
 
-GitHub Actions runs `npm test` and `npm run build` on pushes and pull requests. See [the repository review](docs/repository-review.md) for prioritized gaps, acceptance checks, and the recommended first live integration.
+GitHub Actions runs `npm test` and `npm run build` on pushes and pull requests. Browser checks run with `npm run smoke`; theme checks run with `node scripts/themes.mjs` while the app and mock server are running.
+
+If a live send loses its response, Tatada searches recent Fo conversations for the request reference. A missing match does not prove the request was never received: the action stays non-retryable, and duplicate approval remains blocked. Only explicitly rejected sends can be retried.
+
+Check-in confirmation requires a provider record from the approved email address and an explicit, unconditional reply about early check-in. Conditional or unrelated replies leave the task open. Live provider formats still need verification against Wajo.

@@ -1,10 +1,10 @@
 # Fo integration: auth & capability discovery
 
-Last updated Oct 17, 2026. All checks were unauthenticated and read-only: public metadata GETs, MCP `initialize`, and `*/list`. **No `tools/call`, no client registration, no credentials used.** The probe script lives outside the repo (`/tmp/tatada-probe/probe.py`).
+Discovery notes from Oct 17, 2026. The initial checks used public metadata GETs, MCP `initialize`, and `*/list`. The implemented client and its current verification limits are described below.
 
 ## Verdict
 
-**Yes. Our backend can authenticate to Fo with standard MCP OAuth 2.1, without needing anything from Wajo first.** The server advertises dynamic client registration and public clients with PKCE, so Tatada can register itself, send the user through a one-time consent screen, and hold a refreshable bearer token server-side.
+The server advertises dynamic client registration and public clients with PKCE. Tatada implements that OAuth flow, but successful registration, consent, and token refresh against the live provider still need verification.
 
 ## Evidence
 
@@ -27,7 +27,8 @@ Last updated Oct 17, 2026. All checks were unauthenticated and read-only: public
 
 **Unauthenticated behaviour of `POST /fo`** (Streamable HTTP, protocol `2025-06-18`, server `wajo-fo 0.1.0`, stateless: no session id)
 - `initialize`, `tools/list`, `resources/list`: **public** (200)
-- `prompts/list` and, by extension, `tools/call`: **401** `{"error":"missing api key"}` + `WWW-Authenticate: Bearer resource_metadata=…`
+- `prompts/list`: **401** `{"error":"missing api key"}` + `WWW-Authenticate: Bearer resource_metadata=…`
+- `tools/call` authorization was not tested in the initial discovery; its behavior cannot be inferred from `prompts/list`.
 - The "api key" wording suggests a separate API-key path also exists, but it isn't documented in the metadata.
 
 **Fo tools, with the server's own safety annotations**
@@ -55,11 +56,11 @@ Last updated Oct 17, 2026. All checks were unauthenticated and read-only: public
 ```
 
 ### Security rules
-- **Tokens never reach the browser.** They're stored server-side, encrypted at rest (or in the OS keychain for the local demo), and refreshed automatically.
-- **No generic proxy.** The backend exposes only narrow endpoints, e.g. `POST /api/actions/:id/approve`. That endpoint is the *only* code path that calls `ask_fo`.
+- **Tokens never reach the browser.** They're stored server-side, sealed at rest in the server data directory, and refreshed automatically.
+- **No generic proxy.** The backend exposes only narrow endpoints, e.g. `POST /api/actions/:id/approve`. Approval queues the initial `ask_fo` call; an explicit owner answer can also call `ask_fo` in the same conversation.
 - **Approval is bound to content.** On approve we hash the exact message; `ask_fo` sends that message and nothing else. Any edit requires re-approval.
 - **Fo's own confirmations go back to the user.** If Fo replies "waiting for your answer," the UI shows the question. The backend never auto-confirms.
-- **"Verified" requires evidence** (e.g. `get_fo_conversation` transcript or a confirmation Fo read back). Otherwise the action is marked "done (unverified)."
+- **"Verified" requires a structured provider record** for the approved recipient. Plain conversation claims are insufficient. Unconditional early-check-in confirmation is a separate result from merely sending the request.
 - **State + PKCE** on the OAuth flow; the redirect URI is pinned at registration.
 
 ## Implementation status
@@ -74,5 +75,5 @@ Implemented and tested against a fake Wajo (`server/tests/oauth.test.ts`) and th
 3. Whether one `mcp` token covers both `/fo` and `/mcp` (the `resource` param suggests per-resource tokens).
 4. Real latency and capability of `ask_fo`, especially outbound calls to businesses.
 
-## Fallback
-If registration is rejected, run the approved message through Fo from Claude Code (already authenticated) and paste or ingest the result into Tatada, clearly labeled.
+## If live integration is unavailable
+Run the labeled mock adapter. The app does not implement importing manually executed Fo tasks, and Claude Code credentials must not be reused by the server.
