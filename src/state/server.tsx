@@ -39,8 +39,13 @@ export interface ServerAction {
 export const ACTIVE: ServerStatus[] = ['approved', 'sending', 'send_uncertain', 'waiting', 'answering', 'verifying']
 
 export interface ServerInfo {
+  /** False until the first status check finishes. */
+  checked: boolean
   available: boolean
   provider?: 'live' | 'mock'
+  demo?: boolean
+  authenticated?: boolean
+  account?: { id: string; kind: 'wajo' | 'demo'; identitySource?: string; since: number }
   foConnected?: boolean
   liveRecipients?: string[]
 }
@@ -83,6 +88,9 @@ const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) 
 
 interface Ctx {
   info: ServerInfo
+  logout: (everywhere?: boolean) => Promise<void>
+  loadWorkspace: () => Promise<{ version: number; state: unknown }>
+  saveWorkspace: (baseVersion: number, state: unknown) => Promise<{ ok: true; version: number } | { ok: false; version: number; state: unknown }>
   actions: Record<string, ServerAction>
   refresh: () => Promise<void>
   create: (payload: ReturnType<typeof draftPayload>) => Promise<ServerAction>
@@ -96,7 +104,7 @@ interface Ctx {
 const C = createContext<Ctx | null>(null)
 
 export function ServerProvider({ children }: { children: ReactNode }) {
-  const [info, setInfo] = useState<ServerInfo>({ available: false })
+  const [info, setInfo] = useState<ServerInfo>({ checked: false, available: false })
   const [actions, setActions] = useState<Record<string, ServerAction>>({})
   const tracked = useRef(new Set<string>())
 
@@ -104,10 +112,10 @@ export function ServerProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const s = await api<Omit<ServerInfo, 'available'>>('/api/session', { method: 'POST' })
-      setInfo({ available: true, ...s })
+      const s = await api<Omit<ServerInfo, 'available' | 'checked'>>('/api/session', { method: 'POST' })
+      setInfo({ checked: true, available: true, ...s })
     } catch {
-      setInfo({ available: false })
+      setInfo({ checked: true, available: false })
     }
   }, [])
 
@@ -128,11 +136,11 @@ export function ServerProvider({ children }: { children: ReactNode }) {
   // Poll quickly while anything is in flight, slowly otherwise.
   const anyActive = Object.values(actions).some((a) => ACTIVE.includes(a.status))
   useEffect(() => {
-    if (!info.available) return
+    if (!info.available || !info.authenticated) return
     void poll()
     const t = window.setInterval(poll, anyActive ? 1200 : 8000)
     return () => clearInterval(t)
-  }, [info.available, anyActive, poll])
+  }, [info.available, info.authenticated, anyActive, poll])
 
   const track = useCallback((ids: string[]) => {
     let added = false
@@ -142,6 +150,25 @@ export function ServerProvider({ children }: { children: ReactNode }) {
 
   const value: Ctx = {
     info,
+    logout: async (everywhere = false) => {
+      await api('/api/auth/logout', { method: 'POST', json: { everywhere } }).catch(() => {})
+      tracked.current.clear()
+      setActions({})
+      await refresh()
+    },
+    loadWorkspace: () => api<{ version: number; state: unknown }>('/api/workspace'),
+    saveWorkspace: async (baseVersion, state) => {
+      const res = await fetch('/api/workspace', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'x-tatada': '1', 'content-type': 'application/json' },
+        body: JSON.stringify({ baseVersion, state }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (res.status === 409) return { ok: false, version: body.version, state: body.state }
+      if (!res.ok) throw new ApiError(res.status, body.error ?? 'Could not save to the server')
+      return { ok: true, version: body.version }
+    },
     actions,
     refresh,
     newKey,

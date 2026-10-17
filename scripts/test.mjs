@@ -8,12 +8,12 @@ import { spawnSync } from 'node:child_process'
 const output = mkdtempSync(join(tmpdir(), 'tatada-tests-'))
 try {
   const compiled = spawnSync(process.execPath, [resolve('node_modules/typescript/bin/tsc'),
-    'src/state/reducer.ts', 'src/state/persistence.ts', '--outDir', output,
+    'src/state/reducer.ts', 'src/state/persistence.ts', 'src/state/portability.ts', '--outDir', output,
     '--module', 'commonjs', '--target', 'ES2022', '--strict', '--skipLibCheck'], { stdio: 'inherit' })
   if (compiled.status !== 0) process.exitCode = compiled.status ?? 1
   else {
     writeFileSync(join(output, 'package.json'), '{"type":"commonjs"}')
-    const tests = spawnSync(process.execPath, ['--test', 'tests/state.test.mjs', 'tests/trip.test.mjs', 'tests/decision.test.mjs'], {
+    const tests = spawnSync(process.execPath, ['--test', 'tests/state.test.mjs', 'tests/trip.test.mjs', 'tests/decision.test.mjs', 'tests/portability.test.mjs'], {
       stdio: 'inherit', env: { ...process.env, TATADA_TEST_BUILD: output },
     })
     // The server runs as TypeScript directly (Node type stripping).

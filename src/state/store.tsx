@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useReducer, useState, type ReactNode } from 'react'
 import type { AppState, EmailDraft, FoAction, StayDetails, Trip } from '../types'
-import { seed } from '../data/seed'
+import { emptyState, seed } from '../data/seed'
 import { think } from '../magic/engine'
 
 import { loadState, saveState } from './persistence'
@@ -14,6 +14,15 @@ interface Store {
   dispatch: React.Dispatch<Act>
   ask: (prompt: string, tripId?: string, checklistItemId?: string, details?: StayDetails, echo?: boolean, viaServer?: ViaServer) => Promise<void>
   resetDemo: (fresh?: boolean) => void
+  /** Which kind of workspace this is: a demo, or a signed-in Wajo account. */
+  workspace: Workspace
+}
+
+export interface Workspace {
+  kind: 'local-demo' | 'demo' | 'wajo'
+  storageKey: string
+  /** Called after each change is saved locally (e.g. to sync to the server). */
+  onChange?: (state: AppState) => void
 }
 
 /** Hands a drafted email to the Tatada server; resolves to the server action id. */
@@ -21,15 +30,19 @@ export type ViaServer = (email: EmailDraft, trip: Trip, checklistItemId?: string
 
 const Ctx = createContext<Store | null>(null)
 
-export function StoreProvider({ children }: { children: ReactNode }) {
-  const [initial] = useState(() => loadState(() => window.localStorage))
+export function StoreProvider({ children, workspace, initialState }: { children: ReactNode; workspace: Workspace; initialState?: AppState }) {
+  const fresh = workspace.kind === 'wajo' ? emptyState : seed
+  const [initial] = useState(() =>
+    initialState ? { state: initialState, warning: null } : loadState(() => window.localStorage, workspace.storageKey, fresh),
+  )
   const [state, dispatch] = useReducer(reducer, initial.state)
   const [storageWarning, setStorageWarning] = useState(initial.warning)
 
   useEffect(() => {
-    if (!saveState(state, () => window.localStorage)) {
+    if (!saveState(state, () => window.localStorage, workspace.storageKey)) {
       setStorageWarning('Changes are only in memory because browser storage could not save them. Keep this page open to avoid losing your work.')
     }
+    workspace.onChange?.(state)
   }, [state])
 
   // Drives simulated Fo actions forward, one step at a time.
@@ -79,12 +92,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  const resetDemo = (fresh = false) => {
-    const s = seed()
-    dispatch({ type: 'reset', state: fresh ? { ...s, onboarded: false } : s })
+  const resetDemo = (again = false) => {
+    const s = fresh()
+    dispatch({ type: 'reset', state: again ? { ...s, onboarded: false } : s })
   }
 
-  return <Ctx.Provider value={{ state, storageWarning, dispatch, ask, resetDemo }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={{ state, storageWarning, dispatch, ask, resetDemo, workspace }}>{children}</Ctx.Provider>
 }
 
 export function useStore() {

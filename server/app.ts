@@ -1,59 +1,125 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomToken, sha256 } from './crypto.ts'
 import { ActionError, type ActionService } from './actions.ts'
-import { OAuthError, type FoOAuth } from './oauth.ts'
-import type { Store } from './store.ts'
+import { OAuthError, type FoOAuth, type Json } from './oauth.ts'
+import type { Store, Session } from './store.ts'
 import type { FoAdapter } from './fo.ts'
+import { subjectKey, type WajoIdentity } from './identity.ts'
+import type { TokenSet } from './types.ts'
 
 /*
- * HTTP API. Every /api route except /api/session and the OAuth callback needs
- * a session cookie (HttpOnly, SameSite=Lax). State-changing requests also need
- * the X-Tatada header, which a cross-site form or image can't send.
- * Provider tokens never appear in any response.
+ * HTTP API.
+ *
+ * Accounts: in live mode the only way in is "Continue with Wajo". An account is
+ * created or found only for a verified Wajo identity (see identity.ts); without
+ * one, login is refused. Mock mode creates a clearly labeled demo account.
+ *
+ * Sessions: random 256-bit id in an HttpOnly, SameSite=Lax cookie; only its
+ * hash is stored. 30-day absolute and 14-day idle expiry; rotated on login.
+ * Mutations need the X-Tatada header (CSRF). Provider tokens never leave the server.
  */
+
+export type ResolveIdentity = (a: { tokens: TokenSet; body: Json; issuer: string }) => Promise<{ identity: WajoIdentity | null; foShape?: unknown }>
 
 interface Deps {
   store: Store
-  fo?: FoAdapter
   actions: ActionService
+  fo?: FoAdapter
   oauth?: FoOAuth
+  resolveIdentity?: ResolveIdentity
   appUrl: string
   secureCookies: boolean
+  now?: () => number
 }
 
 const COOKIE = 'tatada_sid'
+const LOGIN_COOKIE = 'tatada_login'
 const MAX_BODY = 32 * 1024
+const MAX_WORKSPACE = 1024 * 1024
+export const SESSION_TTL = 30 * 24 * 3600_000
+export const SESSION_IDLE = 14 * 24 * 3600_000
+
+/** Fixed-window rate limiter, in memory (single process). */
+class Limiter {
+  private hits = new Map<string, { n: number; reset: number }>()
+  private limit: number
+  private windowMs: number
+  private now: () => number
+  constructor(limit: number, windowMs: number, now: () => number) {
+    this.limit = limit
+    this.windowMs = windowMs
+    this.now = now
+  }
+  allow(key: string) {
+    const t = this.now()
+    const h = this.hits.get(key)
+    if (!h || h.reset <= t) {
+      this.hits.set(key, { n: 1, reset: t + this.windowMs })
+      if (this.hits.size > 10_000) for (const [k, v] of this.hits) if (v.reset <= t) this.hits.delete(k)
+      return true
+    }
+    return ++h.n <= this.limit
+  }
+}
 
 export function createApp(deps: Deps) {
   const { store, actions, oauth, appUrl } = deps
+  const now = deps.now ?? Date.now
+  const live = actions.provider === 'live'
+  const authLimit = new Limiter(10, 10 * 60_000, now)
+  const writeLimit = new Limiter(120, 60_000, now)
+  const secure = deps.secureCookies ? '; Secure' : ''
 
-  const send = (res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) => {
+  const send = (res: ServerResponse, status: number, body: unknown, headers: Record<string, string | string[]> = {}) => {
     res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...headers })
     res.end(JSON.stringify(body))
   }
-  const redirect = (res: ServerResponse, to: string) => {
-    res.writeHead(302, { location: to, 'cache-control': 'no-store' })
+  const redirect = (res: ServerResponse, to: string, cookies: string[] = []) => {
+    res.writeHead(302, { location: to, 'cache-control': 'no-store', ...(cookies.length ? { 'set-cookie': cookies } : {}) })
     res.end()
   }
+  const sessionCookie = (sid: string) => `${COOKIE}=${sid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL / 1000}${secure}`
+  const clear = (name: string, path = '/') => `${name}=; HttpOnly; SameSite=Lax; Path=${path}; Max-Age=0${secure}`
 
-  const cookieOf = (req: IncomingMessage) =>
+  const cookie = (req: IncomingMessage, name: string) =>
     (req.headers.cookie ?? '')
       .split(';')
       .map((c) => c.trim().split('='))
-      .find(([k]) => k === COOKIE)?.[1]
+      .find(([k]) => k === name)?.[1]
 
-  const userOf = (req: IncomingMessage): string | undefined => {
-    const sid = cookieOf(req)
-    return sid ? store.data.sessions[sha256(sid)]?.userId : undefined
+  /** The live session for this request, or undefined. Expired sessions are deleted. */
+  const sessionOf = (req: IncomingMessage): { key: string; s: Session } | undefined => {
+    const sid = cookie(req, COOKIE)
+    if (!sid) return undefined
+    const key = sha256(sid)
+    const s = store.data.sessions[key]
+    if (!s) return undefined
+    const t = now()
+    // Sessions from before expiry tracking, or past either limit, are over.
+    if (!s.expiresAt || s.expiresAt <= t || (s.lastSeenAt ?? s.createdAt) + SESSION_IDLE <= t || !store.data.accounts[s.userId]) {
+      store.update((d) => delete d.sessions[key])
+      return undefined
+    }
+    if (t - (s.lastSeenAt ?? 0) > 3600_000) store.update(() => (s.lastSeenAt = t))
+    return { key, s }
   }
 
-  const readJson = (req: IncomingMessage): Promise<Record<string, unknown>> =>
+  const newSession = (userId: string, replaceKey?: string) => {
+    const sid = randomToken(32)
+    store.update((d) => {
+      if (replaceKey) delete d.sessions[replaceKey]
+      d.sessions[sha256(sid)] = { userId, createdAt: now(), expiresAt: now() + SESSION_TTL, lastSeenAt: now() }
+    })
+    return sid
+  }
+
+  const readBody = (req: IncomingMessage, max = MAX_BODY): Promise<Record<string, unknown>> =>
     new Promise((resolve, reject) => {
       let size = 0
       const chunks: Buffer[] = []
       req.on('data', (c: Buffer) => {
         size += c.length
-        if (size > MAX_BODY) {
+        if (size > max) {
           reject(new ActionError(413, 'Request too large'))
           req.destroy()
         } else chunks.push(c)
@@ -70,11 +136,19 @@ export function createApp(deps: Deps) {
       req.on('error', reject)
     })
 
-  const status = (userId: string) => ({
-    provider: actions.provider,
-    foConnected: actions.provider === 'mock' ? true : !!oauth?.connected(userId),
-    liveRecipients: actions.provider === 'live' ? actions.liveAllowlist : [],
-  })
+  const status = (userId?: string) => {
+    const account = userId ? store.data.accounts[userId] : undefined
+    return {
+      provider: actions.provider,
+      demo: !live,
+      authenticated: !!account,
+      account: account ? { id: userId, kind: account.kind, identitySource: account.identitySource, since: account.createdAt } : undefined,
+      foConnected: !account ? false : live ? !!oauth?.connected(userId!) : true,
+      liveRecipients: live && account ? actions.liveAllowlist : [],
+    }
+  }
+
+  const ip = (req: IncomingMessage) => req.socket.remoteAddress ?? 'unknown'
 
   return async function handle(req: IncomingMessage, res: ServerResponse) {
     const url = new URL(req.url ?? '/', 'http://localhost')
@@ -82,57 +156,118 @@ export function createApp(deps: Deps) {
     const method = req.method ?? 'GET'
     try {
       if (!path.startsWith('/api/')) return send(res, 404, { error: 'Not found' })
-
-      // Mutations need the custom header (CSRF defence alongside SameSite).
       if (method !== 'GET' && req.headers['x-tatada'] !== '1') return send(res, 403, { error: 'Missing X-Tatada header' })
 
+      const current = sessionOf(req)
+      const userId = current?.s.userId
+
+      /* ── session & sign-in ── */
+
       if (path === '/api/session' && method === 'POST') {
-        const existing = userOf(req)
-        if (existing) return send(res, 200, { ok: true, ...status(existing) })
-        const userId = randomToken(12)
-        const sid = randomToken(32)
-        store.update((d) => {
-          d.users[userId] = { createdAt: Date.now() }
-          d.sessions[sha256(sid)] = { userId, createdAt: Date.now() }
-        })
-        const cookie = `${COOKIE}=${sid}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24 * 30}${deps.secureCookies ? '; Secure' : ''}`
-        return send(res, 200, { ok: true, ...status(userId) }, { 'set-cookie': cookie })
+        if (userId) return send(res, 200, status(userId))
+        // Demo accounts exist only in mock mode, and say so.
+        if (!live) {
+          const id = randomToken(12)
+          store.update((d) => (d.accounts[id] = { kind: 'demo', createdAt: now(), lastLoginAt: now() }))
+          return send(res, 200, status(id), { 'set-cookie': sessionCookie(newSession(id)) })
+        }
+        return send(res, 200, status())
       }
 
-      const userId = userOf(req)
-      if (path === '/api/fo/callback' && method === 'GET') {
-        if (!oauth) return redirect(res, `${appUrl}/#/welcome?fo=unavailable`)
-        if (!userId) return redirect(res, `${appUrl}/#/welcome?fo=error&reason=session`)
-        const err = url.searchParams.get('error')
-        if (err) return redirect(res, `${appUrl}/#/welcome?fo=denied`)
+      if ((path === '/api/auth/wajo/start' || path === '/api/fo/connect') && method === 'GET') {
+        if (!live || !oauth) return redirect(res, `${appUrl}/#/welcome?auth=demo_mode`)
+        if (!authLimit.allow(`start:${ip(req)}`)) return redirect(res, `${appUrl}/#/welcome?auth=rate_limited`)
+        const nonce = randomToken(24)
         try {
-          await oauth.finish(userId, url.searchParams.get('code') ?? '', url.searchParams.get('state') ?? '')
-          return redirect(res, `${appUrl}/#/welcome?fo=connected`)
+          const to = await oauth.start(sha256(nonce))
+          return redirect(res, to, [`${LOGIN_COOKIE}=${nonce}; HttpOnly; SameSite=Lax; Path=/api/; Max-Age=600${secure}`])
         } catch (e) {
-          const reason = e instanceof OAuthError ? e.code : 'error'
-          return redirect(res, `${appUrl}/#/welcome?fo=error&reason=${encodeURIComponent(reason)}`)
+          return redirect(res, `${appUrl}/#/welcome?auth=error&reason=${encodeURIComponent(e instanceof OAuthError ? e.code : 'error')}`)
         }
       }
 
-      if (!userId) return send(res, 401, { error: 'No session' })
+      if (path === '/api/fo/callback' && method === 'GET') {
+        const done = (q: string, cookies: string[] = []) => redirect(res, `${appUrl}/#/${q}`, [clear(LOGIN_COOKIE, '/api/'), ...cookies])
+        if (!live || !oauth || !deps.resolveIdentity) return done('welcome?auth=demo_mode')
+        if (url.searchParams.get('error')) return done('welcome?auth=denied')
+        let login
+        try {
+          login = await oauth.finish(url.searchParams.get('code') ?? '', url.searchParams.get('state') ?? '', sha256(cookie(req, LOGIN_COOKIE) ?? ''))
+        } catch (e) {
+          return done(`welcome?auth=error&reason=${encodeURIComponent(e instanceof OAuthError ? e.code : 'error')}`)
+        }
+        let resolved: Awaited<ReturnType<ResolveIdentity>>
+        try {
+          resolved = await deps.resolveIdentity(login)
+        } catch {
+          resolved = { identity: null }
+        }
+        store.update((d) => {
+          d.identityObservations.push({ at: now(), source: resolved.identity?.source ?? null, field: resolved.identity?.field, foShape: resolved.foShape })
+          if (d.identityObservations.length > 20) d.identityObservations.shift()
+        })
+        // No verified Wajo identity: refuse, and keep nothing (the tokens are dropped here).
+        if (!resolved.identity) return done('welcome?auth=no_identity')
+        const key = subjectKey(resolved.identity)
+        const accountId = store.update((d) => {
+          let id = d.subjects[key]
+          if (!id || !d.accounts[id]) {
+            id = randomToken(12)
+            d.subjects[key] = id
+            d.accounts[id] = { kind: 'wajo', subjectKey: key, identitySource: resolved.identity!.source, createdAt: now(), lastLoginAt: now() }
+          }
+          d.accounts[id].lastLoginAt = now()
+          return id
+        })
+        oauth.saveFor(accountId, login.tokens)
+        // Rotate: whatever session this browser had is replaced.
+        return done('?auth=signed_in', [sessionCookie(newSession(accountId, current?.key))])
+      }
+
+      if (path === '/api/auth/logout' && method === 'POST') {
+        if (current) {
+          const body = await readBody(req)
+          store.update((d) => {
+            delete d.sessions[current.key]
+            if (body.everywhere === true) for (const [k, s] of Object.entries(d.sessions)) if (s.userId === current.s.userId) delete d.sessions[k]
+            // Drop stored Wajo tokens once no session for the account remains.
+            if (!Object.values(d.sessions).some((s) => s.userId === current.s.userId)) delete d.tokens[current.s.userId]
+          })
+        }
+        return send(res, 200, status(), { 'set-cookie': clear(COOKIE) })
+      }
+
+      if (!userId) return send(res, 401, { error: live ? 'Sign in with Wajo' : 'No session' })
+      if (method !== 'GET' && !writeLimit.allow(`w:${userId}`)) return send(res, 429, { error: 'Too many requests. Slow down a little.' })
 
       if (path === '/api/status' && method === 'GET') return send(res, 200, status(userId))
 
-      if (path === '/api/fo/connect' && method === 'GET') {
-        if (!oauth) return send(res, 409, { error: 'Fo is in mock mode. Start the server with TATADA_FO_MODE=live to connect.' })
-        try {
-          return redirect(res, await oauth.start(userId))
-        } catch (e) {
-          const reason = e instanceof OAuthError ? e.code : 'error'
-          return redirect(res, `${appUrl}/#/welcome?fo=error&reason=${encodeURIComponent(reason)}`)
-        }
+      /* ── per-account workspace ── */
+
+      if (path === '/api/workspace' && method === 'GET') {
+        const w = store.data.workspaces[userId]
+        return send(res, 200, { version: w?.version ?? 0, updatedAt: w?.updatedAt, state: w?.state ?? null })
       }
-      // Read-only checks of the real connection: tools/list and the conversation list's shape.
+      if (path === '/api/workspace' && method === 'PUT') {
+        const body = await readBody(req, MAX_WORKSPACE)
+        const st = body.state as Record<string, unknown> | undefined
+        if (!st || typeof st !== 'object' || !Array.isArray(st.trips) || !Array.isArray(st.items) || !st.profile || typeof st.profile !== 'object') {
+          return send(res, 400, { error: 'Invalid workspace' })
+        }
+        const cur = store.data.workspaces[userId]
+        if ((cur?.version ?? 0) !== body.baseVersion) return send(res, 409, { error: 'Workspace changed elsewhere', version: cur?.version ?? 0, state: cur?.state ?? null })
+        const next = { version: (cur?.version ?? 0) + 1, updatedAt: now(), state: st }
+        store.update((d) => (d.workspaces[userId] = next))
+        return send(res, 200, { version: next.version, updatedAt: next.updatedAt })
+      }
+
+      /* ── Fo connection checks (read-only) ── */
+
       if (path === '/api/fo/diagnostics' && method === 'GET') {
         const fo = deps.fo
         if (!fo) return send(res, 409, { error: 'No Fo adapter' })
-        if (!fo.connected(userId)) return send(res, 409, { error: 'Connect Fo first.' })
-        const out: Record<string, unknown> = { provider: fo.mode, checkedAt: Date.now() }
+        if (!fo.connected(userId)) return send(res, 409, { error: 'Reconnect Wajo first.' })
+        const out: Record<string, unknown> = { provider: fo.mode, checkedAt: now() }
         try {
           out.tools = await fo.tools(userId)
         } catch (e) {
@@ -143,12 +278,12 @@ export function createApp(deps: Deps) {
         } catch (e) {
           out.conversationsError = (e as Error).message
         }
+        out.identity = store.data.identityObservations.at(-1) ?? null
         return send(res, 200, out)
       }
-      // Live OAuth verification: token response structure (no values) and a forced refresh.
-      if (path === '/api/fo/oauth-observations' && method === 'GET') return send(res, 200, { observations: oauth?.observations() ?? [] })
+      if (path === '/api/fo/oauth-observations' && method === 'GET') return send(res, 200, { observations: oauth?.observations() ?? [], identity: store.data.identityObservations })
       if (path === '/api/fo/test-refresh' && method === 'POST') {
-        if (!oauth) return send(res, 409, { error: 'Mock mode has no OAuth session.' })
+        if (!oauth) return send(res, 409, { error: 'Demo mode has no Wajo session.' })
         try {
           return send(res, 200, { observation: await oauth.testRefresh(userId), connected: oauth.connected(userId) })
         } catch (e) {
@@ -157,24 +292,21 @@ export function createApp(deps: Deps) {
       }
       if (path === '/api/fo/trace' && method === 'GET') return send(res, 200, { trace: deps.fo?.trace(userId) ?? [] })
 
-      if (path === '/api/fo/disconnect' && method === 'POST') {
-        oauth?.disconnect(userId)
-        return send(res, 200, status(userId))
-      }
+      /* ── actions ── */
 
       if (path === '/api/actions' && method === 'GET') {
         const ids = url.searchParams.get('ids')?.split(',').filter(Boolean).slice(0, 100)
         return send(res, 200, { actions: actions.list(userId, ids) })
       }
-      if (path === '/api/actions' && method === 'POST') return send(res, 201, { action: actions.create(userId, await readJson(req)) })
+      if (path === '/api/actions' && method === 'POST') return send(res, 201, { action: actions.create(userId, await readBody(req)) })
 
       const m = path.match(/^\/api\/actions\/([\w-]{8,40})(?:\/(approve|answer|cancel|retry|check))?$/)
       if (m) {
         const [, id, verb] = m
         if (!verb && method === 'GET') return send(res, 200, { action: actions.get(userId, id) })
-        if (!verb && method === 'PATCH') return send(res, 200, { action: actions.edit(userId, id, await readJson(req)) })
+        if (!verb && method === 'PATCH') return send(res, 200, { action: actions.edit(userId, id, await readBody(req)) })
         if (verb && method === 'POST') {
-          const body = await readJson(req)
+          const body = await readBody(req)
           const action =
             verb === 'approve' ? actions.approve(userId, id, body)
             : verb === 'answer' ? actions.answer(userId, id, body.text)
@@ -187,7 +319,8 @@ export function createApp(deps: Deps) {
       return send(res, 404, { error: 'Not found' })
     } catch (e) {
       if (e instanceof ActionError) return send(res, e.status, { error: e.message })
-      console.error('[tatada]', e)
+      // Log the class and message only; never request headers (cookies) or bodies.
+      console.error('[tatada]', (e as Error)?.name, (e as Error)?.message)
       return send(res, 500, { error: 'Something went wrong on the Tatada server' })
     }
   }

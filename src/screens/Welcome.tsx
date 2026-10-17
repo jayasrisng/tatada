@@ -4,6 +4,7 @@ import { go } from '../state/ui'
 import { Doodle } from '../components/Doodle'
 import { Btn, Chip, Paper } from '../components/ui'
 import { FoConnection } from '../components/FoConnection'
+import { AccountPanel } from '../components/AccountPanel'
 
 const STYLES = ['slow mornings', 'food', 'museums', 'nature', 'nightlife', 'design', 'budget-savvy', 'treat-yourself']
 const DIETS = ['vegetarian', 'vegan', 'gluten-free', 'halal', 'kosher', 'no restrictions']
@@ -12,7 +13,7 @@ const MEMBERS = ['Amex Gold', 'Chase Sapphire', 'AAA', 'TAP Miles&Go', 'United M
 const toggle = (arr: string[], v: string) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
 
 export function Welcome() {
-  const { state, dispatch, resetDemo } = useStore()
+  const { state, dispatch, resetDemo, workspace } = useStore()
   const [step, setStep] = useState(0)
   const [p, setP] = useState(state.profile)
 
@@ -31,13 +32,12 @@ export function Welcome() {
           <Btn kind="solid" onClick={() => setStep(1)}>
             let's begin
           </Btn>
-          {state.onboarded && (
-            <FoConnection />
-          )}
+          {state.onboarded && <AccountPanel />}
+          {state.onboarded && <FoConnection />}
           {state.onboarded && (
             <div className="welcome-dev">
               <button className="linkbtn" onClick={() => go('/')}>back home</button>
-              <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>
+              {workspace.kind !== 'wajo' && <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>}
             </div>
           )}
         </div>

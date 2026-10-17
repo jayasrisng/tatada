@@ -8,19 +8,13 @@ import '@fontsource/kalam/400.css'
 import '@fontsource/kalam/700.css'
 import '@fontsource/permanent-marker/400.css'
 import './styles/global.css'
-import { App } from './App'
-import { StoreProvider } from './state/store'
-import { UIProvider } from './state/ui'
 import { ServerProvider } from './state/server'
+import { AuthGate } from './components/AuthGate'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <StoreProvider>
-      <ServerProvider>
-        <UIProvider>
-          <App />
-        </UIProvider>
-      </ServerProvider>
-    </StoreProvider>
+    <ServerProvider>
+      <AuthGate />
+    </ServerProvider>
   </StrictMode>,
 )

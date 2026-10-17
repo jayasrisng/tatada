@@ -9,16 +9,43 @@ import type { ServerAction } from './types.ts'
  */
 
 export interface PendingAuth {
-  userId: string
+  /** sha256 of the login nonce cookie in the browser that started this login. */
+  binding: string
   verifier: string
   redirectUri: string
   createdAt: number
 }
 
+export interface Account {
+  kind: 'wajo' | 'demo'
+  subjectKey?: string
+  identitySource?: string
+  createdAt: number
+  lastLoginAt: number
+}
+
+export interface Session {
+  userId: string
+  createdAt: number
+  expiresAt?: number
+  lastSeenAt?: number
+}
+
 export interface Data {
   users: Record<string, { createdAt: number }>
-  /** sha256(session id) → user id. Raw session ids are never stored. */
-  sessions: Record<string, { userId: string; createdAt: number }>
+  /**
+   * Tatada accounts. 'wajo' accounts exist only for a verified Wajo identity;
+   * 'demo' accounts exist only in mock mode.
+   */
+  accounts: Record<string, Account>
+  /** sha256(issuer|subject) → account id. */
+  subjects: Record<string, string>
+  /** account id → that account's app data (trips, tasks, preferences, Magic history). */
+  workspaces: Record<string, { version: number; updatedAt: number; state: unknown }>
+  /** What identity resolution found on each login: source names only, never subject values. */
+  identityObservations: { at: number; source: string | null; field?: string; foShape?: unknown }[]
+  /** sha256(session id) → session. Raw session ids are never stored. */
+  sessions: Record<string, Session>
   oauthClient?: { issuer: string; clientId: string; redirectUri: string; registeredAt: number }
   /** OAuth state → pending login. Single use, short-lived. */
   pendingAuth: Record<string, PendingAuth>
@@ -53,7 +80,7 @@ export interface OAuthObservation {
   error?: string
 }
 
-const empty = (): Data => ({ users: {}, sessions: {}, pendingAuth: {}, tokens: {}, actions: {}, mock: {}, foTrace: {}, oauthObservations: [] })
+const empty = (): Data => ({ users: {}, accounts: {}, subjects: {}, workspaces: {}, identityObservations: [], sessions: {}, pendingAuth: {}, tokens: {}, actions: {}, mock: {}, foTrace: {}, oauthObservations: [] })
 
 export class Store {
   data: Data

@@ -148,9 +148,9 @@ export function FoConnection() {
         </>
       ) : (
         <>
-          <p>Connect your Wajo account so Fo can send emails you approve. You'll sign in on Wajo; Tatada never sees your password, and its token stays on the Tatada server.</p>
-          <a className="btn btn-solid" href="/api/fo/connect">
-            <span>connect Fo</span>
+          <p>Your Wajo access has ended, so Fo can't act for you right now. Sign in with Wajo again; your workspace stays as it is.</p>
+          <a className="btn btn-solid" href="/api/auth/wajo/start">
+            <span>sign in with Wajo again</span>
           </a>
         </>
       )}

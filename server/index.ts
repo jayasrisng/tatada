@@ -7,7 +7,8 @@ import { FoOAuth } from './oauth.ts'
 import { McpClient } from './mcp.ts'
 import { LiveFoAdapter, MockFoAdapter, type FoAdapter } from './fo.ts'
 import { ActionService } from './actions.ts'
-import { createApp } from './app.ts'
+import { createApp, type ResolveIdentity } from './app.ts'
+import { fromAccessToken, fromFoApi, fromTokenResponse } from './identity.ts'
 
 /*
  * Tatada server.
@@ -39,10 +40,19 @@ function secret(): string {
 const store = new Store(join(dataDir, `server-${mode}.json`))
 let fo: FoAdapter
 let oauth: FoOAuth | undefined
+let resolveIdentity: ResolveIdentity | undefined
 if (mode === 'live') {
   const resource = env.FO_RESOURCE ?? 'https://mcp.api.wajo.ai/fo'
   oauth = new FoOAuth({ store, sealer: new Sealer(secret()), resource, redirectUri: `${publicUrl}/api/fo/callback` })
-  fo = new LiveFoAdapter(oauth, new McpClient(resource), store)
+  const mcp = new McpClient(resource)
+  fo = new LiveFoAdapter(oauth, mcp, store)
+  // Verified Wajo identity, from Wajo's own responses only (see identity.ts).
+  resolveIdentity = async ({ tokens, body, issuer }) => {
+    const direct = fromTokenResponse(body, issuer) ?? fromAccessToken(tokens.accessToken, issuer, Date.now())
+    if (direct) return { identity: direct }
+    const viaFo = await fromFoApi(new McpClient(resource), tokens.accessToken, issuer)
+    return { identity: viaFo.identity, foShape: viaFo.shape }
+  }
 } else {
   fo = new MockFoAdapter(store)
 }
@@ -55,7 +65,7 @@ const actions = new ActionService({
 })
 actions.recover()
 
-const handle = createApp({ store, actions, fo, oauth, appUrl, secureCookies: publicUrl.startsWith('https://') })
+const handle = createApp({ store, actions, fo, oauth, resolveIdentity, appUrl, secureCookies: publicUrl.startsWith('https://') })
 createServer((req, res) => void handle(req, res)).listen(port, () => {
   console.log(`[tatada] server on ${publicUrl} · Fo ${mode}${mode === 'live' ? ` · live recipients: ${actions.liveAllowlist.join(', ') || 'none (sends blocked)'}` : ''}`)
 })

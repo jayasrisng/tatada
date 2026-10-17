@@ -58,15 +58,18 @@ test('sessions, CSRF header, and ownership are enforced over HTTP', async () => 
   }
 })
 
-test('mock mode refuses to start OAuth and never returns provider tokens', async () => {
+test('mock mode is a labeled demo: no OAuth, no provider tokens', async () => {
   const { server, client, s } = await boot()
   try {
     const c = client()
     await c('/api/session', { method: 'POST' })
-    assert.equal((await c('/api/fo/connect')).status, 409)
+    const connect = await c('/api/fo/connect')
+    assert.equal(connect.status, 302)
+    assert.match(connect.headers.get('location')!, /auth=demo_mode/)
     const st = await c('/api/status')
-    assert.deepEqual(Object.keys(st.body).sort(), ['foConnected', 'liveRecipients', 'provider'])
     assert.equal(st.body.provider, 'mock')
+    assert.equal(st.body.demo, true)
+    assert.equal(st.body.account.kind, 'demo')
     assert.equal(JSON.stringify(s.store.data).includes('accessToken'), false)
   } finally {
     server.close()

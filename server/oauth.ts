@@ -10,7 +10,7 @@ import type { TokenSet } from './types.ts'
  */
 
 export type Fetch = typeof fetch
-type Json = Record<string, any>
+export type Json = Record<string, any>
 
 interface ServerMeta {
   issuer: string
@@ -88,14 +88,18 @@ export class FoOAuth {
     return body.client_id
   }
 
-  /** Starts consent for one Tatada user. Returns the provider URL to redirect to. */
-  async start(userId: string): Promise<string> {
+  /**
+   * Starts a Wajo login. `binding` is the hash of a nonce held in an HttpOnly
+   * cookie in the browser that started it, so a login can't be completed in
+   * someone else's browser (login CSRF).
+   */
+  async start(binding: string): Promise<string> {
     const [meta, clientId] = [await this.discover(), await this.clientId()]
     const state = randomToken(32)
     const verifier = randomToken(48)
     this.store.update((d) => {
       for (const [k, v] of Object.entries(d.pendingAuth)) if (this.now() - v.createdAt > STATE_TTL_MS) delete d.pendingAuth[k]
-      d.pendingAuth[state] = { userId, verifier, redirectUri: this.redirectUri, createdAt: this.now() }
+      d.pendingAuth[state] = { binding, verifier, redirectUri: this.redirectUri, createdAt: this.now() }
     })
     const u = new URL(meta.authorization_endpoint)
     u.search = new URLSearchParams({
@@ -111,17 +115,21 @@ export class FoOAuth {
     return u.toString()
   }
 
-  /** Completes consent. The state is consumed whether or not this succeeds. */
-  async finish(userId: string, code: string, state: string): Promise<void> {
+  /**
+   * Completes a login. The state is consumed whether or not this succeeds.
+   * Returns the tokens and the raw token response (for identity resolution);
+   * nothing is stored until the caller has an account to store it under.
+   */
+  async finish(code: string, state: string, binding: string): Promise<{ tokens: TokenSet; body: Json; issuer: string }> {
     const pending = this.store.update((d) => {
       const p = d.pendingAuth[state]
       delete d.pendingAuth[state]
       return p
     })
     if (!pending) throw new OAuthError('state', 'unknown or already used login attempt')
-    if (pending.userId !== userId) throw new OAuthError('state', 'login attempt belongs to a different session')
+    if (!binding || pending.binding !== binding) throw new OAuthError('state', 'login attempt was started in a different browser')
     if (this.now() - pending.createdAt > STATE_TTL_MS) throw new OAuthError('state', 'login attempt expired')
-    const tokens = await this.tokenRequest({
+    const { tokens, body } = await this.tokenRequest({
       grant_type: 'authorization_code',
       code,
       redirect_uri: pending.redirectUri,
@@ -129,7 +137,12 @@ export class FoOAuth {
       client_id: await this.clientId(),
       resource: this.resource,
     })
-    this.saveTokens(userId, tokens)
+    return { tokens, body, issuer: (await this.discover()).issuer }
+  }
+
+  /** Stores tokens for an account, sealed. */
+  saveFor(accountId: string, tokens: TokenSet) {
+    this.saveTokens(accountId, tokens)
   }
 
   connected(userId: string) {
@@ -151,7 +164,7 @@ export class FoOAuth {
       throw new OAuthError('not_connected', 'Fo session expired; reconnect Fo')
     }
     try {
-      const next = await this.tokenRequest({
+      const { tokens: next } = await this.tokenRequest({
         grant_type: 'refresh_token',
         refresh_token: t.refreshToken,
         client_id: await this.clientId(),
@@ -166,7 +179,7 @@ export class FoOAuth {
     }
   }
 
-  private async tokenRequest(params: Record<string, string>): Promise<TokenSet> {
+  private async tokenRequest(params: Record<string, string>): Promise<{ tokens: TokenSet; body: Json }> {
     const meta = await this.discover()
     const res = await this.fetch(meta.token_endpoint, {
       method: 'POST',
@@ -180,10 +193,13 @@ export class FoOAuth {
     }
     if (body.token_type && String(body.token_type).toLowerCase() !== 'bearer') throw new OAuthError('token', 'unexpected token type')
     return {
-      accessToken: body.access_token,
-      refreshToken: typeof body.refresh_token === 'string' ? body.refresh_token : undefined,
-      expiresAt: typeof body.expires_in === 'number' ? this.now() + body.expires_in * 1000 : undefined,
-      scope: body.scope,
+      body,
+      tokens: {
+        accessToken: body.access_token,
+        refreshToken: typeof body.refresh_token === 'string' ? body.refresh_token : undefined,
+        expiresAt: typeof body.expires_in === 'number' ? this.now() + body.expires_in * 1000 : undefined,
+        scope: body.scope,
+      },
     }
   }
 

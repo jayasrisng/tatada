@@ -300,3 +300,15 @@ export const LISBON_STYLE: Record<string, { temp: string; sky: string; look: str
   '2026-11-10': { temp: '18° / 13°', sky: 'sun', look: ['slip dress or chinos', 'light jacket'], note: 'nice dinner night' },
 }
 export const LISBON_GAPS = ['Grippy walking shoes', 'Packable rain shell', 'Type F plug adapter']
+
+/** A real (non-demo) account starts empty: no fixtures, profile onboarding first. */
+export const emptyState = (): AppState => ({
+  onboarded: false,
+  profile: { name: '', homeAirport: '', style: [], diet: [], memberships: [] },
+  trips: [],
+  items: [],
+  actions: [],
+  chat: [],
+  canvas: {},
+  decisions: [],
+})

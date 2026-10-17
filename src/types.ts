@@ -265,4 +265,18 @@ export interface AppState {
   chat: ChatMessage[]
   canvas: Record<string, CanvasPos>
   decisions?: DecisionRecord[]
+  /** Read-only history of Fo requests brought in by an import. Never re-executed. */
+  archivedActions?: ArchivedAction[]
+}
+
+export interface ArchivedAction {
+  id: string
+  provider: 'live' | 'mock' | 'simulated'
+  status: string
+  title: string
+  to?: string
+  outcome?: string
+  summary?: string
+  evidence: string[]
+  progress: { at: number; text: string }[]
 }

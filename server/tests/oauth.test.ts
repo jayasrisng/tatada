@@ -63,48 +63,48 @@ function setup() {
 
 test('start: registers once, sends S256 PKCE, a fresh state, and the resource indicator', async () => {
   const { oauth, store, wajo } = setup()
-  const url = new URL(await oauth.start('u1'))
+  const url = new URL(await oauth.start('b-u1'))
   const p = url.searchParams
   assert.equal(url.origin + url.pathname, `${ISSUER}/oauth/authorize`)
   assert.equal(p.get('client_id'), 'client-123')
   assert.equal(p.get('code_challenge_method'), 'S256')
   assert.equal(p.get('resource'), RESOURCE)
   const pending = store.data.pendingAuth[p.get('state')!]
-  assert.equal(pending.userId, 'u1')
+  assert.equal(pending.binding, 'b-u1')
   const expected = createHash('sha256').update(pending.verifier).digest('base64url')
   assert.equal(p.get('code_challenge'), expected)
   assert.ok(!url.toString().includes(pending.verifier), 'verifier never leaves the server')
-  await oauth.start('u1')
+  await oauth.start('b-u1')
   assert.equal(wajo.calls.filter((c) => c.url.endsWith('/oauth/register')).length, 1)
 })
 
-test('finish: state must exist, belong to the session, be fresh, and is single-use', async () => {
+test('finish: state must exist, belong to the starting browser, be fresh, and is single-use', async () => {
   const { oauth, clock } = setup()
-  const state = (u: string) => oauth.start(u).then((s) => new URL(s).searchParams.get('state')!)
+  const state = (u: string) => oauth.start(`b-${u}`).then((s) => new URL(s).searchParams.get('state')!)
   const reject = (p: Promise<unknown>, code: string) => assert.rejects(p, (e: unknown) => e instanceof OAuthError && e.code === code)
 
-  await reject(oauth.finish('u1', 'good-code', 'made-up'), 'state')
+  await reject(oauth.finish('good-code', 'made-up', 'b-u1'), 'state')
   const other = await state('u2')
-  await reject(oauth.finish('u1', 'good-code', other), 'state')
-  await reject(oauth.finish('u2', 'good-code', other), 'state') // consumed by the failed attempt
+  await reject(oauth.finish('good-code', other, 'b-u1'), 'state')
+  await reject(oauth.finish('good-code', other, 'b-u2'), 'state') // consumed by the failed attempt
   const old = await state('u1')
   clock.t += 11 * 60_000
-  await reject(oauth.finish('u1', 'good-code', old), 'state')
+  await reject(oauth.finish('good-code', old, 'b-u1'), 'state')
   const bad = await state('u1')
-  await reject(oauth.finish('u1', 'wrong-code', bad), 'token')
+  await reject(oauth.finish('wrong-code', bad, 'b-u1'), 'token')
   assert.equal(oauth.connected('u1'), false)
 
   const good = await state('u1')
-  await oauth.finish('u1', 'good-code', good)
+  oauth.saveFor('u1', (await oauth.finish('good-code', good, 'b-u1')).tokens)
   assert.equal(oauth.connected('u1'), true)
-  await reject(oauth.finish('u1', 'good-code', good), 'state')
+  await reject(oauth.finish('good-code', good, 'b-u1'), 'state')
 })
 
 test('tokens are sealed at rest and the code exchange sends the PKCE verifier', async () => {
   const { oauth, store, wajo } = setup()
-  const st = new URL(await oauth.start('u1')).searchParams.get('state')!
+  const st = new URL(await oauth.start('b-u1')).searchParams.get('state')!
   const verifier = store.data.pendingAuth[st].verifier
-  await oauth.finish('u1', 'good-code', st)
+  oauth.saveFor('u1', (await oauth.finish('good-code', st, 'b-u1')).tokens)
   const exchange = new URLSearchParams(wajo.calls.find((c) => c.url.endsWith('/oauth/token'))!.body)
   assert.equal(exchange.get('code_verifier'), verifier)
   assert.equal(exchange.get('client_id'), 'client-123')
@@ -114,8 +114,8 @@ test('tokens are sealed at rest and the code exchange sends the PKCE verifier', 
 
 test('expiring tokens are refreshed; a 401 refreshes once and retries', async () => {
   const { oauth, clock, wajo } = setup()
-  const st = new URL(await oauth.start('u1')).searchParams.get('state')!
-  await oauth.finish('u1', 'good-code', st)
+  const st = new URL(await oauth.start('b-u1')).searchParams.get('state')!
+  oauth.saveFor('u1', (await oauth.finish('good-code', st, 'b-u1')).tokens)
   assert.equal(await oauth.accessToken('u1'), 'access-secret-1')
   clock.t += 3600_000
   assert.equal(await oauth.accessToken('u1'), 'access-secret-2')
@@ -130,8 +130,8 @@ test('expiring tokens are refreshed; a 401 refreshes once and retries', async ()
 
 test('a failed refresh disconnects instead of looping', async () => {
   const { oauth, clock, store } = setup()
-  const st = new URL(await oauth.start('u1')).searchParams.get('state')!
-  await oauth.finish('u1', 'good-code', st)
+  const st = new URL(await oauth.start('b-u1')).searchParams.get('state')!
+  oauth.saveFor('u1', (await oauth.finish('good-code', st, 'b-u1')).tokens)
   const sealer = new Sealer('x'.repeat(40))
   store.data.tokens.u1 = sealer.seal(JSON.stringify({ accessToken: 'old', refreshToken: 'revoked', expiresAt: clock.t - 1 }))
   await assert.rejects(oauth.accessToken('u1'))
@@ -140,8 +140,8 @@ test('a failed refresh disconnects instead of looping', async () => {
 
 test('read-only diagnostics: tools with annotations, conversation shape without content, traced without tokens', async () => {
   const { oauth, store, wajo } = setup()
-  const st = new URL(await oauth.start('u1')).searchParams.get('state')!
-  await oauth.finish('u1', 'good-code', st)
+  const st = new URL(await oauth.start('b-u1')).searchParams.get('state')!
+  oauth.saveFor('u1', (await oauth.finish('good-code', st, 'b-u1')).tokens)
   const fo = new LiveFoAdapter(oauth, new McpClient(RESOURCE, { fetch: wajo.f }), store)
 
   const tools = await fo.tools('u1')
@@ -162,8 +162,8 @@ test('read-only diagnostics: tools with annotations, conversation shape without 
 
 test('token responses are observed by structure only, never by value', async () => {
   const { oauth, store } = setup()
-  const st = new URL(await oauth.start('u1')).searchParams.get('state')!
-  await oauth.finish('u1', 'good-code', st)
+  const st = new URL(await oauth.start('b-u1')).searchParams.get('state')!
+  oauth.saveFor('u1', (await oauth.finish('good-code', st, 'b-u1')).tokens)
   const refresh = await oauth.testRefresh('u1')
   const [code] = oauth.observations()
   assert.deepEqual(code.fields, ['access_token', 'expires_in', 'refresh_token', 'token_type'])
