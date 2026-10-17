@@ -4,13 +4,26 @@ An AI-native travel companion: Trips, Tasks, and one Magic button. Built for the
 
 ## Run it
 
+Needs Node 22.18+ (the server runs TypeScript directly).
+
 ```bash
 npm install
-npm run dev        # http://localhost:5173 (also on your LAN; open on your phone)
-npm run smoke      # with dev server running: clicks through every screen + the Fo flow, saves screenshots to scripts/out/
-npm test           # action lifecycle + persistence regression tests
-npm run build      # typecheck + production build
+npm run server     # Tatada server on :8787 with mock Fo (no real emails)
+npm run dev        # http://localhost:5173, proxies /api to the server
+npm test           # app state, trip-aware Magic, and server (OAuth, actions, HTTP) tests
+npm run smoke      # with both running: browser assertions + screenshots in scripts/out/
+npm run build      # typecheck app + server, production build
 ```
+
+Without `npm run server`, the app still works and Magic falls back to a labeled in-browser simulation.
+
+### Live Fo
+
+```bash
+TATADA_LIVE_RECIPIENTS=you@example.com TATADA_SECRET=<32+ random chars> npm run server:live
+```
+
+Then open your profile (the avatar) and choose **connect Fo**. Tatada registers itself with Wajo's OAuth server, you approve on Wajo, and the token stays sealed in `.data/` on the server. Live sends only go to addresses in `TATADA_LIVE_RECIPIENTS`.
 
 To reset the demo, tap the avatar on the home screen, then **reset demo data**.
 
@@ -21,7 +34,9 @@ To reset the demo, tap the avatar on the home screen, then **reset demo data**.
 | UI, navigation, checklist editing, canvas dragging, memory capture, picking options | **Real** (persisted in localStorage) |
 | Printing (trip card with QR, journal page) | **Real**, via the browser print dialog |
 | Research options, prices, ratings, sources, confirmation codes | **Sample data** (labeled in the UI) |
-| Magic replies and Fo actions (approve → progress → question → verified) | **Simulated**, stamped `SIMULATED` on every card. No Fo calls are made. |
+| Early check-in / late arrival emails | Built from the selected trip and profile. Missing details are asked for. Approval, execution, and verification run **on the Tatada server**: `MOCK FO` by default, `REAL · via Fo` in live mode |
+| Restaurant call, hotel reply, sample forecast | **Lisbon demo fixtures only**, labeled |
+| Other Magic requests without the server | **Simulated** in the browser, stamped `SIMULATED` |
 
 ## Stack
 
@@ -31,9 +46,10 @@ Vite + React + TypeScript, plain CSS. No UI kit: the chalkboard look is all cust
 
 - `src/screens/`: Home (canvas), Trips, TripWorkspace (Plan · Notebook · Journal), NewTrip, Tasks, Style, PrintView, Welcome
 - `src/components/`: Doodle icons, ActionCard (approval → progress → evidence), MagicSheet, Checklist, ui primitives
-- `src/magic/engine.ts`: simulated Claude + Fo brain (to be replaced by the backend bridge)
-- `src/state/store.tsx`: app state, persistence, and the action runner
-- `docs/fo-integration.md`: how the backend will reach Fo, and the open blockers
+- `src/magic/`: trip-aware request drafting (`stay.ts`), date helpers, and the simulated fallback brain
+- `src/state/`: browser state and persistence (`store.tsx`, `reducer.ts`), server client (`server.tsx`)
+- `server/`: Fo OAuth client, MCP client, Fo adapters (live + mock), action service, HTTP API, tests
+- `docs/fo-integration.md`: Fo discovery evidence, the implemented bridge, and the remaining live step
 
 ## Reliability and next steps
 

@@ -42,7 +42,7 @@ Last updated Oct 17, 2026. All checks were unauthenticated and read-only: public
 
 **Bonus: second server `wajo-agentmcp` at `/mcp`** (same OAuth issuer). It's an agent-builder platform: `build_agent`, `chat_agent`, `build_connector`, `update_agent` (including outbound-voice instructions), and **`register_webhook(url, name, eventKinds)`**. Webhooks could replace polling later. This is out of MVP scope.
 
-## How the backend would connect
+## How the backend connects (implemented in `server/`)
 
 ```
 1. Register (once)  POST /oauth/register  {client_name:"Tatada", redirect_uris:[<backend>/oauth/callback],
@@ -61,6 +61,12 @@ Last updated Oct 17, 2026. All checks were unauthenticated and read-only: public
 - **Fo's own confirmations go back to the user.** If Fo replies "waiting for your answer," the UI shows the question. The backend never auto-confirms.
 - **"Verified" requires evidence** (e.g. `get_fo_conversation` transcript or a confirmation Fo read back). Otherwise the action is marked "done (unverified)."
 - **State + PKCE** on the OAuth flow; the redirect URI is pinned at registration.
+
+## Implementation status
+
+Implemented and tested against a fake Wajo (`server/tests/oauth.test.ts`) and the mock adapter (`server/tests/actions.test.ts`): discovery, registration, state + PKCE, code exchange, sealed tokens, refresh, 401 retry, approval binding, idempotency, duplicate guard, reconciliation, needs-input, timeout, restart recovery, and evidence-based verification.
+
+**Not yet verified against the real Wajo server.** Advertised metadata is evidence that OAuth should work, not proof. Two things are still unknown: whether registration accepts the redirect URI, and the real shape of Fo's replies and transcripts. The parsers accept several shapes, and an unrecognized shape degrades to "working" or "unverified", never to "done". If Fo's transcript doesn't expose tool send records, live actions will end as *unverified* until the evidence rules are adjusted to what Fo actually returns.
 
 ## Still unknown (needs approval to test)
 1. Whether `/oauth/register` accepts `http://localhost` redirect URIs. Registration creates a record on Wajo, so it's a write.
