@@ -5,6 +5,8 @@ import { OAuthError, type FoOAuth, type Json } from './oauth.ts'
 import type { Store, Session } from './store.ts'
 import type { FoAdapter } from './fo.ts'
 import { subjectKey, type WajoIdentity } from './identity.ts'
+import type { FoChatService } from './chat.ts'
+import { isNotConnected } from './fo.ts'
 import type { TokenSet } from './types.ts'
 
 /*
@@ -30,7 +32,16 @@ interface Deps {
   appUrl: string
   secureCookies: boolean
   now?: () => number
+  chats?: FoChatService
+  /**
+   * Single-owner local mode: no sign-in; every request is the one owner.
+   * Only safe because the server listens on 127.0.0.1 and every request's
+   * Host (and Origin, for writes) must be one of these.
+   */
+  owner?: { allowedHosts: string[]; allowedOrigins: string[] }
 }
+
+export const OWNER_ID = 'owner'
 
 const COOKIE = 'tatada_sid'
 const LOGIN_COOKIE = 'tatada_login'
@@ -142,6 +153,7 @@ export function createApp(deps: Deps) {
       provider: actions.provider,
       demo: !live,
       authenticated: !!account,
+      owner: !!deps.owner,
       account: account ? { id: userId, kind: account.kind, identitySource: account.identitySource, since: account.createdAt } : undefined,
       foConnected: !account ? false : live ? !!oauth?.connected(userId!) : true,
       liveRecipients: live && account ? actions.liveAllowlist : [],
@@ -158,8 +170,15 @@ export function createApp(deps: Deps) {
       if (!path.startsWith('/api/')) return send(res, 404, { error: 'Not found' })
       if (method !== 'GET' && req.headers['x-tatada'] !== '1') return send(res, 403, { error: 'Missing X-Tatada header' })
 
-      const current = sessionOf(req)
-      const userId = current?.s.userId
+      // Owner mode: refuse anything that isn't this machine's own app (blocks LAN access and DNS rebinding).
+      if (deps.owner) {
+        if (!deps.owner.allowedHosts.includes(String(req.headers.host ?? '').toLowerCase())) return send(res, 403, { error: 'This Tatada server only serves this computer.' })
+        const origin = req.headers.origin
+        if (method !== 'GET' && (!origin || !deps.owner.allowedOrigins.includes(origin))) return send(res, 403, { error: 'Request origin not allowed' })
+        if (!store.data.accounts[OWNER_ID]) store.update((d) => (d.accounts[OWNER_ID] = { kind: 'owner', createdAt: now(), lastLoginAt: now() }))
+      }
+      const current = deps.owner ? undefined : sessionOf(req)
+      const userId = deps.owner ? OWNER_ID : current?.s.userId
 
       /* ── session & sign-in ── */
 
@@ -188,14 +207,24 @@ export function createApp(deps: Deps) {
 
       if (path === '/api/fo/callback' && method === 'GET') {
         const done = (q: string, cookies: string[] = []) => redirect(res, `${appUrl}/#/${q}`, [clear(LOGIN_COOKIE, '/api/'), ...cookies])
-        if (!live || !oauth || !deps.resolveIdentity) return done('welcome?auth=demo_mode')
-        if (url.searchParams.get('error')) return done('welcome?auth=denied')
+        if (!live || !oauth || (!deps.resolveIdentity && !deps.owner)) return done('welcome?auth=demo_mode')
+        if (url.searchParams.get('error')) return done(deps.owner ? '?fo=denied' : 'welcome?auth=denied')
         let login
         try {
           login = await oauth.finish(url.searchParams.get('code') ?? '', url.searchParams.get('state') ?? '', sha256(cookie(req, LOGIN_COOKIE) ?? ''))
         } catch (e) {
           return done(`welcome?auth=error&reason=${encodeURIComponent(e instanceof OAuthError ? e.code : 'error')}`)
         }
+        // Owner mode: Fo is authorized for the one local owner. No Wajo identity is claimed or needed.
+        if (deps.owner) {
+          oauth.saveFor(OWNER_ID, login.tokens)
+          store.update((d) => {
+            d.identityObservations.push({ at: now(), source: 'single_owner_local' })
+            if (d.identityObservations.length > 20) d.identityObservations.shift()
+          })
+          return done('?fo=connected')
+        }
+        if (!deps.resolveIdentity) return done('welcome?auth=demo_mode')
         let resolved: Awaited<ReturnType<ResolveIdentity>>
         try {
           resolved = await deps.resolveIdentity(login)
@@ -225,6 +254,11 @@ export function createApp(deps: Deps) {
       }
 
       if (path === '/api/auth/logout' && method === 'POST') {
+        // Owner mode has no sign-in; "log out" means forgetting the Fo authorization.
+        if (deps.owner) {
+          store.update((d) => delete d.tokens[OWNER_ID])
+          return send(res, 200, status(OWNER_ID))
+        }
         if (current) {
           const body = await readBody(req)
           store.update((d) => {
@@ -241,6 +275,43 @@ export function createApp(deps: Deps) {
       if (method !== 'GET' && !writeLimit.allow(`w:${userId}`)) return send(res, 429, { error: 'Too many requests. Slow down a little.' })
 
       if (path === '/api/status' && method === 'GET') return send(res, 200, status(userId))
+
+      /* ── Fo: truthful connection state (read-only tools/list) ── */
+      if (path === '/api/fo/status' && method === 'GET') {
+        const fo = deps.fo
+        if (!fo) return send(res, 200, { state: 'disconnected', provider: actions.provider })
+        if (!fo.connected(userId)) return send(res, 200, { state: 'disconnected', provider: fo.mode })
+        try {
+          const tools = await fo.tools(userId)
+          return send(res, 200, { state: 'connected', provider: fo.mode, tools: tools.map((t) => t.name), checkedAt: now() })
+        } catch (e) {
+          return send(res, 200, { state: isNotConnected(e) ? 'disconnected' : 'error', provider: fo.mode, error: (e as Error).message.slice(0, 200) })
+        }
+      }
+
+      /* ── Fo chat ── */
+      if (deps.chats && path === '/api/fo/chats' && method === 'GET') {
+        const t = url.searchParams.get('tripId')
+        return send(res, 200, { chats: deps.chats.list(userId, t === null ? undefined : t === '' ? null : t) })
+      }
+      if (deps.chats && path === '/api/fo/chats' && method === 'POST') {
+        const body = await readBody(req)
+        return send(res, 201, { chat: deps.chats.create(userId, body.tripId ?? undefined) })
+      }
+      const cm = deps.chats && path.match(/^\/api\/fo\/chats\/([\w-]{8,40})(?:\/(prepare|send|discard|check))?$/)
+      if (deps.chats && cm) {
+        const [, id, verb] = cm
+        if (!verb && method === 'GET') return send(res, 200, { chat: deps.chats.get(userId, id) })
+        if (verb && method === 'POST') {
+          const body = await readBody(req)
+          const chat =
+            verb === 'prepare' ? deps.chats.prepare(userId, id, body)
+            : verb === 'send' ? deps.chats.send(userId, id, body)
+            : verb === 'discard' ? deps.chats.discard(userId, id)
+            : deps.chats.check(userId, id)
+          return send(res, 200, { chat })
+        }
+      }
 
       /* ── per-account workspace ── */
 

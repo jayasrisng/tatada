@@ -330,7 +330,7 @@ export class MockFoAdapter implements FoAdapter {
       return { status: 'working' as const, conversationId: a.conversationId, progress: 'Got your answer' }
     }
     const to = (a.message.match(/^To: .*<([^>]+)>/m) ?? [])[1] ?? ''
-    const scenario = (to.match(/\+(\w+)@/) ?? [])[1] ?? 'default'
+    const scenario = (to.match(/\+(\w+)@/) ?? [])[1] ?? (a.message.match(/\[mock:(\w+)\]/) ?? [])[1] ?? 'default'
     if (scenario === 'lost') throw new McpUncertainError('mock: connection reset before Fo received it')
     this.sends++
     const id = `mock-${randomToken(9)}`
@@ -353,6 +353,14 @@ export class MockFoAdapter implements FoAdapter {
       }
       if (c.scenario === 'declined') {
         c.messages.push({ role: 'tool', text: 'Unfortunately early check-in is not possible that day; rooms are ready at 3pm.', meta: { toolName: 'email.inbox', from: c.to } })
+      }
+      if (!c.to) {
+        // A chat message, not an email request: answer generically, act on nothing.
+        const said = [...c.messages].reverse().find((m) => m.role === 'user')?.text.split('\n')[0].slice(0, 80) ?? ''
+        const reply = `Mock Fo got it: "${said}". (Mock mode: nothing was done.)`
+        c.messages = c.messages.filter((m) => m.role !== 'tool')
+        c.messages.push({ role: 'assistant', text: reply })
+        return { status: 'complete', conversationId, reply }
       }
       c.messages.push({ role: 'assistant', text: 'Done. I sent the email.' })
       return { status: 'complete', conversationId, reply: 'Done. I sent the email.' }

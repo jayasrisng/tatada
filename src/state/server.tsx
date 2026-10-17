@@ -45,7 +45,8 @@ export interface ServerInfo {
   provider?: 'live' | 'mock'
   demo?: boolean
   authenticated?: boolean
-  account?: { id: string; kind: 'wajo' | 'demo'; identitySource?: string; since: number }
+  owner?: boolean
+  account?: { id: string; kind: 'wajo' | 'demo' | 'owner'; identitySource?: string; since: number }
   foConnected?: boolean
   liveRecipients?: string[]
 }
@@ -58,7 +59,7 @@ export class ApiError extends Error {
   }
 }
 
-async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   const res = await fetch(path, {
     ...init,
     credentials: 'same-origin',

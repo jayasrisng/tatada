@@ -94,7 +94,8 @@ export function Home() {
           {state.profile.name.slice(0, 1) || '?'}
         </button>
       </header>
-      <p className="home-hi">hi {state.profile.name.toLowerCase() || 'there'} ✶</p>
+      <p className="home-hi">Hi {state.profile.name || 'there'}!</p>
+      <p className="home-sub">Where to next?</p>
 
       <div className="board" aria-label="Your canvas. Drag cards around.">
         <Draggable id="trips" onTap={() => go('/trips')} className="cc-trips">
@@ -145,10 +146,10 @@ export function Home() {
 
         <div className="board-magic">
           <CurvyArrow className="magic-arrow" flip />
-          <button className="magic-orb" onClick={() => openMagic()} aria-label="Magic">
+          <button className="magic-orb" onClick={() => openMagic()} aria-label="Ask Fo">
             <MagicBuddy size={104} />
           </button>
-          <span className="magic-label">Magic</span>
+          <span className="magic-label">ask Fo</span>
         </div>
       </div>
     </div>

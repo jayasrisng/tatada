@@ -44,7 +44,7 @@ for (const theme of ['dark', 'light']) {
     await shot('home', '/')
     check(await page.locator('.magic-orb .buddy').isVisible(), `${theme}/${size}: Magic buddy on the central button`)
     check((await page.locator('img[src*="wajo"]').count()) === 0, `${theme}/${size}: no Wajo logo in Tatada's UI`)
-    check((await page.locator('.magic-label').textContent()) === 'Magic', `${theme}/${size}: button labeled "Magic"`)
+    check((await page.locator('.magic-label').textContent()) === 'ask Fo', `${theme}/${size}: button labeled "ask Fo"`)
     await page.locator('.magic-orb').click()
     check(await page.getByRole('dialog', { name: 'Magic' }).isVisible(), `${theme}/${size}: Magic button opens Magic`)
     check(await page.getByText('powered by Wajo Fo').isVisible(), `${theme}/${size}: attribution shown`)

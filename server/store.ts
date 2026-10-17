@@ -17,7 +17,8 @@ export interface PendingAuth {
 }
 
 export interface Account {
-  kind: 'wajo' | 'demo'
+  /** 'owner': the single local owner of a localhost-only server (no Wajo identity). */
+  kind: 'wajo' | 'demo' | 'owner'
   subjectKey?: string
   identitySource?: string
   createdAt: number
@@ -61,6 +62,8 @@ export interface Data {
    * never values. Used to judge whether Wajo exposes any stable user identity.
    */
   oauthObservations: OAuthObservation[]
+  /** Conversations with real (or mock) Fo; see chat.ts. */
+  foChats?: Record<string, unknown>
 }
 
 export interface OAuthObservation {

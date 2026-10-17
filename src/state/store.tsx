@@ -19,7 +19,7 @@ interface Store {
 }
 
 export interface Workspace {
-  kind: 'local-demo' | 'demo' | 'wajo'
+  kind: 'local-demo' | 'demo' | 'wajo' | 'owner'
   storageKey: string
   /** Called after each change is saved locally (e.g. to sync to the server). */
   onChange?: (state: AppState) => void

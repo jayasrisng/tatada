@@ -26,7 +26,9 @@ function apply(t: Theme) {
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(() => stored() ?? system())
 
-  useEffect(() => apply(theme), [theme])
+  useEffect(() => {
+    apply(theme)
+  }, [theme])
 
   // Until the traveler chooses, keep following the system setting.
   useEffect(() => {

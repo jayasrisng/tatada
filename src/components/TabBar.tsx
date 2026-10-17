@@ -19,7 +19,7 @@ export function TabBar({ current, tripId }: { current: string; tripId?: string }
     <nav className="tabbar" aria-label="Main">
       {TABS.map((t) =>
         t.id === 'magic' ? (
-          <button key={t.id} className="tab-magic" onClick={() => openMagic({ tripId })} aria-label="Magic">
+          <button key={t.id} className="tab-magic" onClick={() => openMagic({ tripId })} aria-label="Ask Fo">
             <MagicBuddy size={50} />
           </button>
         ) : (

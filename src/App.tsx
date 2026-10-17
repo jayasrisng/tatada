@@ -77,7 +77,9 @@ function useServerSync() {
   const { actions, track } = useServer()
   const ids = state.chat.map((m) => m.serverActionId).filter((x): x is string => !!x)
   const key = ids.join(',')
-  useEffect(() => track(ids), [key])
+  useEffect(() => {
+    track(ids)
+  }, [key])
 
   useEffect(() => {
     for (const a of Object.values(actions)) {

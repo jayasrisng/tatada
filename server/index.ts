@@ -8,6 +8,7 @@ import { McpClient } from './mcp.ts'
 import { LiveFoAdapter, MockFoAdapter, type FoAdapter } from './fo.ts'
 import { ActionService } from './actions.ts'
 import { createApp, type ResolveIdentity } from './app.ts'
+import { FoChatService } from './chat.ts'
 import { fromAccessToken, fromFoApi, fromTokenResponse } from './identity.ts'
 
 /*
@@ -25,6 +26,16 @@ const port = Number(env.PORT ?? 8787)
 const appUrl = env.APP_URL ?? 'http://localhost:5173'
 const publicUrl = env.PUBLIC_URL ?? `http://localhost:${port}`
 const mode = env.TATADA_FO_MODE === 'live' ? 'live' : 'mock'
+/*
+ * TATADA_SINGLE_OWNER=1: a localhost-only, single-user server with no sign-in.
+ * Fo is authorized once for the owner. Never expose this mode beyond 127.0.0.1.
+ */
+const singleOwner = env.TATADA_SINGLE_OWNER === '1'
+const appOrigin = new URL(appUrl).origin
+if (singleOwner && !/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(appOrigin)) {
+  console.error('[tatada] single-owner mode only runs with a localhost APP_URL')
+  process.exit(1)
+}
 const dataDir = resolve(env.TATADA_DATA_DIR ?? '.data')
 mkdirSync(dataDir, { recursive: true, mode: 0o700 })
 
@@ -65,9 +76,19 @@ const actions = new ActionService({
 })
 actions.recover()
 
-const handle = createApp({ store, actions, fo, oauth, resolveIdentity, appUrl, secureCookies: publicUrl.startsWith('https://') })
-createServer((req, res) => void handle(req, res)).listen(port, () => {
-  console.log(`[tatada] server on ${publicUrl} · Fo ${mode}${mode === 'live' ? ` · live recipients: ${actions.liveAllowlist.join(', ') || 'none (sends blocked)'}` : ''}`)
+const chats = new FoChatService({ store, fo, pollWaitSeconds: mode === 'live' ? 20 : 0 })
+chats.recover()
+const appPort = new URL(appUrl).port
+const owner = singleOwner
+  ? {
+      allowedHosts: [`localhost:${appPort}`, `127.0.0.1:${appPort}`, `localhost:${port}`, `127.0.0.1:${port}`],
+      allowedOrigins: [`http://localhost:${appPort}`, `http://127.0.0.1:${appPort}`],
+    }
+  : undefined
+const handle = createApp({ store, actions, fo, oauth, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, secureCookies: publicUrl.startsWith('https://') })
+// Single-owner mode listens on the loopback interface only.
+createServer((req, res) => void handle(req, res)).listen(port, singleOwner ? '127.0.0.1' : undefined, () => {
+  console.log(`[tatada] server on ${publicUrl}${singleOwner ? ' · single-owner, localhost only' : ''} · Fo ${mode}${mode === 'live' ? ` · live recipients: ${actions.liveAllowlist.join(', ') || 'none (sends blocked)'}` : ''}`)
 })
 
 let busy = false
@@ -76,6 +97,7 @@ setInterval(async () => {
   busy = true
   try {
     await actions.runDue()
+    await chats.runDue()
   } catch (e) {
     console.error('[tatada] worker', e)
   } finally {

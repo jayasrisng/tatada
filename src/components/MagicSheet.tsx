@@ -9,6 +9,7 @@ import { ActionCard } from './ActionCard'
 import { ServerActionCard } from './ServerActionCard'
 import { Doodle } from './Doodle'
 import { Btn, Chip } from './ui'
+import { FoChatPanel } from './FoChatPanel'
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -23,6 +24,8 @@ export function MagicSheet() {
   const inputRef = useRef<HTMLInputElement>(null)
   const handled = useRef<typeof magic>(null)
   const [itemId, setItemId] = useState<string | undefined>()
+  // 'fo': a real conversation with Fo via the server. 'scripted': Tatada's built-in drafting helper.
+  const [view, setView] = useState<'fo' | 'scripted'>('fo')
 
   // Server path for email requests: mock Fo always, live Fo once connected.
   const viaServer: ViaServer | undefined =
@@ -38,6 +41,8 @@ export function MagicSheet() {
     handled.current = magic
     const t = magic.tripId ?? state.trips.find((x) => x.status !== 'past')?.id
     setTripId(t)
+    // Task shortcuts open the scripted drafting helper; the Fo button opens the real Fo chat.
+    setView(magic.prefill || !server.info.available ? 'scripted' : 'fo')
     if (magic.autoSend && magic.prefill) {
       void ask(magic.prefill, t, magic.itemId, undefined, true, viaServer)
       setText('')
@@ -88,12 +93,12 @@ export function MagicSheet() {
   }
   const contexts = state.trips.filter((t) => t.status !== 'past')
   const mode = !server.info.available
-    ? 'demo mode · Tatada server offline, so actions are simulated in this browser'
+    ? 'scripted helper · Tatada server offline, so everything here is simulated in this browser'
     : server.info.provider === 'mock'
-      ? 'mock Fo · real approval pipeline, no real emails'
+      ? 'scripted helper · scripted replies, not Fo · drafted emails run through mock Fo'
       : server.info.foConnected
-        ? 'live Fo · approved emails are really sent'
-        : 'live Fo not connected · connect it from your profile'
+        ? 'scripted helper · scripted replies, not Fo · approved emails are sent by real Fo'
+        : 'scripted helper · scripted replies, not Fo · authorize Fo to send approved emails'
 
   return (
     <div className="magic-sheet" role="dialog" aria-modal="true" aria-labelledby="magic-title" ref={sheetRef}>
@@ -107,7 +112,7 @@ export function MagicSheet() {
           </h2>
           <span className="powered">powered by Wajo Fo</span>
         </div>
-        {state.chat.length > 0 ? (
+        {view === 'scripted' && state.chat.length > 0 ? (
           <button className="linkbtn" onClick={() => dispatch({ type: 'clearChat' })}>
             clear
           </button>
@@ -128,6 +133,21 @@ export function MagicSheet() {
         </Chip>
       </div>
 
+      {server.info.available && (
+        <div className="seg magic-seg" role="tablist" aria-label="Who you're talking to">
+          <button role="tab" aria-selected={view === 'fo'} className={view === 'fo' ? 'on' : ''} onClick={() => setView('fo')}>
+            Fo chat
+          </button>
+          <button role="tab" aria-selected={view === 'scripted'} className={view === 'scripted' ? 'on' : ''} onClick={() => setView('scripted')}>
+            scripted helper
+          </button>
+        </div>
+      )}
+
+      {view === 'fo' && server.info.available ? (
+        <FoChatPanel trip={trip} onSimulated={() => setView('scripted')} />
+      ) : (
+      <>
       <div className="magic-thread" aria-live="polite">
         {state.chat.length === 0 && (
           <div className="magic-empty">
@@ -168,6 +188,8 @@ export function MagicSheet() {
       <p className="magic-mode">
         <Doodle name="lock" size={14} /> {mode}
       </p>
+      </>
+      )}
     </div>
   )
 }

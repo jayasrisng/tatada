@@ -4,22 +4,21 @@ import { useServer } from '../state/server'
 import { StoreProvider, type Workspace } from '../state/store'
 import { UIProvider, hashQuery } from '../state/ui'
 import { accountKey, isAppState, loadState, saveState, STORAGE_KEY } from '../state/persistence'
-import { emptyState } from '../data/seed'
+import { emptyState, seed } from '../data/seed'
 import { App } from '../App'
 import { Doodle, MagicBuddy } from './Doodle'
-import { Btn } from './ui'
 
 /*
  * Who's using Tatada decides which workspace loads:
  *   - live server, signed in with Wajo   → that account's workspace (server is the source of truth)
  *   - live server, not signed in         → Continue with Wajo (the only way in)
  *   - mock server                        → a labeled demo account
- *   - no server                          → optional local demo in this browser only
+ *   - single-owner local server          → the owner's workspace, no sign-in
+ *   - no server                          → a labeled simulated workspace in this browser
  */
 export function AuthGate() {
   const server = useServer()
   const { info } = server
-  const [localDemo, setLocalDemo] = useState(false)
   const [loaded, setLoaded] = useState<{ accountId: string; version: number; state?: AppState; gen: number } | null>(null)
   const [syncNote, setSyncNote] = useState<string | null>(null)
   const version = useRef(0)
@@ -39,7 +38,9 @@ export function AuthGate() {
         const meta = readMeta(accountId)
         const local = loadState(() => window.localStorage, accountKey(accountId), emptyState)
         const keepLocal = meta?.dirty && meta.base === w.version && !local.warning
-        const state = keepLocal ? local.state : isAppState(w.state) ? w.state : undefined
+        let state = keepLocal ? local.state : isAppState(w.state) ? w.state : undefined
+        // Single-owner local mode: open straight into Jayasri's canvas, keeping any progress on this browser.
+        if (info.account?.kind === 'owner') state = personalize(state ?? bestLocalCopy() ?? seed())
         lastSynced.current = keepLocal ? null : state ? JSON.stringify(state) : null
         setLoaded({ accountId, version: w.version, state, gen: 0 })
       })
@@ -90,14 +91,14 @@ export function AuthGate() {
   if (!info.checked) return <Splash />
 
   if (!info.available) {
-    if (localDemo) return <Mount workspace={{ kind: 'local-demo', storageKey: STORAGE_KEY }} banner="Local demo · this browser only · not signed in" />
-    return <Offline onDemo={() => setLocalDemo(true)} />
+    // No server: still open directly, clearly labeled, with nothing real able to happen.
+    return <Mount workspace={{ kind: 'local-demo', storageKey: STORAGE_KEY }} initialState={personalize(bestLocalCopy() ?? seed())} banner="Tatada server offline · simulated mode · nothing real can happen" />
   }
 
   if (!info.authenticated || !accountId) return <SignIn />
   if (!loaded || loaded.accountId !== accountId) return <Splash />
 
-  const workspace: Workspace = { kind: info.account?.kind === 'wajo' ? 'wajo' : 'demo', storageKey: accountKey(accountId), onChange }
+  const workspace: Workspace = { kind: info.account?.kind ?? 'demo', storageKey: accountKey(accountId), onChange }
   return (
     <Mount
       key={`${accountId}:${loaded.gen}`}
@@ -181,23 +182,6 @@ function SignIn() {
   )
 }
 
-function Offline({ onDemo }: { onDemo: () => void }) {
-  return (
-    <div className="frame">
-      <main className="app chromeless">
-        <div className="screen center">
-          <MagicBuddy size={84} />
-          <h2 className="chalk-title">can't reach the Tatada server</h2>
-          <p className="dim">Signing in needs the server. Start it with <code>npm run server</code>, then reload.</p>
-          <Btn kind="ghost" onClick={onDemo}>
-            try the local demo instead
-          </Btn>
-          <p className="dim small">The local demo stays in this browser, uses sample data, and can't send anything.</p>
-        </div>
-      </main>
-    </div>
-  )
-}
 
 /** Sync bookkeeping per account: the server version local edits are based on, and whether they're unsynced. */
 const metaKey = (id: string) => `${accountKey(id)}:sync`
@@ -215,4 +199,30 @@ function writeMeta(id: string, m: { base: number; dirty: boolean }) {
   } catch {
     /* storage unavailable: server sync still works while the page is open */
   }
+}
+
+/** The single local profile. Existing names are kept unless they're blank or the old sample name. */
+const OWNER_NAME = 'Jayasri'
+function personalize(s: AppState): AppState {
+  const name = !s.profile.name.trim() || s.profile.name === 'Ana' ? OWNER_NAME : s.profile.name
+  return { ...s, onboarded: true, profile: { ...s.profile, name } }
+}
+
+/** The richest valid Tatada copy saved in this browser (earlier demo or account caches). */
+function bestLocalCopy(): AppState | undefined {
+  let best: AppState | undefined
+  let score = -1
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) ?? ''
+      if (!k.startsWith(STORAGE_KEY) || /:(recovery|sync)$/.test(k)) continue
+      const v = JSON.parse(localStorage.getItem(k) ?? 'null')
+      if (!isAppState(v)) continue
+      const n = v.items.length + v.trips.length * 5 + v.chat.length + v.trips.reduce((m, t) => m + t.memories.length, 0)
+      if (n > score) (best = v), (score = n)
+    }
+  } catch {
+    /* storage unavailable */
+  }
+  return best
 }

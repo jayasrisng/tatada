@@ -715,3 +715,28 @@ input[type='range'] { width: 100%; accent-color: var(--yellow); height: 30px; }
 .account-panel .section-h { margin: 10px 0 0; }
 .account-panel .small-h { font-size: 22px; }
 .account-panel a { color: var(--yellow); }
+
+/* ── Fo chat ── */
+.home-sub { font-family: var(--title); font-size: 22px; color: var(--chalk-3); margin-top: -2px; }
+.magic-seg { margin: 8px 0 0; position: static; background: none; backdrop-filter: none; padding: 0; }
+.magic-seg button { font-size: 20px; }
+.fo-conn { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--chalk-2); padding: 8px 0 4px; flex-wrap: wrap; }
+.fo-conn .linkbtn { margin-left: auto; }
+.fo-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--chalk-3); flex: none; }
+.fo-conn.connected .fo-dot { background: var(--green); }
+.fo-conn.connecting .fo-dot { background: var(--yellow); animation: blink 1s infinite; }
+.fo-conn.disconnected .fo-dot, .fo-conn.error .fo-dot { background: var(--pink); }
+.fo-auth { padding: 10px 12px; border: 1.5px dashed var(--chalk-line); border-radius: 14px; display: flex; flex-direction: column; gap: 10px; margin: 6px 0; }
+.fo-auth .btn { text-decoration: none; }
+.fo-who { display: block; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--green); margin-bottom: 2px; }
+.fo-turn.question .fo-who { color: var(--yellow); }
+.fo-turn.error .fo-who { color: var(--pink); }
+.fo-text { white-space: pre-wrap; }
+.fo-delivery { display: block; font-size: 12px; color: var(--chalk-3); margin-top: 3px; }
+.fo-delivery.failed { color: var(--pink); }
+.fo-progress { display: flex; gap: 6px; align-items: center; color: var(--yellow); font-size: 15px; }
+.fo-risks { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.fo-risk { display: flex; gap: 8px; align-items: flex-start; font-size: 15px; }
+.fo-risk input, .fo-ctx input { accent-color: var(--yellow); margin-top: 4px; }
+.fo-ctx { display: flex; gap: 6px; align-items: center; color: var(--chalk-3); margin-top: 6px; }
+.center-text { text-align: center; }
