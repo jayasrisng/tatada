@@ -1,43 +1,72 @@
-# Fo integration: investigation notes (Oct 17, 2026)
+# Fo integration: auth & capability discovery
 
-Timebox: 20 min. Inspected local config only: no Fo tools invoked, no network calls to Wajo, no credentials read.
+Last updated Oct 17, 2026. All checks were unauthenticated and read-only: public metadata GETs, MCP `initialize`, and `*/list`. **No `tools/call`, no client registration, no credentials used.** The probe script lives outside the repo (`/tmp/tatada-probe/probe.py`).
 
-## What we found
+## Verdict
 
-| Fact | Evidence |
-|---|---|
-| Fo is a **remote MCP server over Streamable HTTP** at `https://mcp.api.wajo.ai/fo` | `~/.claude.json` → `projects.<tatada>.mcpServers.fo = { type: "http", url }` |
-| **No static API key or headers** are configured | The `fo` entry has only `type` and `url` keys |
-| Auth is therefore **MCP OAuth**, completed interactively by Claude Code; the token sits in Claude Code's credential store (macOS Keychain) | No header/token in config; Keychain entry exists (not read) |
-| Tools exposed: `ask_fo`, `get_fo_reply`, `start_fo_call`, `list_fo_conversations`, `get_fo_conversation` | Tool schemas loaded in Claude Code |
-| Fo is **conversational, not typed**: one free-text `message` in, prose out; long tasks return `status: "working"` and must be polled (≤40s per poll) | Tool descriptions |
-| Fo acts **as the account owner** (their email, calendar, phone, card) | Server instructions |
-| `start_fo_call` is a voice link for the **user** to talk to Fo, not an outbound call to a business | Tool description |
+**Yes. Our backend can authenticate to Fo with standard MCP OAuth 2.1, without needing anything from Wajo first.** The server advertises dynamic client registration and public clients with PKCE, so Tatada can register itself, send the user through a one-time consent screen, and hold a refreshable bearer token server-side.
 
-## Implications for Tatada
+## Evidence
 
-1. **Our backend can't reuse Claude Code's token.** It must become its own MCP OAuth client against the Wajo authorization server, or get a server-to-server credential from Wajo.
-2. **The approval gate stays in our code.** The backend only calls `ask_fo` after an action record is in the `approved` state. Claude never holds the Fo tool directly in the MVP.
-3. **We parse prose into status.** After Fo replies, Claude extracts `{done, summary, evidence[]}` from the reply. "Verified" requires evidence (e.g., Fo reading back the confirmation email).
-4. **Polling loop on the server**, streamed to the UI as progress lines (the UI already renders this shape).
-
-## Recommended bridge (to build once approved)
-
-```
-UI ──approve(actionId)──▶ /api/actions/:id/approve
-                           └─ ask_fo(message = approved script + context)
-                           └─ loop get_fo_reply until complete|failed|needs-user
-                           └─ Claude: extract result + evidence → action record
-UI ◀──SSE progress/result──┘
+**Protected resource** `GET /.well-known/oauth-protected-resource/fo`
+```json
+{ "resource": "https://mcp.api.wajo.ai/fo", "authorization_servers": ["https://mcp.api.wajo.ai"],
+  "bearer_methods_supported": ["header"], "scopes_supported": ["mcp"] }
 ```
 
-Options for the MCP client, in order of preference:
-- **A. Claude API MCP connector** (`mcp_servers` with `authorization_token`): simplest if we obtain an OAuth token for our app. However, Claude would then hold the tool, so we'd restrict it to a single, approved turn.
-- **B. Direct MCP client in our backend** (`@modelcontextprotocol/sdk`, Streamable HTTP + OAuth): full control over exactly when `ask_fo` fires. **Preferred for the trust story.**
+**Authorization server** `GET /.well-known/oauth-authorization-server`
+```json
+{ "issuer": "https://mcp.api.wajo.ai",
+  "authorization_endpoint": "https://mcp.api.wajo.ai/oauth/authorize",
+  "token_endpoint": "https://mcp.api.wajo.ai/oauth/token",
+  "registration_endpoint": "https://mcp.api.wajo.ai/oauth/register",
+  "grant_types_supported": ["authorization_code", "refresh_token"],
+  "code_challenge_methods_supported": ["S256"],
+  "token_endpoint_auth_methods_supported": ["none"], "scopes_supported": ["mcp"] }
+```
 
-## Open blockers / next steps (each needs your go-ahead)
+**Unauthenticated behaviour of `POST /fo`** (Streamable HTTP, protocol `2025-06-18`, server `wajo-fo 0.1.0`, stateless: no session id)
+- `initialize`, `tools/list`, `resources/list`: **public** (200)
+- `prompts/list` and, by extension, `tools/call`: **401** `{"error":"missing api key"}` + `WWW-Authenticate: Bearer resource_metadata=…`
+- The "api key" wording suggests a separate API-key path also exists, but it isn't documented in the metadata.
 
-1. **Unauthenticated discovery check:** `GET https://mcp.api.wajo.ai/.well-known/oauth-protected-resource` (and the auth server metadata) to confirm whether dynamic client registration is supported. This is a network call to Wajo, so it hasn't been run.
-2. Ask Wajo hackathon organizers whether third-party apps get a client ID or API key.
-3. One harmless real Fo task (e.g., "what integrations do I have connected?") to learn real capabilities and latency.
-4. **Fallback if 1–2 are blocked:** demo the real Fo action from Claude Code (this session) driven by the same approved script, and show its result in the app. It's honest, but less seamless.
+**Fo tools, with the server's own safety annotations**
+
+| Tool | readOnly | destructive | openWorld | Use in Tatada |
+|---|---|---|---|---|
+| `ask_fo(message, conversationId?, newConversation?)` | no | **yes** | **yes** | Only after explicit approval of the exact message |
+| `get_fo_reply(conversationId?, waitSeconds≤40)` | yes | no | no | Server-side polling loop |
+| `get_fo_conversation(conversationId)` | yes | no | no | Evidence: read back Fo's transcript |
+| `list_fo_conversations()` | yes | no | no | Optional history |
+| `start_fo_call()` | no | no | no | Voice link for the *user*; ships an MCP-UI call panel (`ui://wajo-fo/call`, LiveKit) |
+
+**Bonus: second server `wajo-agentmcp` at `/mcp`** (same OAuth issuer). It's an agent-builder platform: `build_agent`, `chat_agent`, `build_connector`, `update_agent` (including outbound-voice instructions), and **`register_webhook(url, name, eventKinds)`**. Webhooks could replace polling later. This is out of MVP scope.
+
+## How the backend would connect
+
+```
+1. Register (once)  POST /oauth/register  {client_name:"Tatada", redirect_uris:[<backend>/oauth/callback],
+                                           grant_types:[authorization_code, refresh_token],
+                                           token_endpoint_auth_method:"none"}  → client_id
+2. Consent (once)   browser → /oauth/authorize?response_type=code&client_id&redirect_uri
+                                &code_challenge=S256(verifier)&scope=mcp&resource=https://mcp.api.wajo.ai/fo&state
+3. Exchange         POST /oauth/token  code + code_verifier → access_token (+ refresh_token)
+4. Use              POST /fo  Authorization: Bearer <token>   (MCP over Streamable HTTP)
+```
+
+### Security rules
+- **Tokens never reach the browser.** They're stored server-side, encrypted at rest (or in the OS keychain for the local demo), and refreshed automatically.
+- **No generic proxy.** The backend exposes only narrow endpoints, e.g. `POST /api/actions/:id/approve`. That endpoint is the *only* code path that calls `ask_fo`.
+- **Approval is bound to content.** On approve we hash the exact message; `ask_fo` sends that message and nothing else. Any edit requires re-approval.
+- **Fo's own confirmations go back to the user.** If Fo replies "waiting for your answer," the UI shows the question. The backend never auto-confirms.
+- **"Verified" requires evidence** (e.g. `get_fo_conversation` transcript or a confirmation Fo read back). Otherwise the action is marked "done (unverified)."
+- **State + PKCE** on the OAuth flow; the redirect URI is pinned at registration.
+
+## Still unknown (needs approval to test)
+1. Whether `/oauth/register` accepts `http://localhost` redirect URIs. Registration creates a record on Wajo, so it's a write.
+2. Token lifetime and refresh behaviour.
+3. Whether one `mcp` token covers both `/fo` and `/mcp` (the `resource` param suggests per-resource tokens).
+4. Real latency and capability of `ask_fo`, especially outbound calls to businesses.
+
+## Fallback
+If registration is rejected, run the approved message through Fo from Claude Code (already authenticated) and paste or ingest the result into Tatada, clearly labeled.
