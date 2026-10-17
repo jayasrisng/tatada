@@ -71,11 +71,11 @@ export function MagicSheet() {
       <div className="magic-context">
         <span className="dim">for</span>
         {contexts.map((t) => (
-          <Chip key={t.id} on={tripId === t.id} tint={t.tint} onClick={() => setTripId(t.id)}>
+          <Chip key={t.id} on={tripId === t.id} tint={t.tint} onClick={() => { setTripId(t.id); setItemId(undefined) }}>
             {t.destination}
           </Chip>
         ))}
-        <Chip on={!tripId} onClick={() => setTripId(undefined)}>
+        <Chip on={!tripId} onClick={() => { setTripId(undefined); setItemId(undefined) }}>
           anything
         </Chip>
       </div>

@@ -84,7 +84,7 @@ export function ActionCard({ action, compact }: { action: FoAction; compact?: bo
             )}
           </Paper>
           <div className="ac-buttons">
-            <Btn kind="solid" icon="tick" onClick={() => dispatch({ type: 'approve', id: action.id, script })}>
+            <Btn kind="solid" icon="tick" disabled={!script.trim()} onClick={() => dispatch({ type: 'approve', id: action.id, script })}>
               Approve
             </Btn>
             <Btn kind="ghost" icon="pencil" onClick={() => setEditing((e) => !e)}>

@@ -15,7 +15,7 @@ import { Welcome } from './screens/Welcome'
 
 export function App() {
   const route = useRoute()
-  const { state } = useStore()
+  const { state, storageWarning } = useStore()
   const [root, id, tab, sub] = route
 
   useEffect(() => {
@@ -55,6 +55,7 @@ export function App() {
   return (
     <div className="frame">
       <ChalkDefs />
+      {storageWarning && <p className="storage-warning" role="status">{storageWarning}</p>}
       <main className={`app ${chromeless ? 'chromeless' : ''}`}>{screen}</main>
       {!chromeless && <TabBar current={current} tripId={root === 'trip' ? id : undefined} />}
       <MagicSheet />
