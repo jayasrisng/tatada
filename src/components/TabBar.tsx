@@ -1,4 +1,4 @@
-import { Doodle } from './Doodle'
+import { Doodle, FoMark } from './Doodle'
 import { go, useUI } from '../state/ui'
 import { useStore } from '../state/store'
 
@@ -19,8 +19,8 @@ export function TabBar({ current, tripId }: { current: string; tripId?: string }
     <nav className="tabbar" aria-label="Main">
       {TABS.map((t) =>
         t.id === 'magic' ? (
-          <button key={t.id} className="tab-magic" onClick={() => openMagic({ tripId })} aria-label="Open Magic">
-            <Doodle name="sparkle" size={30} stroke={2.3} />
+          <button key={t.id} className="tab-magic" onClick={() => openMagic({ tripId })} aria-label="Ask Fo: open Magic">
+            <FoMark size={40} />
           </button>
         ) : (
           <button key={t.id} className={`tab ${current === t.id ? 'on' : ''}`} onClick={() => go(`/${t.id}`)} aria-current={current === t.id ? 'page' : undefined}>

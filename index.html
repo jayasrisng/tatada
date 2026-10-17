@@ -6,6 +6,16 @@
     <meta name="theme-color" content="#1d2723" />
     <link rel="icon" href="/favicon.svg" />
     <title>tatada</title>
+    <script>
+      // Apply the theme before first paint: saved choice, else the system setting.
+      ;(function () {
+        var t = null
+        try { t = localStorage.getItem('tatada:theme') } catch (e) {}
+        if (t !== 'light' && t !== 'dark') t = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+        document.documentElement.dataset.theme = t
+        if (t === 'light') document.querySelector('meta[name="theme-color"]').setAttribute('content', '#f7f5ef')
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

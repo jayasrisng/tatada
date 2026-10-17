@@ -39,6 +39,7 @@ const P: Record<string, string> = {
   compass: 'M16 4.6c6.6 0 11.4 4.8 11.4 11.4S22.6 27.4 16 27.4 4.6 22.6 4.6 16 9.4 4.6 16 4.6z M20.8 11.2l-2.6 7-7 2.6 2.6-7z',
   bolt: 'M17.8 4.4L8.6 17.6l6.8.2-1.4 10 9.6-13.4-6.9-.1z',
   eye: 'M3.9 16.1c3.4-5.2 7.4-7.8 12.1-7.8s8.7 2.6 12.1 7.8c-3.4 5.1-7.4 7.6-12.1 7.6s-8.7-2.5-12.1-7.6z M16 12.6c2 0 3.4 1.4 3.4 3.4s-1.4 3.4-3.4 3.4-3.4-1.4-3.4-3.4 1.4-3.4 3.4-3.4z',
+  moon: 'M20.6 4.8c-6.3 1-10.7 6.2-10.4 12.4.3 6.2 5.4 11 11.7 10.9 2-.1 3.9-.6 5.6-1.6-6.7-.4-11.6-5.9-11.2-12.5.2-3.5 1.8-6.7 4.3-9.2z M24.6 9.4l.5 1.6 1.6.5-1.6.5-.5 1.6-.5-1.6-1.6-.5 1.6-.5z',
   umbrella: 'M4.5 16.2C5.6 9.7 10 6.1 16 6.1s10.4 3.6 11.5 10.1c-7.6-.6-15.3-.6-23 0z M16 16.2v8.5c0 1.8-1 2.7-2.4 2.7s-2.3-1-2.3-2.4 M16 3.9v2.2',
 }
 
@@ -92,6 +93,12 @@ export function ChalkDefs() {
           <feColorMatrix in="g" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.6 1.25" result="mask" />
           <feComposite in="d" in2="mask" operator="in" />
         </filter>
+        {/* Dry-erase marker: smooth, slightly wavering ink with a soft edge; no chalk grain. */}
+        <filter id="marker" x="-10%" y="-10%" width="120%" height="120%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="5" result="n" />
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="1.2" xChannelSelector="R" yChannelSelector="G" result="d" />
+          <feGaussianBlur in="d" stdDeviation="0.25" />
+        </filter>
         <filter id="rough" x="-5%" y="-5%" width="110%" height="110%">
           <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="2" seed="11" result="n" />
           <feDisplacementMap in="SourceGraphic" in2="n" scale="3" xChannelSelector="R" yChannelSelector="G" />
@@ -105,7 +112,7 @@ export function ChalkDefs() {
 export function Scribble({ color = 'var(--yellow)', width = 120 }: { color?: string; width?: number }) {
   return (
     <svg className="scribble" width={width} height="12" viewBox="0 0 120 12" preserveAspectRatio="none" aria-hidden>
-      <path d="M2 8.5c18-3.6 40-5 62-4.4 18 .5 36 1.8 54 .4 M10 10.5c22-2 48-2.6 74-1.6" stroke={color} strokeWidth="2.2" fill="none" strokeLinecap="round" style={{ filter: 'url(#chalk)' }} />
+      <path d="M2 8.5c18-3.6 40-5 62-4.4 18 .5 36 1.8 54 .4 M10 10.5c22-2 48-2.6 74-1.6" stroke={color} strokeWidth="2.2" fill="none" strokeLinecap="round" style={{ filter: 'var(--stroke-filter)' }} />
     </svg>
   )
 }
@@ -114,7 +121,21 @@ export function Scribble({ color = 'var(--yellow)', width = 120 }: { color?: str
 export function CurvyArrow({ className, flip }: { className?: string; flip?: boolean }) {
   return (
     <svg className={className} width="74" height="54" viewBox="0 0 74 54" fill="none" aria-hidden style={{ transform: flip ? 'scaleX(-1)' : undefined }}>
-      <path d="M4 6c10 2 24 8 30 18 5 9 3 18 -2 20 -6 2 -9 -6 -2 -10 9 -6 22 -2 34 10 M58 34l7 9.6-11.4 1.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'url(#chalk)' }} />
+      <path d="M4 6c10 2 24 8 30 18 5 9 3 18 -2 20 -6 2 -9 -6 -2 -10 9 -6 22 -2 34 10 M58 34l7 9.6-11.4 1.4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ filter: 'var(--stroke-filter)' }} />
     </svg>
+  )
+}
+
+/** Wajo's official Fo icon (see public/brand/README.md), inside a hand-drawn ring. */
+export function FoMark({ size = 64, ring = true }: { size?: number; ring?: boolean }) {
+  return (
+    <span className="fo-mark" style={{ width: size, height: size }}>
+      <img src="/brand/wajo-fo.png" alt="" width={size} height={size} draggable={false} />
+      {ring && (
+        <svg className="fo-ring" viewBox="0 0 100 100" aria-hidden>
+          <path d="M50 3.5c26 .4 46.2 20.6 46 46.8-.2 25.6-21 46.5-46.6 46.2C23.9 96.2 3.6 75.4 3.9 49.6 4.2 23.1 25.1 3.8 52.4 4.6" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+      )}
+    </span>
   )
 }

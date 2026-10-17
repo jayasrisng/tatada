@@ -101,9 +101,12 @@ export function MagicSheet() {
         <button className="iconbtn" onClick={closeMagic} aria-label="Close Magic">
           <Doodle name="x" size={24} />
         </button>
-        <h2 className="magic-title" id="magic-title">
-          <Doodle name="sparkle" size={26} className="spin-slow" /> Magic
-        </h2>
+        <div className="magic-heading">
+          <h2 className="magic-title" id="magic-title">
+            <Doodle name="sparkle" size={26} className="spin-slow" /> Magic
+          </h2>
+          <span className="powered">powered by Wajo Fo</span>
+        </div>
         {state.chat.length > 0 ? (
           <button className="linkbtn" onClick={() => dispatch({ type: 'clearChat' })}>
             clear

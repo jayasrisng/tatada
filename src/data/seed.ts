@@ -289,7 +289,7 @@ export const seed = (): AppState => ({
   chat: [],
   canvas: {},
   // Demo fixture: Lisbon's standard check-in time, labeled as demo data in the decision record.
-  decisions: [{ tripId: 'lisbon', topic: 'early_checkin', inputs: { standardCheckIn: { value: '15:00', source: 'demo', at: Date.parse('2026-10-12T09:00:00Z') } }, updatedAt: Date.parse('2026-10-12T09:00:00Z') }],
+  decisions: [{ tripId: 'lisbon', topic: 'early_checkin', inputs: { standardCheckIn: { value: '15:00', source: 'demo', at: Date.parse('2026-10-12T17:00:00Z') } }, updatedAt: Date.parse('2026-10-12T17:00:00Z') }],
 })
 
 /** Demo fixture: sample outfits for the Lisbon trip, keyed by date. Not a real forecast. */
