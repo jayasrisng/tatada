@@ -159,3 +159,19 @@ test('read-only diagnostics: tools with annotations, conversation shape without 
   assert.equal(trace[0].tool, 'list_fo_conversations')
   assert.ok(!JSON.stringify(store.data.foTrace).includes('access-secret'), 'no tokens in the trace')
 })
+
+test('token responses are observed by structure only, never by value', async () => {
+  const { oauth, store } = setup()
+  const st = new URL(await oauth.start('u1')).searchParams.get('state')!
+  await oauth.finish('u1', 'good-code', st)
+  const refresh = await oauth.testRefresh('u1')
+  const [code] = oauth.observations()
+  assert.deepEqual(code.fields, ['access_token', 'expires_in', 'refresh_token', 'token_type'])
+  assert.equal(code.grant, 'authorization_code')
+  assert.equal(code.accessTokenFormat, 'opaque')
+  assert.equal(code.hasRefreshToken, true)
+  assert.equal(refresh?.grant, 'refresh_token')
+  assert.equal(refresh?.refreshRotated, false)
+  const raw = JSON.stringify(store.data.oauthObservations)
+  assert.ok(!raw.includes('access-secret') && !raw.includes('refresh-secret') && !raw.includes('good-code'))
+})

@@ -20,9 +20,29 @@ interface Diagnostics {
   conversationsError?: string
 }
 
+interface Observation {
+  grant: string
+  status: number
+  fields: string[]
+  accessTokenFormat: string
+  jwtClaimNames?: string[]
+  expiresIn?: number
+  refreshRotated?: boolean
+}
+
 /** Read-only connection check: tools/list and the shape of list_fo_conversations. */
 function ReadOnlyCheck() {
   const [d, setD] = useState<Diagnostics | null>(null)
+  const [obs, setObs] = useState<Observation[] | null>(null)
+  const [refreshMsg, setRefreshMsg] = useState<string | null>(null)
+  const loadObs = async () => setObs((await (await fetch('/api/fo/oauth-observations', { credentials: 'same-origin' })).json()).observations)
+  const testRefresh = async () => {
+    setRefreshMsg('refreshing…')
+    const res = await fetch('/api/fo/test-refresh', { method: 'POST', headers: { 'x-tatada': '1' }, credentials: 'same-origin' })
+    const body = await res.json()
+    setRefreshMsg(res.ok ? `Refresh worked${body.observation?.refreshRotated ? ' (refresh token rotated)' : ''}.` : `Refresh failed: ${body.error}${body.connected === false ? '. Reconnect Fo.' : ''}`)
+    await loadObs()
+  }
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const run = async () => {
@@ -33,6 +53,7 @@ function ReadOnlyCheck() {
       const body = await res.json()
       if (!res.ok) throw new Error(body.error ?? res.status)
       setD(body)
+      await loadObs()
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -66,6 +87,17 @@ function ReadOnlyCheck() {
             <p className="ac-problem">list_fo_conversations failed: {d.conversationsError}</p>
           )}
           <p className="dim small">Nothing was sent. Only read-only tools were called.</p>
+          {obs?.map((o, i) => (
+            <p key={i} className="dim small">
+              token response ({o.grant === 'refresh_token' ? 'refresh' : 'sign-in'}, {o.status}): fields {o.fields.join(', ')} · access token {o.accessTokenFormat}
+              {o.jwtClaimNames ? ` with claims ${o.jwtClaimNames.join(', ')}` : ''}
+              {o.expiresIn ? ` · expires in ${Math.round(o.expiresIn / 60)} min` : ''}
+            </p>
+          ))}
+          <Btn kind="ghost" onClick={testRefresh}>
+            test token refresh
+          </Btn>
+          {refreshMsg && <p className="small" role="status">{refreshMsg}</p>}
         </div>
       )}
     </div>

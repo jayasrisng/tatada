@@ -29,9 +29,31 @@ export interface Data {
   mock: Record<string, unknown>
   /** user id → recent raw-response summaries from live Fo, for validating its real format. */
   foTrace: Record<string, unknown[]>
+  /**
+   * What Wajo's token endpoint actually returns: field names and token shape only,
+   * never values. Used to judge whether Wajo exposes any stable user identity.
+   */
+  oauthObservations: OAuthObservation[]
 }
 
-const empty = (): Data => ({ users: {}, sessions: {}, pendingAuth: {}, tokens: {}, actions: {}, mock: {}, foTrace: {} })
+export interface OAuthObservation {
+  at: number
+  grant: 'authorization_code' | 'refresh_token'
+  ok: boolean
+  status: number
+  fields: string[]
+  tokenType?: string
+  expiresIn?: number
+  scope?: string
+  hasRefreshToken: boolean
+  refreshRotated?: boolean
+  /** Access token format: claim *names* if it's a JWT, otherwise 'opaque'. */
+  accessTokenFormat: 'jwt' | 'opaque' | 'none'
+  jwtClaimNames?: string[]
+  error?: string
+}
+
+const empty = (): Data => ({ users: {}, sessions: {}, pendingAuth: {}, tokens: {}, actions: {}, mock: {}, foTrace: {}, oauthObservations: [] })
 
 export class Store {
   data: Data

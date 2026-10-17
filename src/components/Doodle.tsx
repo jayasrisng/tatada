@@ -126,16 +126,23 @@ export function CurvyArrow({ className, flip }: { className?: string; flip?: boo
   )
 }
 
-/** Wajo's official Fo icon (see public/brand/README.md), inside a hand-drawn ring. */
-export function FoMark({ size = 64, ring = true }: { size?: number; ring?: boolean }) {
+/**
+ * Tatada's Magic buddy: a chubby hand-drawn star with a happy face. Drawn in
+ * the theme's own ink, so it's chalk on the chalkboard and marker on the whiteboard.
+ */
+export function MagicBuddy({ size = 64 }: { size?: number }) {
   return (
-    <span className="fo-mark" style={{ width: size, height: size }}>
-      <img src="/brand/wajo-fo.png" alt="" width={size} height={size} draggable={false} />
-      {ring && (
-        <svg className="fo-ring" viewBox="0 0 100 100" aria-hidden>
-          <path d="M50 3.5c26 .4 46.2 20.6 46 46.8-.2 25.6-21 46.5-46.6 46.2C23.9 96.2 3.6 75.4 3.9 49.6 4.2 23.1 25.1 3.8 52.4 4.6" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-        </svg>
-      )}
-    </span>
+    <svg className="buddy" width={size} height={size} viewBox="0 0 100 100" aria-hidden>
+      <g className="buddy-bob" style={{ filter: 'var(--stroke-filter)' }} strokeLinecap="round" strokeLinejoin="round">
+        <path
+          className="buddy-body"
+          d="M50 9c5 0 8.5 21 12.5 24.5S89 36 90.5 41.5 73 57.5 72.5 63s8 26 3.5 29.5S55 81 50 81s-21.5 14-26 11.5 4-24 3.5-29.5S8 47 9.5 41.5 33.5 37 37.5 33.5 45 9 50 9z"
+        />
+        <path className="buddy-face" d="M37.5 50.5q4.5-5.5 9 0M53.5 50.5q4.5-5.5 9 0M42 60q8 8.5 16 0" />
+        <ellipse className="buddy-blush" cx="34" cy="58.5" rx="5" ry="3" />
+        <ellipse className="buddy-blush" cx="66" cy="58.5" rx="5" ry="3" />
+        <path className="buddy-spark" d="M86 10l1.8 4.6 4.6 1.8-4.6 1.8L86 22.8l-1.8-4.6-4.6-1.8 4.6-1.8zM13 70l1.2 3 3 1.2-3 1.2-1.2 3-1.2-3-3-1.2 3-1.2z" />
+      </g>
+    </svg>
   )
 }

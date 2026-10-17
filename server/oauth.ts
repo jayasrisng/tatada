@@ -1,5 +1,5 @@
 import { pkceChallenge, randomToken, Sealer } from './crypto.ts'
-import type { Store } from './store.ts'
+import type { OAuthObservation, Store } from './store.ts'
 import type { TokenSet } from './types.ts'
 
 /*
@@ -174,6 +174,7 @@ export class FoOAuth {
       body: new URLSearchParams(params).toString(),
     })
     const body = (await res.json().catch(() => ({}))) as Json
+    this.observe(params, res.status, res.ok, body)
     if (!res.ok || typeof body.access_token !== 'string') {
       throw new OAuthError('token', `token request failed (${res.status}): ${body.error ?? 'no detail'}`)
     }
@@ -184,6 +185,50 @@ export class FoOAuth {
       expiresAt: typeof body.expires_in === 'number' ? this.now() + body.expires_in * 1000 : undefined,
       scope: body.scope,
     }
+  }
+
+  /** Records the token response's structure (names, types, lifetimes), never token values. */
+  private observe(params: Record<string, string>, status: number, ok: boolean, body: Json) {
+    const access = typeof body.access_token === 'string' ? body.access_token : ''
+    const parts = access.split('.')
+    let jwtClaimNames: string[] | undefined
+    if (parts.length === 3) {
+      try {
+        jwtClaimNames = Object.keys(JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'))).sort()
+      } catch {
+        /* not a JWT after all */
+      }
+    }
+    const o: OAuthObservation = {
+      at: this.now(),
+      grant: params.grant_type as OAuthObservation['grant'],
+      ok,
+      status,
+      fields: Object.keys(body).sort(),
+      tokenType: typeof body.token_type === 'string' ? body.token_type : undefined,
+      expiresIn: typeof body.expires_in === 'number' ? body.expires_in : undefined,
+      scope: typeof body.scope === 'string' ? body.scope : undefined,
+      hasRefreshToken: typeof body.refresh_token === 'string',
+      refreshRotated: params.grant_type === 'refresh_token' && typeof body.refresh_token === 'string' ? body.refresh_token !== params.refresh_token : undefined,
+      accessTokenFormat: !access ? 'none' : jwtClaimNames ? 'jwt' : 'opaque',
+      jwtClaimNames,
+      error: typeof body.error === 'string' ? body.error : undefined,
+    }
+    this.store.update((d) => {
+      d.oauthObservations.push(o)
+      if (d.oauthObservations.length > 20) d.oauthObservations.splice(0, d.oauthObservations.length - 20)
+    })
+  }
+
+  observations() {
+    return this.store.data.oauthObservations
+  }
+
+  /** Forces one refresh and reports the outcome without revealing tokens. */
+  async testRefresh(userId: string) {
+    const before = this.store.data.oauthObservations.length
+    await this.accessToken(userId, true)
+    return this.store.data.oauthObservations.slice(before).at(-1)
   }
 
   private saveTokens(userId: string, t: TokenSet) {

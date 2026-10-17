@@ -145,6 +145,16 @@ export function createApp(deps: Deps) {
         }
         return send(res, 200, out)
       }
+      // Live OAuth verification: token response structure (no values) and a forced refresh.
+      if (path === '/api/fo/oauth-observations' && method === 'GET') return send(res, 200, { observations: oauth?.observations() ?? [] })
+      if (path === '/api/fo/test-refresh' && method === 'POST') {
+        if (!oauth) return send(res, 409, { error: 'Mock mode has no OAuth session.' })
+        try {
+          return send(res, 200, { observation: await oauth.testRefresh(userId), connected: oauth.connected(userId) })
+        } catch (e) {
+          return send(res, 409, { error: e instanceof OAuthError ? e.message : 'Refresh failed', connected: oauth.connected(userId) })
+        }
+      }
       if (path === '/api/fo/trace' && method === 'GET') return send(res, 200, { trace: deps.fo?.trace(userId) ?? [] })
 
       if (path === '/api/fo/disconnect' && method === 'POST') {

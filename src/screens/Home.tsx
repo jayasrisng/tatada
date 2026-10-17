@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { useStore } from '../state/store'
 import { go, useUI } from '../state/ui'
-import { CurvyArrow, Doodle, FoMark } from '../components/Doodle'
+import { CurvyArrow, Doodle, MagicBuddy } from '../components/Doodle'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { daysUntil } from '../components/ui'
 import type { CanvasPos } from '../types'
@@ -145,10 +145,10 @@ export function Home() {
 
         <div className="board-magic">
           <CurvyArrow className="magic-arrow" flip />
-          <button className="magic-orb" onClick={() => openMagic()} aria-label="Ask Fo: open Magic">
-            <FoMark size={96} />
+          <button className="magic-orb" onClick={() => openMagic()} aria-label="Magic">
+            <MagicBuddy size={104} />
           </button>
-          <span className="magic-label">ask Fo</span>
+          <span className="magic-label">Magic</span>
         </div>
       </div>
     </div>

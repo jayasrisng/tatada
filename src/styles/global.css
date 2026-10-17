@@ -301,13 +301,18 @@ span.chip { color: var(--tint, var(--chalk-2)); border-color: color-mix(in srgb,
   transition: transform 0.15s ease;
 }
 .magic-orb:active { transform: scale(0.94); }
-.magic-label { font-family: var(--title); font-size: 22px; margin-top: 8px; color: var(--chalk-2); letter-spacing: 0.02em; }
+.magic-label { font-family: var(--title); font-size: 26px; margin-top: 8px; color: var(--yellow); }
 
-/* Wajo's official Fo icon, shown as-is, with a hand-drawn ring in the theme's ink. */
-.fo-mark { position: relative; display: inline-grid; place-items: center; flex: none; }
-.fo-mark img { width: 72%; height: 72%; border-radius: 22%; display: block; user-select: none; -webkit-user-drag: none; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
-.fo-ring { position: absolute; inset: 0; width: 100%; height: 100%; filter: var(--stroke-filter); overflow: visible; }
-
+/* Magic buddy: chalk or marker ink, from the theme tokens */
+.buddy { display: block; overflow: visible; }
+.buddy-body { fill: color-mix(in srgb, var(--yellow) 22%, transparent); stroke: var(--yellow); stroke-width: 3.2; }
+.buddy-face { fill: none; stroke: var(--chalk); stroke-width: 3.4; }
+.buddy-blush { fill: color-mix(in srgb, var(--pink) 60%, transparent); }
+.buddy-spark { fill: var(--yellow); stroke: none; }
+.buddy-bob { animation: bob 3.2s ease-in-out infinite; transform-origin: 50% 60%; }
+.magic-orb:hover .buddy-bob, .tab-magic:hover .buddy-bob { animation: wiggle 0.6s ease-in-out; }
+@keyframes bob { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-3px) rotate(-3deg); } }
+@keyframes wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
 .theme-toggle { margin-left: auto; margin-right: 6px; color: var(--chalk-2); }
 .magic-heading { display: flex; flex-direction: column; align-items: center; line-height: 1; }
 .powered { font-size: 12px; color: var(--chalk-3); letter-spacing: 0.04em; margin-top: 2px; }
