@@ -18,6 +18,6 @@ try {
     })
     // The server runs as TypeScript directly (Node type stripping).
     const server = spawnSync(process.execPath, ['--test', 'server/tests/*.test.ts'], { stdio: 'inherit' })
-    process.exitCode = tests.status || server.status || 0
+    process.exitCode = (tests.status ?? 1) || (server.status ?? 1)
   }
 } finally { rmSync(output, { recursive: true, force: true }) }

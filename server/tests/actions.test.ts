@@ -1,7 +1,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { Store } from '../store.ts'
-import { ActionError } from '../actions.ts'
+import { McpHttpError } from '../mcp.ts'
+import { ActionError, ActionService } from '../actions.ts'
 import { approve, draft, settle, setup } from './helpers.ts'
 
 const OWNER = 'user-a'
@@ -151,20 +152,46 @@ test('uncertain send: Fo got it → reconciled, never sent twice', async () => {
   assert.ok(r.conversationId)
 })
 
-test('lost send: Fo has no record → failed (retryable) → owner retry reconciles, then sends once', async () => {
+test('missing recent conversations cannot prove an uncertain send was rejected', async () => {
   const s = setup()
   const a = s.service.create(OWNER, draft({ to: 'x+lost@x.example' }))
   approve(s, OWNER, a)
-  let r = await settle(s, OWNER, a.id)
+  const r = await settle(s, OWNER, a.id)
   assert.equal(r.status, 'failed')
-  assert.equal(r.retryable, true)
+  assert.equal(r.retryable, false)
+  assert.match(r.error!, /does not prove/)
+  throwsStatus(() => s.service.retry(OWNER, a.id), 409)
+  const twin = s.service.create(OWNER, draft({ to: 'x+lost@x.example' }))
+  throwsStatus(() => approve(s, OWNER, twin), 409)
   assert.equal(s.fo.sends, 0)
-  r = s.service.retry(OWNER, a.id)
-  assert.equal(r.status, 'send_uncertain')
-  // Still "lost" on retry, so it fails again, but only after reconciling first.
-  r = await settle(s, OWNER, a.id)
-  assert.ok(r.progress.some((p) => /no record of it. Sending once/.test(p.text)))
-  assert.equal(r.status, 'failed')
+})
+
+test('explicit rejection can be retried after checking for a matching conversation', async () => {
+  const s = setup()
+  const original = s.fo.ask.bind(s.fo)
+  let reject = true
+  s.fo.ask = async (...args) => {
+    if (reject) { reject = false; throw new McpHttpError(401, 'expired token') }
+    return original(...args)
+  }
+  const a = s.service.create(OWNER, draft())
+  approve(s, OWNER, a)
+  assert.equal((await settle(s, OWNER, a.id)).retryable, true)
+  s.service.retry(OWNER, a.id)
+  assert.equal((await settle(s, OWNER, a.id)).status, 'verified')
+  assert.equal(s.fo.sends, 1)
+})
+
+test('an unrecognized send error stays uncertain instead of becoming safely retryable', async () => {
+  const s = setup()
+  s.fo.ask = async () => { throw new Error('adapter could not parse response') }
+  const a = s.service.create(OWNER, draft())
+  approve(s, OWNER, a)
+  s.clock.t++
+  await s.service.runDue()
+  assert.equal(s.service.get(OWNER, a.id).status, 'send_uncertain')
+  const result = await settle(s, OWNER, a.id)
+  assert.equal(result.retryable, false)
 })
 
 test('timeout stops waiting; a read-only check resumes polling', async () => {
@@ -212,7 +239,7 @@ test('restart recovery: a crash mid-send is reconciled; waiting actions resume',
   const ra = await settle(s2, OWNER, a.id)
   // Fo never got it (the crash happened first), so it fails safely instead of resending.
   assert.equal(ra.status, 'failed')
-  assert.equal(ra.retryable, true)
+  assert.equal(ra.retryable, false)
   const rb = await settle(s2, OWNER, b.id)
   assert.equal(rb.status, 'verified')
   assert.equal(s2.fo.sends, 0, 'the restarted server sent nothing new')
@@ -232,4 +259,30 @@ test('drafts are validated', () => {
   for (const bad of [draft({ to: 'not-an-email' }), draft({ subject: 'two\nlines' }), draft({ body: ' ' }), { ...draft(), intent: 'book_hotel' }, draft({ toName: 'x <evil@x.com>' })]) {
     throwsStatus(() => s.service.create(OWNER, bad), 400)
   }
+})
+
+
+test('retry cannot bypass a newer duplicate approval', async () => {
+  const s = setup()
+  s.fo.ask = async () => { throw new McpHttpError(401, 'expired token') }
+  const first = s.service.create(OWNER, draft())
+  approve(s, OWNER, first)
+  assert.equal((await settle(s, OWNER, first.id)).retryable, true)
+  const twin = s.service.create(OWNER, draft())
+  approve(s, OWNER, twin)
+  throwsStatus(() => s.service.retry(OWNER, first.id), 409)
+})
+
+test('queued live actions respect a changed recipient allowlist after restart', async () => {
+  const s = setup({ liveRecipients: ['me@example.com'] })
+  Object.defineProperty(s.fo, 'mode', { value: 'live' })
+  const a = s.service.create(OWNER, draft({ to: 'me@example.com' }))
+  approve(s, OWNER, a)
+  const restarted = new ActionService({ store: s.store, fo: s.fo, now: () => s.clock.t, liveRecipients: [] })
+  restarted.recover()
+  await restarted.runDue()
+  const result = restarted.get(OWNER, a.id)
+  assert.equal(result.status, 'failed')
+  assert.equal(result.retryable, false)
+  assert.equal(s.fo.sends, 0)
 })

@@ -128,7 +128,9 @@ export function normalizeTranscript(r: ToolResult): TranscriptEntry[] {
     .split(/\n(?=\w[\w ]{0,20}:)/)
     .map((chunk) => {
       const m = chunk.match(/^(\w[\w ]{0,20}):\s*([\s\S]*)$/)
-      return { role: (m?.[1] ?? 'unknown').toLowerCase(), text: (m?.[2] ?? chunk).trim(), meta: {} }
+      const role = (m?.[1] ?? 'unknown').toLowerCase()
+      // Text labels cannot establish that a provider tool actually ran.
+      return { role: ['user', 'fo', 'assistant'].includes(role) ? role : 'unknown', text: (m?.[2] ?? chunk).trim(), meta: {} }
     })
 }
 

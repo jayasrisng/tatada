@@ -54,3 +54,44 @@ test('transcripts parse from structured, JSON-text, or plain-text output', () =>
   const plain = normalizeTranscript({ content: [{ type: 'text', text: 'User: hi\nFo: sent it' }] })
   assert.deepEqual(plain.map((e) => e.role), ['user', 'fo'])
 })
+
+
+test('similar addresses and arbitrary record roles cannot verify a send', () => {
+  for (const to of [`other${d.to}`, `${d.to}.attacker.example`]) {
+    assert.deepEqual(extractEvidence([entry('tool', 'sent', { to, status: 'sent' })], d), [])
+  }
+  for (const role of ['customer', 'unknown', 'assistant']) {
+    assert.deepEqual(extractEvidence([entry(role, 'sent', { to: d.to, toolName: 'email.send' })], d), [])
+  }
+  assert.equal(extractEvidence([entry('tool', 'sent', { to: `Hotel <${d.to.toUpperCase()}>` })], d).length, 1)
+})
+
+test('negated sends and plain-text tool labels are not evidence', () => {
+  assert.deepEqual(extractEvidence([entry('tool', 'Email was not sent', { to: d.to })], d), [])
+  const plain = normalizeTranscript({ content: [{ type: 'text', text: `tool: sent to ${d.to}` }] })
+  assert.deepEqual(extractEvidence(plain, d), [])
+})
+
+test('reply sender matching is exact', () => {
+  const transcript = [entry('tool', 'sent', { to: d.to }), entry('tool', 'Early check-in confirmed', { from: `other${d.to}` })]
+  assert.deepEqual(extractEvidence(transcript, d).map((e) => e.kind), ['email_sent'])
+})
+
+test('unrelated or conditional replies never complete the check-in task', () => {
+  const sent = { kind: 'email_sent' as const, detail: 'sent' }
+  for (const detail of ['Yes, your transfer is confirmed.', 'Early check-in is possible subject to availability.', 'Early check-in is not confirmed.', 'Early check-in may be possible. We will check.']) {
+    const result = classify(d, [sent, { kind: 'email_reply', detail }])!
+    assert.equal(result.outcome, 'reply_received', detail)
+    assert.equal(result.itemDone, false, detail)
+  }
+})
+
+test('the latest reply replaces an earlier confirmation', () => {
+  const result = classify(d, [
+    { kind: 'email_sent', detail: 'sent' },
+    { kind: 'email_reply', detail: 'Yes, early check-in is confirmed.' },
+    { kind: 'email_reply', detail: 'Unfortunately early check-in is not possible after all.' },
+  ])!
+  assert.equal(result.outcome, 'checkin_declined')
+  assert.equal(result.itemDone, false)
+})

@@ -92,7 +92,9 @@ export class McpClient {
       throw new McpHttpError(res.status, text)
     }
     const msg = parseMessage(text, id)
-    if (!msg) throw new McpUncertainError(`no JSON-RPC response for ${method}`)
+    if (!msg || msg.id !== id || (!msg.error && (!('result' in msg) || !msg.result || typeof msg.result !== 'object'))) {
+      throw new McpUncertainError(`no valid JSON-RPC response for ${method}`)
+    }
     if (msg.error) throw new McpRpcError(msg.error.code, msg.error.message)
     return msg.result
   }
@@ -107,7 +109,12 @@ interface RpcMessage {
 export function parseMessage(text: string, id: number): RpcMessage | undefined {
   const t = text.trim()
   if (!t) return undefined
-  if (t.startsWith('{')) return JSON.parse(t)
+  if (t.startsWith('{')) {
+    try {
+      const msg = JSON.parse(t) as RpcMessage
+      return msg && typeof msg === 'object' && msg.id === id ? msg : undefined
+    } catch { return undefined }
+  }
   // SSE: take the data: payloads and find the response with our id.
   const msgs = t
     .split(/\r?\n/)

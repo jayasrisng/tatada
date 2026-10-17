@@ -1,7 +1,7 @@
 import { canonical, randomToken, sha256 } from './crypto.ts'
 import { classify, extractEvidence } from './evidence.ts'
 import { isNotConnected, type FoAdapter, type FoReply } from './fo.ts'
-import { McpUncertainError } from './mcp.ts'
+import { McpHttpError, McpRpcError, McpUncertainError } from './mcp.ts'
 import type { Store } from './store.ts'
 import { TERMINAL, type ActionDraft, type PublicAction, type ServerAction } from './types.ts'
 
@@ -226,6 +226,10 @@ export class ActionService {
   retry(ownerId: string, id: string): PublicAction {
     const a = this.own(ownerId, id)
     if (a.status !== 'failed' || !a.retryable) throw new ActionError(409, 'This request can\'t be retried.')
+    const duplicate = Object.values(this.store.data.actions).some((other) =>
+      other.id !== a.id && other.ownerId === ownerId && other.dedupeKey === a.dedupeKey &&
+      !['proposed', 'cancelled'].includes(other.status) && !(other.status === 'failed' && other.retryable))
+    if (duplicate) throw new ActionError(409, 'Another request for this exact email was already approved. Check that request instead.')
     a.status = 'send_uncertain'
     a.retryRequested = true
     a.reconcileAttempts = 0
@@ -306,6 +310,11 @@ export class ActionService {
   }
 
   private async send(a: ServerAction) {
+    // Configuration can change between approval and execution or after restart.
+    if (this.fo.mode === 'live' && !this.liveRecipients.has(a.draft.to.toLowerCase())) {
+      this.fail(a, 'This recipient is no longer allowed for live sends. Nothing was sent.', false)
+      return this.touch(a)
+    }
     a.status = 'sending'
     a.sendAttempts++
     this.touch(a) // saved before the network call on purpose
@@ -313,7 +322,9 @@ export class ActionService {
     try {
       r = await this.fo.ask(a.ownerId, { message: a.foMessage, newConversation: true })
     } catch (e) {
-      if (e instanceof McpUncertainError) {
+      const rejected = isNotConnected(e) || (e instanceof McpHttpError && e.definite) ||
+        (e instanceof McpRpcError && [-32600, -32601, -32602].includes(e.code))
+      if (!rejected) {
         a.status = 'send_uncertain'
         this.log(a, 'Lost the connection mid-send. Checking with Fo before doing anything else.')
         a.nextRunAt = this.now() + 2000
@@ -355,9 +366,9 @@ export class ActionService {
       a.retryRequested = false
       a.status = 'approved'
       a.nextRunAt = this.now()
-      this.log(a, 'Fo has no record of it. Sending once.')
+      this.log(a, 'The earlier send was explicitly rejected. No matching conversation found; retrying once.')
     } else {
-      this.fail(a, 'Fo has no record of this request, so nothing was sent. You can retry.', true)
+      this.fail(a, 'Could not find this request in Fo’s recent conversations. This does not prove it was never received. Check Fo before starting another request.', false)
     }
     this.touch(a)
   }
