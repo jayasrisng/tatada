@@ -8,13 +8,16 @@ import './styles/global.css'
 import { App } from './App'
 import { StoreProvider } from './state/store'
 import { UIProvider } from './state/ui'
+import { ServerProvider } from './state/server'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <StoreProvider>
-      <UIProvider>
-        <App />
-      </UIProvider>
+      <ServerProvider>
+        <UIProvider>
+          <App />
+        </UIProvider>
+      </ServerProvider>
     </StoreProvider>
   </StrictMode>,
 )

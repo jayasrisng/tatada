@@ -1,0 +1,176 @@
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import type { EmailDraft, Profile, Trip } from '../types'
+import { sharedData, stayBooking } from '../magic/stay'
+
+/*
+ * Client for the Tatada server. Server actions are authoritative and live only
+ * on the server: the browser keeps their ids (in chat) and polls for status,
+ * so a reload or a server restart picks up where things were.
+ */
+
+export type ServerStatus =
+  | 'proposed' | 'approved' | 'sending' | 'send_uncertain' | 'waiting' | 'needs_input' | 'answering'
+  | 'verifying' | 'verified' | 'unverified' | 'failed' | 'timeout' | 'cancelled'
+
+export interface ServerAction {
+  id: string
+  provider: 'live' | 'mock'
+  draft: { tripId: string; checklistItemId?: string; intent: string; to: string; toName: string; subject: string; body: string; transferQuote: boolean; shared: string[] }
+  ref: string
+  foMessage: string
+  contentHash: string
+  status: ServerStatus
+  progress: { at: number; text: string }[]
+  question?: string
+  answers: { at: number; text: string }[]
+  error?: string
+  retryable?: boolean
+  conversationId?: string
+  result?: {
+    outcome: string
+    summary: string
+    evidence: { kind: string; detail: string; messageId?: string }[]
+    transferQuote?: string
+    itemDone: boolean
+    itemNote: string
+  }
+}
+
+export const ACTIVE: ServerStatus[] = ['approved', 'sending', 'send_uncertain', 'waiting', 'answering', 'verifying']
+
+export interface ServerInfo {
+  available: boolean
+  provider?: 'live' | 'mock'
+  foConnected?: boolean
+  liveRecipients?: string[]
+}
+
+export class ApiError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
+async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    credentials: 'same-origin',
+    headers: { ...(init.method && init.method !== 'GET' ? { 'x-tatada': '1' } : {}), ...(init.json !== undefined ? { 'content-type': 'application/json' } : {}) },
+    body: init.json !== undefined ? JSON.stringify(init.json) : undefined,
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new ApiError(res.status, body.error ?? `Server error (${res.status})`)
+  return body as T
+}
+
+export function draftPayload(email: EmailDraft, trip: Trip, profile: Profile, checklistItemId?: string) {
+  return {
+    intent: email.intent,
+    tripId: trip.id,
+    checklistItemId,
+    to: email.to,
+    toName: email.toName,
+    subject: email.subject,
+    body: email.body,
+    transferQuote: email.transferQuote,
+    shared: sharedData(trip, profile, stayBooking(trip)?.ref),
+  }
+}
+
+const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('')
+
+interface Ctx {
+  info: ServerInfo
+  actions: Record<string, ServerAction>
+  refresh: () => Promise<void>
+  create: (payload: ReturnType<typeof draftPayload>) => Promise<ServerAction>
+  edit: (id: string, patch: Partial<ServerAction['draft']>) => Promise<void>
+  approve: (a: ServerAction, key: string) => Promise<void>
+  command: (id: string, verb: 'answer' | 'cancel' | 'retry' | 'check', body?: unknown) => Promise<void>
+  track: (ids: string[]) => void
+  newKey: () => string
+}
+
+const C = createContext<Ctx | null>(null)
+
+export function ServerProvider({ children }: { children: ReactNode }) {
+  const [info, setInfo] = useState<ServerInfo>({ available: false })
+  const [actions, setActions] = useState<Record<string, ServerAction>>({})
+  const tracked = useRef(new Set<string>())
+
+  const put = (list: ServerAction[]) => setActions((prev) => ({ ...prev, ...Object.fromEntries(list.map((a) => [a.id, a])) }))
+
+  const refresh = useCallback(async () => {
+    try {
+      const s = await api<Omit<ServerInfo, 'available'>>('/api/session', { method: 'POST' })
+      setInfo({ available: true, ...s })
+    } catch {
+      setInfo({ available: false })
+    }
+  }, [])
+
+  useEffect(() => {
+    void refresh()
+  }, [refresh])
+
+  const poll = useCallback(async () => {
+    const ids = [...tracked.current]
+    if (!ids.length) return
+    try {
+      put((await api<{ actions: ServerAction[] }>(`/api/actions?ids=${ids.join(',')}`)).actions)
+    } catch {
+      /* transient: try again next tick */
+    }
+  }, [])
+
+  // Poll quickly while anything is in flight, slowly otherwise.
+  const anyActive = Object.values(actions).some((a) => ACTIVE.includes(a.status))
+  useEffect(() => {
+    if (!info.available) return
+    void poll()
+    const t = window.setInterval(poll, anyActive ? 1200 : 8000)
+    return () => clearInterval(t)
+  }, [info.available, anyActive, poll])
+
+  const track = useCallback((ids: string[]) => {
+    let added = false
+    for (const id of ids) if (!tracked.current.has(id)) (tracked.current.add(id), (added = true))
+    if (added) void poll()
+  }, [poll])
+
+  const value: Ctx = {
+    info,
+    actions,
+    refresh,
+    newKey,
+    track,
+    create: async (payload) => {
+      const { action } = await api<{ action: ServerAction }>('/api/actions', { method: 'POST', json: payload })
+      tracked.current.add(action.id)
+      put([action])
+      return action
+    },
+    edit: async (id, patch) => {
+      const cur = actions[id]
+      const { action } = await api<{ action: ServerAction }>(`/api/actions/${id}`, { method: 'PATCH', json: { ...cur.draft, ...patch } })
+      put([action])
+    },
+    approve: async (a, key) => {
+      const { action } = await api<{ action: ServerAction }>(`/api/actions/${a.id}/approve`, { method: 'POST', json: { contentHash: a.contentHash, idempotencyKey: key } })
+      put([action])
+    },
+    command: async (id, verb, body) => {
+      const { action } = await api<{ action: ServerAction }>(`/api/actions/${id}/${verb}`, { method: 'POST', json: body ?? {} })
+      put([action])
+    },
+  }
+  return <C.Provider value={value}>{children}</C.Provider>
+}
+
+export function useServer() {
+  const c = useContext(C)
+  if (!c) throw new Error('useServer outside provider')
+  return c
+}

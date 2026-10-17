@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useStore } from './state/store'
-import { go, useRoute } from './state/ui'
+import { go, useRoute, useUI } from './state/ui'
+import { useServer } from './state/server'
 import { ChalkDefs } from './components/Doodle'
 import { TabBar } from './components/TabBar'
 import { MagicSheet } from './components/MagicSheet'
@@ -16,7 +17,9 @@ import { Welcome } from './screens/Welcome'
 export function App() {
   const route = useRoute()
   const { state, storageWarning } = useStore()
+  const { magic } = useUI()
   const [root, id, tab, sub] = route
+  useServerSync()
 
   useEffect(() => {
     if (!state.onboarded && root !== 'welcome') go('/welcome')
@@ -56,9 +59,35 @@ export function App() {
     <div className="frame">
       <ChalkDefs />
       {storageWarning && <p className="storage-warning" role="status">{storageWarning}</p>}
-      <main className={`app ${chromeless ? 'chromeless' : ''}`}>{screen}</main>
-      {!chromeless && <TabBar current={current} tripId={root === 'trip' ? id : undefined} />}
+      {/* While Magic is open, the rest of the app is inert: no focus, no clicks, hidden from screen readers. */}
+      <main className={`app ${chromeless ? 'chromeless' : ''}`} inert={!!magic}>{screen}</main>
+      {!chromeless && (
+        <div inert={!!magic}>
+          <TabBar current={current} tripId={root === 'trip' ? id : undefined} />
+        </div>
+      )}
       <MagicSheet />
     </div>
   )
+}
+
+/** Tracks server actions referenced in chat and copies verified outcomes onto their own trip's task. */
+function useServerSync() {
+  const { state, dispatch } = useStore()
+  const { actions, track } = useServer()
+  const ids = state.chat.map((m) => m.serverActionId).filter((x): x is string => !!x)
+  const key = ids.join(',')
+  useEffect(() => track(ids), [key])
+
+  useEffect(() => {
+    for (const a of Object.values(actions)) {
+      const r = a.result
+      const itemId = a.draft.checklistItemId
+      if (a.status !== 'verified' || !r || !itemId) continue
+      const item = state.items.find((i) => i.id === itemId)
+      if (!item || item.tripId !== a.draft.tripId) continue
+      if (item.actionId === a.id && item.note === r.itemNote && (item.done || !r.itemDone)) continue
+      dispatch({ type: 'applyServerOutcome', tripId: a.draft.tripId, itemId, actionId: a.id, done: r.itemDone, note: r.itemNote })
+    }
+  }, [actions, state.items])
 }

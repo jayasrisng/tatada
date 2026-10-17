@@ -550,3 +550,32 @@ input[type='range'] { width: 100%; accent-color: var(--yellow); height: 30px; }
 }
 
 .storage-warning { margin: 0; padding: 12px 16px; background: #ffe8a3; color: #29251c; font: 16px/1.4 sans-serif; }
+
+/* ── server-backed actions, forms, Fo connection ── */
+.stamp.mock { color: var(--blue); border: 1.5px dashed var(--blue); }
+.action-card.mockfo::before { border-style: dashed; border-color: var(--blue); }
+.action-card.real::before { border-style: solid; }
+.action-card.status-unverified::before, .action-card.status-failed::before, .action-card.status-timeout::before { border-color: var(--orange); }
+.ac-subject { font-weight: 700; }
+.ac-body { white-space: pre-wrap; }
+.ac-edit { display: flex; flex-direction: column; gap: 6px; }
+.ac-edit label { display: flex; gap: 8px; align-items: baseline; color: #8a6d2d; font-size: 15px; }
+.ac-edit input { flex: 1; border: 0; border-bottom: 1px solid #c9bfa3; background: transparent; color: var(--graphite); outline: none; font-size: 16px; }
+.fo-message { white-space: pre-wrap; font: 13px/1.45 ui-monospace, Menlo, monospace; color: var(--chalk-2); background: rgba(0,0,0,.25); border-radius: 10px; padding: 10px 12px; margin: 6px 0 10px; max-height: 220px; overflow: auto; }
+.ac-problem { color: var(--orange); font-size: 16px; margin: 6px 0; }
+.ac-question textarea { width: 100%; background: rgba(0,0,0,.2); border: 1.5px solid var(--chalk-line); border-radius: 10px; padding: 8px 10px; color: var(--chalk); outline: none; resize: vertical; margin-bottom: 8px; }
+.ac-question textarea:focus { border-color: var(--yellow); }
+.details-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding: 14px; border: 1.5px dashed var(--chalk-line); border-radius: 14px; }
+.details-form label { display: flex; flex-direction: column; color: var(--chalk-2); font-size: 15px; }
+.details-form .chalk-input { font-size: 18px; }
+.details-form .btn { align-self: flex-start; }
+.details-form .date-row { grid-template-columns: 1fr 8px 1fr; }
+.magic-title { margin: 0; font-weight: 700; }
+.now-list { margin: 2px 0 8px; }
+.now-list li { padding-left: 16px; position: relative; color: var(--chalk); }
+.now-list li::before { content: '·'; position: absolute; left: 4px; color: var(--yellow); }
+.next-steps { display: flex; flex-direction: column; gap: 12px; padding: 8px 0 18px; }
+.fo-connection { width: 100%; text-align: left; margin-top: 26px; padding-top: 6px; border-top: 1.5px dashed var(--chalk-line); display: flex; flex-direction: column; gap: 10px; }
+.fo-connection .section-h { margin: 10px 0 0; }
+.fo-connection .btn { align-self: flex-start; text-decoration: none; }
+.fo-connection code, .next-steps code { color: var(--yellow); }

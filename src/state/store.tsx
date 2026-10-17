@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useReducer, useState, type ReactNode } from 'react'
-import type { AppState, FoAction, StayDetails } from '../types'
+import type { AppState, EmailDraft, FoAction, StayDetails, Trip } from '../types'
 import { seed } from '../data/seed'
 import { think } from '../magic/engine'
 
@@ -12,9 +12,12 @@ interface Store {
   state: AppState
   storageWarning: string | null
   dispatch: React.Dispatch<Act>
-  ask: (prompt: string, tripId?: string, checklistItemId?: string, details?: StayDetails, echo?: boolean) => void
+  ask: (prompt: string, tripId?: string, checklistItemId?: string, details?: StayDetails, echo?: boolean, viaServer?: ViaServer) => Promise<void>
   resetDemo: (fresh?: boolean) => void
 }
+
+/** Hands a drafted email to the Tatada server; resolves to the server action id. */
+export type ViaServer = (email: EmailDraft, trip: Trip, checklistItemId?: string) => Promise<string>
 
 const Ctx = createContext<Store | null>(null)
 
@@ -37,9 +40,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => timers.forEach(clearTimeout)
   }, [state.actions])
 
-  const ask = (prompt: string, tripId?: string, checklistItemId?: string, details?: StayDetails, echo = true) => {
+  const ask = async (prompt: string, tripId?: string, checklistItemId?: string, details?: StayDetails, echo = true, viaServer?: ViaServer) => {
     const trip = state.trips.find((t) => t.id === tripId)
     const reply = think(prompt, trip, checklistItemId, { profile: state.profile, details, items: state.items })
+    let fallbackNote = ''
+    if (reply.action?.email && trip && viaServer) {
+      const mine = echo ? [{ id: uid(), from: 'me' as const, text: prompt }] : []
+      dispatch({ type: 'chat', messages: mine })
+      echo = false
+      try {
+        const serverActionId = await viaServer(reply.action.email, trip, reply.action.checklistItemId)
+        dispatch({ type: 'chat', messages: [{ id: uid(), from: 'tatada', text: reply.text, serverActionId }] })
+        return
+      } catch (e) {
+        fallbackNote = ` The Tatada server couldn't take this (${(e as Error).message}), so this is only a simulated preview.`
+      }
+    }
     const action: FoAction | undefined = reply.action && {
       ...reply.action,
       id: uid(),
@@ -55,7 +71,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       type: 'chat',
       messages: [
         ...(echo ? [{ id: uid(), from: 'me' as const, text: prompt }] : []),
-        { id: uid(), from: 'tatada', text: reply.text, bullets: reply.bullets, actionId: action?.id, addedItems: items?.length ? items.map((i) => i.text) : undefined, form: reply.form },
+        { id: uid(), from: 'tatada', text: reply.text + fallbackNote, bullets: reply.bullets, actionId: action?.id, addedItems: items?.length ? items.map((i) => i.text) : undefined, form: reply.form },
       ],
       action,
       items,

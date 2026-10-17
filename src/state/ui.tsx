@@ -1,8 +1,8 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 
-/* Tiny hash router: #/trips/lisbon/notebook → ['trips', 'lisbon', 'notebook'] */
+/* Tiny hash router: #/trips/lisbon/notebook?x=1 → ['trips', 'lisbon', 'notebook'] */
 export function useRoute(): string[] {
-  const read = () => window.location.hash.replace(/^#\/?/, '').split('/').filter(Boolean)
+  const read = () => window.location.hash.replace(/^#\/?/, '').split('?')[0].split('/').filter(Boolean)
   const [parts, setParts] = useState(read)
   useEffect(() => {
     const on = () => {
@@ -14,6 +14,9 @@ export function useRoute(): string[] {
   }, [])
   return parts
 }
+
+/** Query parameters after the hash route, e.g. #/welcome?fo=connected. */
+export const hashQuery = () => new URLSearchParams(window.location.hash.split('?')[1] ?? '')
 
 export const go = (path: string) => {
   window.location.hash = path.startsWith('/') ? path : `/${path}`
@@ -36,8 +39,19 @@ const Ctx = createContext<UI | null>(null)
 
 export function UIProvider({ children }: { children: ReactNode }) {
   const [magic, setMagic] = useState<UI['magic']>(null)
+  const opener = useRef<HTMLElement | null>(null)
+  const openMagic = (o: MagicOpts = {}) => {
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setMagic({ ...o, open: true })
+  }
+  const closeMagic = () => {
+    setMagic(null)
+    // Return focus to whatever opened Magic, once the background is interactive again.
+    const el = opener.current
+    requestAnimationFrame(() => el?.isConnected && el.focus())
+  }
   return (
-    <Ctx.Provider value={{ magic, openMagic: (o = {}) => setMagic({ ...o, open: true }), closeMagic: () => setMagic(null) }}>
+    <Ctx.Provider value={{ magic, openMagic, closeMagic }}>
       {children}
     </Ctx.Provider>
   )

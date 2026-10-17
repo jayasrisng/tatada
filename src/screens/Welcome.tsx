@@ -3,6 +3,7 @@ import { useStore } from '../state/store'
 import { go } from '../state/ui'
 import { Doodle } from '../components/Doodle'
 import { Btn, Chip, Paper } from '../components/ui'
+import { FoConnection } from '../components/FoConnection'
 
 const STYLES = ['slow mornings', 'food', 'museums', 'nature', 'nightlife', 'design', 'budget-savvy', 'treat-yourself']
 const DIETS = ['vegetarian', 'vegan', 'gluten-free', 'halal', 'kosher', 'no restrictions']
@@ -30,6 +31,9 @@ export function Welcome() {
           <Btn kind="solid" onClick={() => setStep(1)}>
             let's begin
           </Btn>
+          {state.onboarded && (
+            <FoConnection />
+          )}
           {state.onboarded && (
             <div className="welcome-dev">
               <button className="linkbtn" onClick={() => go('/')}>back home</button>
