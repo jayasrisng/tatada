@@ -3,6 +3,7 @@ import { randomToken, sha256 } from './crypto.ts'
 import { ActionError, type ActionService } from './actions.ts'
 import { OAuthError, type FoOAuth } from './oauth.ts'
 import type { Store } from './store.ts'
+import type { FoAdapter } from './fo.ts'
 
 /*
  * HTTP API. Every /api route except /api/session and the OAuth callback needs
@@ -13,6 +14,7 @@ import type { Store } from './store.ts'
 
 interface Deps {
   store: Store
+  fo?: FoAdapter
   actions: ActionService
   oauth?: FoOAuth
   appUrl: string
@@ -125,6 +127,26 @@ export function createApp(deps: Deps) {
           return redirect(res, `${appUrl}/#/welcome?fo=error&reason=${encodeURIComponent(reason)}`)
         }
       }
+      // Read-only checks of the real connection: tools/list and the conversation list's shape.
+      if (path === '/api/fo/diagnostics' && method === 'GET') {
+        const fo = deps.fo
+        if (!fo) return send(res, 409, { error: 'No Fo adapter' })
+        if (!fo.connected(userId)) return send(res, 409, { error: 'Connect Fo first.' })
+        const out: Record<string, unknown> = { provider: fo.mode, checkedAt: Date.now() }
+        try {
+          out.tools = await fo.tools(userId)
+        } catch (e) {
+          out.toolsError = (e as Error).message
+        }
+        try {
+          out.conversations = await fo.probeConversations(userId)
+        } catch (e) {
+          out.conversationsError = (e as Error).message
+        }
+        return send(res, 200, out)
+      }
+      if (path === '/api/fo/trace' && method === 'GET') return send(res, 200, { trace: deps.fo?.trace(userId) ?? [] })
+
       if (path === '/api/fo/disconnect' && method === 'POST') {
         oauth?.disconnect(userId)
         return send(res, 200, status(userId))

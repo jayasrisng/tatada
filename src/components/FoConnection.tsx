@@ -11,6 +11,67 @@ const RESULT: Record<string, string> = {
   unavailable: 'The server is in mock mode.',
 }
 
+interface Diagnostics {
+  provider: string
+  checkedAt: number
+  tools?: { name: string; readOnly?: boolean; destructive?: boolean; openWorld?: boolean }[]
+  toolsError?: string
+  conversations?: { count: number; shape: unknown }
+  conversationsError?: string
+}
+
+/** Read-only connection check: tools/list and the shape of list_fo_conversations. */
+function ReadOnlyCheck() {
+  const [d, setD] = useState<Diagnostics | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const run = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      const res = await fetch('/api/fo/diagnostics', { credentials: 'same-origin' })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error ?? res.status)
+      setD(body)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="fo-check">
+      <Btn kind="ghost" icon="search" disabled={busy} onClick={run}>
+        {busy ? 'checking…' : 'check connection (read-only)'}
+      </Btn>
+      {err && <p className="ac-problem" role="alert">{err}</p>}
+      {d && (
+        <div className="fo-check-result" role="status">
+          {d.tools ? (
+            <ul>
+              {d.tools.map((t) => (
+                <li key={t.name}>
+                  <code>{t.name}</code> {t.readOnly ? <span className="tag ok">read-only</span> : <span className="tag warn">acts{t.destructive ? ' · can\'t undo' : ''}</span>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="ac-problem">tools/list failed: {d.toolsError}</p>
+          )}
+          {d.conversations ? (
+            <p className="dim small">
+              list_fo_conversations: {d.conversations.count >= 0 ? `${d.conversations.count} conversations` : 'unrecognized format'} · shape {JSON.stringify(d.conversations.shape).slice(0, 160)}
+            </p>
+          ) : (
+            <p className="ac-problem">list_fo_conversations failed: {d.conversationsError}</p>
+          )}
+          <p className="dim small">Nothing was sent. Only read-only tools were called.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function FoConnection() {
   const { info, refresh } = useServer()
   const [busy, setBusy] = useState(false)
@@ -48,6 +109,7 @@ export function FoConnection() {
         <>
           <p>Connected to your Wajo account. Approved emails are really sent.</p>
           <p className="dim small">Live sends are limited to: {info.liveRecipients?.length ? info.liveRecipients.join(', ') : 'nobody yet (set TATADA_LIVE_RECIPIENTS)'}</p>
+          <ReadOnlyCheck />
           <Btn kind="ghost" disabled={busy} onClick={disconnect}>
             disconnect
           </Btn>

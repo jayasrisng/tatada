@@ -29,8 +29,34 @@ export interface TranscriptEntry {
   meta: Record<string, unknown>
 }
 
+export interface ToolInfo {
+  name: string
+  title?: string
+  readOnly?: boolean
+  destructive?: boolean
+  openWorld?: boolean
+}
+
+/** What a live Fo response looked like: structure and a short preview, never tokens. */
+export interface TraceEntry {
+  at: number
+  tool: string
+  ok: boolean
+  isError?: boolean
+  contentTypes?: string[]
+  structured?: unknown
+  textShape?: unknown
+  textPreview?: string
+  error?: string
+}
+
 export interface FoAdapter {
   readonly mode: 'live' | 'mock'
+  /** Read-only: tools/list. */
+  tools(userId: string): Promise<ToolInfo[]>
+  /** Read-only: list_fo_conversations, reduced to its shape and a count. No content. */
+  probeConversations(userId: string): Promise<{ count: number; shape: unknown }>
+  trace(userId: string): TraceEntry[]
   ask(userId: string, a: { message: string; conversationId?: string; newConversation?: boolean }): Promise<FoReply>
   reply(userId: string, conversationId: string, waitSeconds: number): Promise<FoReply>
   conversation(userId: string, conversationId: string): Promise<TranscriptEntry[]>
@@ -106,16 +132,70 @@ export function normalizeTranscript(r: ToolResult): TranscriptEntry[] {
     })
 }
 
+/** Structure of a value without its contents: types, keys, array lengths. */
+export function describeShape(v: unknown, depth = 3): unknown {
+  if (Array.isArray(v)) return { array: v.length, item: v.length && depth > 0 ? describeShape(v[0], depth - 1) : undefined }
+  if (v && typeof v === 'object') {
+    if (depth <= 0) return 'object'
+    return Object.fromEntries(Object.entries(v as Record<string, unknown>).slice(0, 25).map(([k, x]) => [k, describeShape(x, depth - 1)]))
+  }
+  return v === null ? 'null' : typeof v
+}
+
+const toolInfo = (t: { name: string; title?: string; annotations?: Record<string, unknown> }): ToolInfo => ({
+  name: t.name,
+  title: t.title ?? (typeof t.annotations?.title === 'string' ? t.annotations.title : undefined),
+  readOnly: t.annotations?.readOnlyHint as boolean | undefined,
+  destructive: t.annotations?.destructiveHint as boolean | undefined,
+  openWorld: t.annotations?.openWorldHint as boolean | undefined,
+})
+
 /* ───────────── live ───────────── */
 
 export class LiveFoAdapter implements FoAdapter {
   readonly mode = 'live' as const
   private oauth: FoOAuth
   private mcp: McpClient
+  private store?: Store
 
-  constructor(oauth: FoOAuth, mcp: McpClient) {
+  constructor(oauth: FoOAuth, mcp: McpClient, store?: Store) {
     this.oauth = oauth
     this.mcp = mcp
+    this.store = store
+  }
+
+  async tools(userId: string) {
+    const list = await this.withToken(userId, (t) => this.mcp.listTools(t))
+    return (list.tools ?? []).map(toolInfo)
+  }
+
+  async probeConversations(userId: string) {
+    const r = await this.call(userId, 'list_fo_conversations', {})
+    const p = payload(r)
+    const list = Array.isArray(p) ? p : ((p as Record<string, unknown> | undefined)?.conversations as unknown[] | undefined)
+    return { count: Array.isArray(list) ? list.length : -1, shape: p ? describeShape(p) : { text: textOf(r).length } }
+  }
+
+  trace(userId: string) {
+    return (this.store?.data.foTrace[userId] ?? []) as TraceEntry[]
+  }
+
+  private record(userId: string, e: TraceEntry) {
+    if (!this.store) return
+    const list = (this.store.data.foTrace[userId] ??= [])
+    list.push(e)
+    if (list.length > 40) list.splice(0, list.length - 40)
+    this.store.save()
+  }
+
+  private async withToken<T>(userId: string, fn: (token: string) => Promise<T>): Promise<T> {
+    const token = await this.oauth.accessToken(userId)
+    try {
+      return await fn(token)
+    } catch (e) {
+      if (e instanceof McpHttpError && e.status === 401) return fn(await this.oauth.accessToken(userId, true))
+      throw e
+    }
   }
 
   connected(userId: string) {
@@ -124,14 +204,25 @@ export class LiveFoAdapter implements FoAdapter {
 
   /** One call; on 401 refresh once and retry. A 401 means Fo never processed it. */
   private async call(userId: string, tool: string, args: Record<string, unknown>) {
-    const token = await this.oauth.accessToken(userId)
     try {
-      return await this.mcp.callTool(token, tool, args)
-    } catch (e) {
-      if (e instanceof McpHttpError && e.status === 401) {
-        const fresh = await this.oauth.accessToken(userId, true)
-        return this.mcp.callTool(fresh, tool, args)
+      const r = await this.withToken(userId, (t) => this.mcp.callTool(t, tool, args))
+      const text = textOf(r)
+      let textShape: unknown
+      try {
+        textShape = text.trim().startsWith('{') || text.trim().startsWith('[') ? describeShape(JSON.parse(text)) : undefined
+      } catch {
+        /* prose */
       }
+      this.record(userId, {
+        at: Date.now(), tool, ok: true, isError: r.isError,
+        contentTypes: (r.content ?? []).map((c) => c.type),
+        structured: r.structuredContent === undefined ? undefined : describeShape(r.structuredContent),
+        textShape,
+        textPreview: text.slice(0, 600),
+      })
+      return r
+    } catch (e) {
+      this.record(userId, { at: Date.now(), tool, ok: false, error: (e as Error).message.slice(0, 300) })
       throw e
     }
   }
@@ -206,6 +297,25 @@ export class MockFoAdapter implements FoAdapter {
 
   connected() {
     return true
+  }
+
+  async tools() {
+    return [
+      { name: 'ask_fo', title: 'Ask Fo', readOnly: false, destructive: true, openWorld: true },
+      { name: 'get_fo_reply', title: "Get Fo's reply", readOnly: true, destructive: false, openWorld: false },
+      { name: 'get_fo_conversation', title: 'Read a Fo conversation', readOnly: true, destructive: false, openWorld: false },
+      { name: 'list_fo_conversations', title: 'List Fo conversations', readOnly: true, destructive: false, openWorld: false },
+      { name: 'start_fo_call', title: 'Call Fo', readOnly: false, destructive: false, openWorld: false },
+    ]
+  }
+
+  async probeConversations(userId: string) {
+    const list = await this.conversations(userId)
+    return { count: list.length, shape: { mock: true } }
+  }
+
+  trace() {
+    return []
   }
 
   async ask(userId: string, a: { message: string; conversationId?: string }) {

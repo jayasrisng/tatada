@@ -36,7 +36,16 @@ function fakeWajo() {
     if (url === RESOURCE) {
       if (!auth || !accessValid.has(auth.replace('Bearer ', ''))) return json(401, { error: 'missing api key' })
       const rpc = JSON.parse(body!)
-      const result = rpc.method === 'initialize' ? { protocolVersion: '2025-06-18' } : { structuredContent: { status: 'working', conversationId: 'conv-1', progress: 'on it' } }
+      const tool = rpc.params?.name
+      const result =
+        rpc.method === 'initialize' ? { protocolVersion: '2025-06-18' }
+        : rpc.method === 'tools/list' ? { tools: [
+            { name: 'ask_fo', annotations: { title: 'Ask Fo', readOnlyHint: false, destructiveHint: true, openWorldHint: true } },
+            { name: 'list_fo_conversations', annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } },
+          ] }
+        : tool === 'list_fo_conversations' ? { structuredContent: { conversations: [{ conversationId: 'c1', title: 'Secret anniversary plans', updatedAt: '2026-10-01' }] } }
+        : { structuredContent: { status: 'working', conversationId: 'conv-1', progress: 'on it' } }
+      if (tool === 'ask_fo' && rpc.params?.arguments?.mustNotRun) throw new Error('ask_fo invoked')
       return json(200, `event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result })}\n\n`, 'text/event-stream')
     }
     return json(404, {})
@@ -127,4 +136,26 @@ test('a failed refresh disconnects instead of looping', async () => {
   store.data.tokens.u1 = sealer.seal(JSON.stringify({ accessToken: 'old', refreshToken: 'revoked', expiresAt: clock.t - 1 }))
   await assert.rejects(oauth.accessToken('u1'))
   assert.equal(oauth.connected('u1'), false)
+})
+
+test('read-only diagnostics: tools with annotations, conversation shape without content, traced without tokens', async () => {
+  const { oauth, store, wajo } = setup()
+  const st = new URL(await oauth.start('u1')).searchParams.get('state')!
+  await oauth.finish('u1', 'good-code', st)
+  const fo = new LiveFoAdapter(oauth, new McpClient(RESOURCE, { fetch: wajo.f }), store)
+
+  const tools = await fo.tools('u1')
+  assert.deepEqual(tools.map((t) => [t.name, t.readOnly, t.destructive]), [['ask_fo', false, true], ['list_fo_conversations', true, false]])
+  const probe = await fo.probeConversations('u1')
+  assert.equal(probe.count, 1)
+  assert.ok(!JSON.stringify(probe).includes('Secret'), 'shape only, no conversation content')
+  assert.deepEqual(probe.shape, { conversations: { array: 1, item: { conversationId: 'string', title: 'string', updatedAt: 'string' } } })
+
+  // Only read-only tools were called during diagnostics.
+  const toolCalls = wajo.calls.filter((c) => c.url === RESOURCE && c.body?.includes('tools/call')).map((c) => JSON.parse(c.body!).params.name)
+  assert.deepEqual(toolCalls, ['list_fo_conversations'])
+  const trace = fo.trace('u1')
+  assert.equal(trace.length, 1)
+  assert.equal(trace[0].tool, 'list_fo_conversations')
+  assert.ok(!JSON.stringify(store.data.foTrace).includes('access-secret'), 'no tokens in the trace')
 })

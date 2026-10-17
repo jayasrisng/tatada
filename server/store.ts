@@ -27,9 +27,11 @@ export interface Data {
   actions: Record<string, ServerAction>
   /** Mock provider state, so mock conversations survive restarts too. */
   mock: Record<string, unknown>
+  /** user id → recent raw-response summaries from live Fo, for validating its real format. */
+  foTrace: Record<string, unknown[]>
 }
 
-const empty = (): Data => ({ users: {}, sessions: {}, pendingAuth: {}, tokens: {}, actions: {}, mock: {} })
+const empty = (): Data => ({ users: {}, sessions: {}, pendingAuth: {}, tokens: {}, actions: {}, mock: {}, foTrace: {} })
 
 export class Store {
   data: Data

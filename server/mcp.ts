@@ -57,6 +57,15 @@ export class McpClient {
     return (await this.rpc(token, 'tools/call', { name, arguments: args })) as ToolResult
   }
 
+  /** tools/list: names, schemas, and the server's own safety annotations. */
+  async listTools(token: string): Promise<{ tools?: { name: string; title?: string; annotations?: Record<string, unknown> }[] }> {
+    if (!this.initialized) {
+      await this.rpc(token, 'initialize', { protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: 'tatada', version: '0.2.0' } })
+      this.initialized = true
+    }
+    return (await this.rpc(token, 'tools/list', {})) as { tools?: { name: string; title?: string; annotations?: Record<string, unknown> }[] }
+  }
+
   private async rpc(token: string, method: string, params: unknown): Promise<unknown> {
     const id = ++this.id
     let res: Response

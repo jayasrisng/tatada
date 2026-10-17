@@ -42,7 +42,7 @@ let oauth: FoOAuth | undefined
 if (mode === 'live') {
   const resource = env.FO_RESOURCE ?? 'https://mcp.api.wajo.ai/fo'
   oauth = new FoOAuth({ store, sealer: new Sealer(secret()), resource, redirectUri: `${publicUrl}/api/fo/callback` })
-  fo = new LiveFoAdapter(oauth, new McpClient(resource))
+  fo = new LiveFoAdapter(oauth, new McpClient(resource), store)
 } else {
   fo = new MockFoAdapter(store)
 }
@@ -55,7 +55,7 @@ const actions = new ActionService({
 })
 actions.recover()
 
-const handle = createApp({ store, actions, oauth, appUrl, secureCookies: publicUrl.startsWith('https://') })
+const handle = createApp({ store, actions, fo, oauth, appUrl, secureCookies: publicUrl.startsWith('https://') })
 createServer((req, res) => void handle(req, res)).listen(port, () => {
   console.log(`[tatada] server on ${publicUrl} · Fo ${mode}${mode === 'live' ? ` · live recipients: ${actions.liveAllowlist.join(', ') || 'none (sends blocked)'}` : ''}`)
 })

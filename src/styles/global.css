@@ -579,3 +579,10 @@ input[type='range'] { width: 100%; accent-color: var(--yellow); height: 30px; }
 .fo-connection .section-h { margin: 10px 0 0; }
 .fo-connection .btn { align-self: flex-start; text-decoration: none; }
 .fo-connection code, .next-steps code { color: var(--yellow); }
+.fo-check { display: flex; flex-direction: column; gap: 8px; }
+.fo-check .btn { align-self: flex-start; }
+.fo-check-result ul { display: flex; flex-direction: column; gap: 4px; }
+.fo-check-result code { color: var(--chalk); }
+.tag { font-size: 12px; padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; }
+.tag.ok { color: var(--green); }
+.tag.warn { color: var(--orange); }
