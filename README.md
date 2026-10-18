@@ -31,17 +31,22 @@ Reset sample data from the profile. Export real work before resetting or importi
 
 ## Discover and remember
 
-Tap the central star for coffee, restaurants or events. Choose your current location or a city, refine mapped preferences, and save places to your trip/tasks. Event providers currently open search links; Tatada does not aggregate their listings or supply ratings.
+Tap the central star and type what you want, e.g. “coffee near me with good parking and a nice view”, “a vegetarian restaurant I would actually enjoy”, or “live music this weekend”. Tatada turns the request into editable preferences, then shows a few results with the mapped evidence behind each one. Unknown details stay in “details”. Save any result to the selected trip or to tasks.
+
+- **Places** come from OpenStreetMap through Photon and OSM tags. Ranking uses distance, diet tags, opening hours, a public lot near the venue or the venue's own parking, view evidence, outdoor seating and Wi-Fi. Walking times come from the public OSM foot router after the list appears; if it doesn't answer, straight-line distance is shown and labeled. No ratings source is connected.
+- **Events** combine public Luma, Eventbrite and Partiful listings into one deduplicated list. Times use the event's time zone, with distance when the source gives a location, plus price (free / listed price / not listed), reasons and source links. Filters cover today, tomorrow, this weekend, the next 7 days and free only. Expired, canceled, clearly sold-out and online-only listings are excluded. If a source fails or doesn't cover the city, the rest still show, with a one-line explanation.
+
+Events are read by a small key-free service (`server/events/`) because the providers don't allow direct browser requests. `npm run dev` and `npm run preview` mount it at `/events-api`. `npm run events` runs it standalone on port 8790. It is separate from the paused Fo/sign-in server. Static hosting (GitHub Pages) has no events service, so the panel falls back to provider search links until `supabase/functions/tatada-events` is deployed and the site is built with `VITE_EVENTS_URL`.
 
 In **Trips → my map & timeline**, import selected local photos, review dates and city/country labels, then add them to your history. Available GPS creates map points, photos appear in trip journals, and **find clothes** sends a photo to the closet detector. Google Photos account linking is not active. Exported/original files can be selected manually. [Feature boundaries](docs/feature-limits.md) describe data, storage and provider limitations.
 
 ## Checks
 
 ```bash
-npm test           # state, portability, OAuth, ownership, actions, chat, hosting
+npm test           # state, portability, discovery ranking/hours, events parsing/dedupe/timezones, OAuth, actions, chat, hosting
 npm run build      # typecheck frontend and server; build production frontend
 npm run check:browser # browser-only checks against the preview at port 5174
-node scripts/check-discovery-history.mjs # controlled discovery and photo-history browser checks
+node scripts/check-discovery-history.mjs # nearby + events flow (fixtures), photo-history browser checks
 npm run predemo    # isolated /tatada/ build + separate mock API; smoke and theme checks
 ```
 
@@ -55,7 +60,7 @@ GitHub Pages hosts the standalone frontend beneath `/tatada/`. A separate backen
 npm run build:website
 ```
 
-The default build keeps workspace saves in the browser and does not call Tatada’s paused backend. User-triggered discovery uses public map APIs; clothing detection downloads model files for local inference. For future backend opt-in, the build command retains the public API address `https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-api`. The frontend also accepts `VITE_API_URL` for another HTTPS API origin and `VITE_BASE_PATH` for another subpath. These are public build settings, never secrets.
+The default build keeps workspace saves in the browser and does not call Tatada’s paused backend. User-triggered discovery uses public map and routing APIs; clothing detection downloads model files for local inference. For future backend opt-in, the build command retains the public API address `https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-api`. The frontend also accepts `VITE_API_URL` for another HTTPS API origin and `VITE_BASE_PATH` for another subpath. These are public build settings, never secrets.
 
 The portfolio's `scripts/sync-tatada.mjs` copies only the reviewed `dist/` bundle into its `public/tatada/` directory. Its existing Pages deployment preserves that page during future portfolio builds. No `.data/`, credentials, or user workspace is published.
 
@@ -85,4 +90,6 @@ Supabase source: `supabase/functions/tatada-api/` and `supabase/schemas/tatada.s
 - `src/state/`: reducer, storage validation, server client, Fo chat client, portability.
 - `src/magic/`: trip-aware drafting, dates, decision evidence, simulated fallback.
 - `server/`: HTTP API, OAuth, sessions, action/chat workers, mock/live Fo adapters, tests.
+- `server/events/`: key-free public event search (Luma, Eventbrite, Partiful), separate from the Fo API.
+- `src/discovery/`: request parsing, place ranking, opening hours, event display.
 - `docs/fo-integration.md`: provider discovery and live verification limits.

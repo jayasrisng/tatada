@@ -10,13 +10,41 @@ Clothing and travel thumbnails share a conservative browser storage budget. This
 
 ## Nearby → saved ideas
 
-Magic opens nearby discovery by default. Users explicitly select their location or choose a city. Photon returns a limited set of nearby OpenStreetMap features; small batched OSM detail lookups supply actual tags. Results rank by straight-line distance plus mapped vegetarian, nearby parking and nearby viewpoint preferences. These are transparent rules, not a general-purpose conversational AI. Simple keyword parsing selects coffee/restaurants/events and preferences such as parking or views; chips let users refine them. No query is silently passed to a live Fo agent.
+Magic opens nearby discovery by default. Users explicitly share their location or type a city. Rule-based parsing turns a request into visible, editable preferences: walkable, parking, a view, vegetarian/vegan, open now, outdoor seating, Wi-Fi and a cuisine. It is not a general conversational AI, and nothing is passed to a live Fo agent.
 
-This is a shortlist of mapped candidates, not an exhaustive city-wide survey. Missing dietary, accessibility, opening or parking information remains unknown. Parking proximity does not establish parking availability, safety, price or an attached lot. A nearby viewpoint does not establish a view from a café. Straight-line distance does not establish a walkable route. Ratings, reviews, live opening hours, reservations and paid transactions are not integrated. Maps/source links let users verify details. Saved ideas retain source URLs.
+Photon returns the nearest mapped cafés/restaurants (up to 50), plus a name search for “vegan”, “vegetarian” or a cuisine. One batched OSM request per element type fetches actual tags. Ranking uses only what is mapped:
 
-Photon's public demo is for reasonable traffic and has no availability guarantee. Results cache for 15 minutes within the page. Production scale requires a hosted/paid data service, shared caching and request limits. The overloaded public Overpass endpoint was rejected during verification and is not used by the implementation.
+- **Diet:** `diet:vegetarian` / `diet:vegan` (`only` > `yes` > `limited`) and vegetarian/vegan cuisine. An explicit `no` excludes the place. Untagged places stay, marked “not listed”.
+- **Parking:** the venue's own `parking` tag or a lot named for it counts as evidence. A public lot within 200 m is reported as “public parking mapped N m away (free/paid/fee unknown); spaces unknown”. Private and customer-only lots are ignored. None of this establishes availability.
+- **Views:** a mapped `rooftop=yes` or `view` tag is the only venue-level signal. View words in a name or description (“Skyline”, “Terrace”, “Miradouro”…) are weak hints: they rank only slightly higher and are labeled “a hint only; view not confirmed”. A viewpoint within 150 m is labeled “view from inside unknown”.
+- **Hours:** a conservative `opening_hours` reader handles common weekly forms. Anything else (months, dates, sunrise, open ends) is shown as listed text. Geolocation gives coordinates, not a time zone. The venue's zone comes from an offline coordinate lookup (`@photostructure/tz-lookup`, CC0), which is approximate near borders. Open/closed is claimed only when all of these hold:
+  - the venue and four points ~5 km around it share the same current UTC offset;
+  - for “near me”, the device's own offset also agrees;
+  - the hours parse cleanly.
 
-Partiful, Luma and Eventbrite currently open labeled provider-search links. Their results are not scraped, ingested, deduplicated or ranked in Tatada. A real event aggregator still needs stable provider feeds or a backend search/ingestion service. No public/private event availability is invented.
+  Otherwise the listed hours are shown as text. The claim is based on mapped hours, which may be outdated, and holiday rules are not evaluated. Details say both. The ~29 kB (gzip) zone table loads on the first place search.
+- **Walking:** results appear with straight-line distance. The FOSSGIS OSRM `routed-foot` profile then supplies route distance and time for up to 10 candidates in one table request, labeled as estimates. Verified pedestrian on 2026-10-17: Filbert/Greenwich Steps route 159 m on foot vs 1.6 km by car; walking speed ~4.4 km/h. Its usage policy allows at most 1 request/second with attribution and a “fix the map” link. Tatada sends at most one routing request per search, caches it for 15 minutes, spaces requests ≥1.1 s apart, and shows the attribution. The server delays rapid repeat requests, so routes can take a few seconds. If it fails, distances stay straight-line and are labeled so. “Walkable” means a route of 1.6 km or less, or 1.2 km straight-line when unrouted.
+- **Ratings:** none. OSM has no ratings and no free ratings API is connected. Requests that ask for “good” or “best” places say so.
+
+This is a shortlist of mapped candidates, not a city-wide survey. Photon's public demo and the FOSSGIS router are for reasonable traffic and offer no availability guarantee. Results cache for 15 minutes within the page. Production scale needs hosted/paid geodata and routing.
+
+## Events
+
+Public listings come from three sources, read server-side because none send CORS headers:
+
+| Source | What is read | Coverage | Price / availability |
+| --- | --- | --- | --- |
+| Luma | `api.lu.ma/discover/get-paginated-events` (the JSON behind luma.com/discover), up to 3 pages of 50 | Anywhere Luma has nearby events | Free / listed price; sold-out excluded; guest-only addresses give approximate distance |
+| Eventbrite | `eventbrite.com/d/<place>/(<interest>--)events/` browse pages (`window.__SERVER_DATA__`) | Cities Eventbrite has pages for | Not on these pages → “price not listed”; sold-out unknown |
+| Partiful | `partiful.com/explore/<region>` public explore pages (`__NEXT_DATA__`) | SF, LA, NYC, Austin, Boston, Chicago, DC, Miami, London | Not shown → “price not listed”; location rounded to ~1 km |
+
+Verified live on 2026-10-17 for San Francisco, Lisbon and New York. Automated tests use trimmed copies of real responses.
+
+The service validates input and rate-limits clients (30 searches/minute). Each upstream request has an 8 s timeout and a 4 MB cap, and each host is limited to 20 requests/minute. Responses stay fresh in a cache for 10 minutes, and a copy up to 2 hours old is used if a refresh fails. Each source reports when its listings were read: the panel shows “Checked 8 min ago”, and a source served from an older copy reads “Eventbrite 5 (from 1 h ago)” with “couldn't refresh” under why?. Each source has a 15 s budget and fails independently. It needs and stores no credentials. The robots.txt files of all three allow these paths. Partiful's disallows only AI-training crawlers, and this is a user-triggered display. These are undocumented public pages, not APIs, so their structure can change: the parser then reports that source as failed rather than guessing. Provider terms may restrict automated access. For production, ask each provider for permission or a partner feed.
+
+Rules: times are converted using the listing's own IANA zone, and date filters are judged in that zone. Events that have ended, have no end time and have started, are canceled (flag or “Canceled/Postponed” title), sold out (Luma flag) or online-only are excluded. Listings within 90 minutes of each other with matching normalized titles and nearby locations merge. The merged listing keeps every source link and the most detailed copy. Interest words match titles, provider categories and descriptions. If nothing matches, all events in the window are shown with a note. “Free only” keeps only listings marked free, which effectively means Luma.
+
+What would need credentials or paid access: Eventbrite's public search API is deprecated. Its API now only covers events you organize, and this flow doesn't use it. Luma's official API (Luma Plus) covers only calendars you manage. Partiful has no public API. City-wide prices and sold-out status for Eventbrite/Partiful would need partner feeds or per-event page reads. Ratings for places need a paid places API (e.g. Google Places, Foursquare) behind a backend key.
 
 ## Photos → timeline / map
 
@@ -36,3 +64,6 @@ Wajo sign-in/live actions and Epson integration remain paused.
 - https://github.com/komoot/photon#demo-server
 - https://developers.google.com/photos/overview/about
 - https://www.eventbrite.com/platform/new/api (public event search is deprecated)
+- https://routing.openstreetmap.de/about.html (FOSSGIS OSRM routing)
+- https://wiki.openstreetmap.org/wiki/Key:opening_hours
+- https://wiki.openstreetmap.org/wiki/Key:diet
