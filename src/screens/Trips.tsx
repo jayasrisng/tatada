@@ -1,9 +1,13 @@
+import { lazy, Suspense, useState } from 'react'
 import { useStore } from '../state/store'
 import { go } from '../state/ui'
 import { Doodle } from '../components/Doodle'
 import { Box, Chip, Heading, TopBar, daysUntil, fmtRange } from '../components/ui'
 
+const TravelHistory = lazy(() => import('../components/TravelHistory').then((m) => ({ default: m.TravelHistory })))
+
 export function Trips() {
+  const [view, setView] = useState<'trips' | 'history'>('trips')
   const { state } = useStore()
   const order = { upcoming: 0, planning: 1, past: 2 }
   const trips = [...state.trips].sort((a, b) => order[a.status] - order[b.status] || a.start.localeCompare(b.start))
@@ -13,7 +17,8 @@ export function Trips() {
       <TopBar back="/" />
       <Heading>Trips</Heading>
 
-      <div className="trip-list">
+      <nav className="seg" aria-label="Trips views"><button className={view === 'trips' ? 'on' : ''} onClick={() => setView('trips')}>my trips</button><button className={view === 'history' ? 'on' : ''} onClick={() => setView('history')}>my map & timeline</button></nav>
+      {view === 'history' ? <Suspense fallback={<p>Opening your travel story…</p>}><TravelHistory /></Suspense> : <div className="trip-list">
         {trips.map((t, i) => {
           const items = state.items.filter((x) => x.tripId === t.id)
           const done = items.filter((x) => x.done).length
@@ -47,7 +52,7 @@ export function Trips() {
           <Doodle name="plus" size={30} />
           <span>new trip</span>
         </Box>
-      </div>
+      </div>}
     </div>
   )
 }

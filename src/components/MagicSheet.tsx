@@ -10,6 +10,7 @@ import { ServerActionCard } from './ServerActionCard'
 import { Doodle } from './Doodle'
 import { Btn, Chip } from './ui'
 import { FoChatPanel } from './FoChatPanel'
+import { DiscoverPanel } from './DiscoverPanel'
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -27,7 +28,7 @@ export function MagicSheet() {
   const handled = useRef<typeof magic>(null)
   const [itemId, setItemId] = useState<string | undefined>()
   // 'fo': a real conversation with Fo via the server. 'scripted': Tatada's built-in drafting helper.
-  const [view, setView] = useState<'fo' | 'scripted'>('fo')
+  const [view, setView] = useState<'fo' | 'scripted' | 'discover'>('discover')
 
   // Server path for email requests: mock Fo always, live Fo once connected.
   const viaServer: ViaServer | undefined =
@@ -44,7 +45,7 @@ export function MagicSheet() {
     const t = magic.tripId ?? state.trips.find((x) => x.status !== 'past')?.id
     setTripId(t)
     // Task shortcuts open the scripted drafting helper; the Fo button opens the real Fo chat.
-    setView(magic.prefill || !canUseServer ? 'scripted' : 'fo')
+    setView(magic.prefill ? 'scripted' : 'discover')
     if (magic.autoSend && magic.prefill) {
       void ask(magic.prefill, t, magic.itemId, undefined, true, viaServer)
       setText('')
@@ -112,7 +113,7 @@ export function MagicSheet() {
           <h2 className="magic-title" id="magic-title">
             <Doodle name="sparkle" size={26} className="spin-slow" /> Magic
           </h2>
-          <span className="powered">{canUseServer ? 'powered by Wajo Fo' : 'interactive preview · simulated'}</span>
+          <span className="powered">{view === 'discover' ? 'find a little adventure' : canUseServer ? 'powered by Wajo Fo' : 'scripted preview · simulated'}</span>
         </div>
         {view === 'scripted' && state.chat.length > 0 ? (
           <button className="linkbtn" onClick={() => dispatch({ type: 'clearChat' })}>
@@ -135,18 +136,13 @@ export function MagicSheet() {
         </Chip>
       </div>
 
-      {canUseServer && (
-        <div className="seg magic-seg" role="tablist" aria-label="Who you're talking to">
-          <button role="tab" aria-selected={view === 'fo'} className={view === 'fo' ? 'on' : ''} onClick={() => setView('fo')}>
-            Fo chat
-          </button>
-          <button role="tab" aria-selected={view === 'scripted'} className={view === 'scripted' ? 'on' : ''} onClick={() => setView('scripted')}>
-            scripted helper
-          </button>
-        </div>
-      )}
+      <div className="seg magic-seg" role="tablist" aria-label="Magic modes">
+        <button role="tab" aria-selected={view === 'discover'} className={view === 'discover' ? 'on' : ''} onClick={() => setView('discover')}>nearby & events</button>
+        <button role="tab" aria-selected={view === 'scripted'} className={view === 'scripted' ? 'on' : ''} onClick={() => setView('scripted')}>scripted helper</button>
+        {canUseServer && <button role="tab" aria-selected={view === 'fo'} className={view === 'fo' ? 'on' : ''} onClick={() => setView('fo')}>Fo chat</button>}
+      </div>
 
-      {view === 'fo' && canUseServer ? (
+      {view === 'discover' ? <DiscoverPanel key={trip?.id ?? 'nearby'} trip={trip} /> : view === 'fo' && canUseServer ? (
         <FoChatPanel trip={trip} onSimulated={() => setView('scripted')} />
       ) : (
       <>

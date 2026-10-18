@@ -233,7 +233,7 @@ function NowCard({ trip }: { trip: Trip }) {
 }
 
 function Journal({ trip }: { trip: Trip }) {
-  const { dispatch } = useStore()
+  const { state, dispatch } = useStore()
   const [text, setText] = useState('')
   return (
     <div className="journal">
@@ -255,6 +255,7 @@ function Journal({ trip }: { trip: Trip }) {
         <input value={text} onChange={(e) => setText(e.target.value)} placeholder="what happened today?" aria-label="Add a memory" />
       </form>
 
+      <div className="trip-photo-timeline">{(state.photoHistory ?? []).filter((p) => p.tripId === trip.id).sort((a, b) => a.capturedAt.localeCompare(b.capturedAt)).map((p) => <figure key={p.id}><img src={p.image} alt={p.filename} loading="lazy" /><figcaption>{p.capturedAt.slice(0, 10)} · {p.city}</figcaption></figure>)}</div>
       {trip.memories.length === 0 && <p className="empty">memories you jot down will live here ✎</p>}
       <div className="memories">
         {trip.memories.map((mm, i) => (

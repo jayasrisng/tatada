@@ -47,12 +47,12 @@ export function buildExport(state: AppState, serverActions: ServerActionLike[], 
   const seen = new Set<string>()
   const actionHistory = [...serverActions.map(archive), ...(state.archivedActions ?? [])].filter((a) => !seen.has(a.id) && seen.add(a.id))
   // Rebuild state from known fields only, so nothing unexpected rides along.
-  const { onboarded, profile, trips, items, actions, chat, canvas, decisions, wardrobe, looks } = state
+  const { onboarded, profile, trips, items, actions, chat, canvas, decisions, wardrobe, looks, photoHistory } = state
   return {
     format: EXPORT_FORMAT,
     version: EXPORT_VERSION,
     exportedAt: now.toISOString(),
-    state: structuredClone({ onboarded, profile, trips, items, actions, chat, canvas, decisions: decisions ?? [], wardrobe: wardrobe ?? [], looks: looks ?? [] }),
+    state: structuredClone({ onboarded, profile, trips, items, actions, chat, canvas, decisions: decisions ?? [], wardrobe: wardrobe ?? [], looks: looks ?? [], photoHistory: photoHistory ?? [] }),
     actionHistory,
   }
 }

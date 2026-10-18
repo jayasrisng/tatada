@@ -26,4 +26,4 @@ Specific garment instructions:
 
 ## Runtime uploads
 
-Camera/upload is browser-local. Images are resized and re-encoded to remove EXIF. Transparency is preserved for uploaded PNG garment images. Ordinary photos remain reference images and use a color silhouette on the figure; this static app does not perform AI extraction for future uploads. Browser storage has a photo budget, and exports include camera images and kept looks.
+Camera/upload is browser-local. Images are resized and re-encoded to remove EXIF. Transparency is preserved for uploaded PNG garment images. Ordinary outfit photos now run through a browser-local SegFormer worker to isolate visible clothes. Users review names, categories and current ownership before adding pieces. This removes visible background/skin but does not reconstruct hidden fabric, reliably distinguish layers, or replace a fit simulation. Browser storage has a photo budget, and exports include camera images and kept looks.

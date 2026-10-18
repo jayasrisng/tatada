@@ -146,10 +146,10 @@ export function Home() {
 
         <div className="board-magic">
           <CurvyArrow className="magic-arrow" flip />
-          <button className="magic-orb" onClick={() => openMagic()} aria-label="Ask Fo">
+          <button className="magic-orb" onClick={() => openMagic()} aria-label="Ask Magic">
             <MagicBuddy size={104} />
           </button>
-          <span className="magic-label">ask Fo</span>
+          <span className="magic-label">ask Magic</span>
         </div>
       </div>
     </div>

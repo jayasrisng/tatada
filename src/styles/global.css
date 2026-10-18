@@ -821,3 +821,29 @@ input[type='range'] { width: 100%; accent-color: var(--yellow); height: 30px; }
 .style-camera p { text-align: center; margin: 7px 0; }
 .closet-item img, .swiper-card img, .swipe-pieces img, .board-pics img { object-fit: contain; background: #f3f0e8; }
 [hidden] { display: none !important; }
+
+.task-star { border-radius: 50%; min-width: 34px; min-height: 34px; padding: 7px; }
+.detected-piece { display: grid; grid-template-columns: 22px 70px 1fr; align-items: center; gap: 8px; }
+.detected-piece .closet-preview { width: 70px; height: 90px; object-fit: contain; background: #eeeae0; }
+.detected-piece select { grid-column: 3; min-width: 0; }
+.discover-panel { padding: 16px 20px 100px; overflow-y: auto; flex: 1; min-height: 0; }
+.discover-panel .chalk-input { width: 100%; margin: 8px 0; }
+.discover-location { margin: 14px 0; }
+.discover-location form { display: flex; align-items: center; gap: 8px; }
+.nearby-card { border: 1px solid var(--chalk-line); border-radius: 14px; padding: 14px; margin: 12px 0; }
+.nearby-card h3 { font-size: 23px; margin: 0 0 4px; }
+.nearby-card .ac-buttons { align-items: center; font-size: 14px; margin: 10px 0; }
+.travel-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; margin: 18px 0; }
+.travel-stats strong { display: block; font-size: 34px; color: var(--blue); }
+.travel-map { height: 420px; width: 100%; margin: 20px 0; border-radius: 14px; z-index: 0; background: #e7e9df; }
+.travel-photo-review { display: grid; grid-template-columns: 20px 65px 1fr; gap: 8px; align-items: center; }
+.travel-photo-review img { width: 65px; height: 85px; object-fit: cover; }
+.travel-photo-review label { min-width: 0; overflow-wrap: anywhere; }
+.photo-timeline { padding: 0; list-style: none; }
+.photo-timeline li { display: grid; grid-template-columns: 85px 1fr; gap: 12px; padding: 15px 0; border-bottom: 1px solid var(--chalk-line); }
+.photo-timeline img { width: 85px; height: 100px; object-fit: cover; border-radius: 6px; }
+.photo-timeline .ac-buttons { gap: 12px; font-size: 13px; }
+.trip-photo-timeline { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
+.trip-photo-timeline figure { margin: 0; }
+.trip-photo-timeline img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+.trip-photo-timeline figcaption { font-size: 13px; }

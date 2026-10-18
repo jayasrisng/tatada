@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { DressCode, Garment, GarmentCategory, ItineraryItem, Trip } from '../types'
 import { uid, useStore } from '../state/store'
 import { Doodle } from '../components/Doodle'
@@ -6,8 +6,10 @@ import { Avatar } from '../components/Avatar'
 import { Btn, Chip, Heading, TopBar } from '../components/ui'
 import { fmtDay } from '../magic/dates'
 import { byCategory, dayCode, generateLooks, packingList, tripDays, type Suggestion } from '../style/looks'
+import { hashQuery } from '../state/ui'
 import { processPhoto } from '../style/camera'
 import { garmentImage } from '../style/images'
+import { extractClothes, type ExtractedPiece } from '../style/extract'
 
 type Tab = 'itinerary' | 'closet' | 'mix' | 'swipe' | 'board'
 const TABS: { id: Tab; label: string }[] = [
@@ -31,7 +33,7 @@ export function Style() {
   const { state } = useStore()
   const trips = state.trips.filter((t) => t.status !== 'past').sort((a, b) => a.start.localeCompare(b.start))
   const [tripId, setTripId] = useState(trips[0]?.id)
-  const [tab, setTab] = useState<Tab>('swipe')
+  const [tab, setTab] = useState<Tab>(hashQuery().has('photo') ? 'closet' : 'swipe')
   const trip = trips.find((t) => t.id === tripId) ?? trips[0]
   const wardrobe = state.wardrobe ?? []
   const camera = useRef<HTMLInputElement>(null)
@@ -82,7 +84,9 @@ export function Style() {
 function Closet({ wardrobe, input }: { wardrobe: Garment[]; input: RefObject<HTMLInputElement | null> }) {
   const { state, dispatch } = useStore()
   const [filter, setFilter] = useState<GarmentCategory | 'all'>('all')
-  const [draft, setDraft] = useState<{ image: string; color: string; name: string; category: GarmentCategory; isolated: boolean } | null>(null)
+  const [drafts, setDrafts] = useState<(ExtractedPiece & { selected: boolean })[]>([])
+  const [busy, setBusy] = useState(false)
+  const [progress, setProgress] = useState('')
   const [error, setError] = useState<string | null>(null)
   const cameraCount = wardrobe.filter((g) => g.source === 'camera').length
   const shown = filter === 'all' ? wardrobe : wardrobe.filter((g) => g.category === filter)
@@ -91,16 +95,48 @@ function Closet({ wardrobe, input }: { wardrobe: Garment[]; input: RefObject<HTM
     if (!file) return
     setError(null)
     if (cameraCount >= MAX_CAMERA) return setError('Remove a camera photo before adding another.')
+    setBusy(true)
+    setDrafts([])
     try {
       const p = await processPhoto(file)
-      setDraft({ image: p.dataUrl, color: p.color, name: '', category: 'top', isolated: p.isolated })
-    } catch (e) {
-      setError((e as Error).message)
-    }
+      const pieces = p.isolated ? [{ image: p.dataUrl, color: p.color, name: 'My garment', category: 'top' as const, isolated: true }] : await extractClothes(file, setProgress)
+      setDrafts(pieces.map((piece) => ({ ...piece, selected: true })))
+    } catch (e) { setError((e as Error).message) }
+    finally { setBusy(false); setProgress('') }
   }
+
+  useEffect(() => {
+    const photo = state.photoHistory?.find((p) => p.id === hashQuery().get('photo'))
+    if (!photo || !photo.image.startsWith('data:image/')) return
+    history.replaceState(null, '', `${location.pathname}${location.search}#/style`)
+    void fetch(photo.image).then((r) => r.blob()).then((blob) => snap(new File([blob], photo.filename, { type: blob.type }))).catch((e) => setError((e as Error).message))
+  }, [])
 
   return (
     <section aria-label="Closet">
+      {busy && <p role="status">{progress || 'Preparing photo…'} Your photo stays on this device.</p>}
+      {drafts.length > 0 && (
+        <form className="details-form" onSubmit={(e) => {
+          e.preventDefault()
+          const selected = drafts.filter((d) => d.selected)
+          if (!selected.length || selected.some((d) => !d.name.trim())) return setError('Select a piece and give it a name.')
+          if (cameraCount + selected.length > MAX_CAMERA) return setError('Remove some camera pieces before adding more.')
+          if (JSON.stringify(state).length + selected.reduce((n, d) => n + d.image.length, 0) > 1_500_000) return setError('Photo storage is full. Export a backup, then remove some photos.')
+          for (const d of selected) dispatch({ type: 'addGarment', garment: { id: uid(), name: d.name.trim(), category: d.category, color: d.color, vibe: ['casual'], image: d.image, isolated: true, source: 'camera', addedAt: Date.now() } })
+          setDrafts([]); setError(null)
+        }}>
+          <h3 className="section-h">{drafts.length} piece{drafts.length === 1 ? '' : 's'} ready for your closet</h3>
+          <p className="dim small">Keep the pieces you still own. Old travel photos can include clothes you've since given away.</p>
+          {drafts.map((d, i) => <div className="detected-piece" key={i}>
+            <input type="checkbox" aria-label={`Keep detected piece ${i + 1}`} checked={d.selected} onChange={(e) => setDrafts((all) => all.map((p, j) => j === i ? { ...p, selected: e.target.checked } : p))} />
+            <img src={d.image} alt={d.name} className="closet-preview" />
+            <label><span>piece name</span><input className="chalk-input" value={d.name} placeholder="e.g. striped linen shirt" onChange={(e) => setDrafts((all) => all.map((p, j) => j === i ? { ...p, name: e.target.value } : p))} /></label>
+            <select aria-label={`Category for piece ${i + 1}`} value={d.category} onChange={(e) => setDrafts((all) => all.map((p, j) => j === i ? { ...p, category: e.target.value as GarmentCategory } : p))}>{CATS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select>
+          </div>)}
+          <div className="ac-buttons"><Btn kind="solid" type="submit">add to closet</Btn><Btn kind="ghost" type="button" onClick={() => setDrafts([])}>discard</Btn></div>
+          <p className="dim small">Automatic detection removes background and skin from visible clothes. It cannot reconstruct hidden fabric or reliably separate layered garments. Review edges and categories before adding. First use downloads a detector; photos are processed locally.</p>
+        </form>
+      )}
       <div className="chips wrap">
         <Chip on={filter === 'all'} onClick={() => setFilter('all')}>
           all {wardrobe.length}
@@ -113,11 +149,11 @@ function Closet({ wardrobe, input }: { wardrobe: Garment[]; input: RefObject<HTM
       </div>
 
       <div className="closet">
-        <button className="closet-cam" onClick={() => input.current?.click()} disabled={cameraCount >= MAX_CAMERA} aria-label="Take a photo of a piece of clothing">
+        <button className="closet-cam" onClick={() => input.current?.click()} disabled={busy || cameraCount >= MAX_CAMERA} aria-label="Take a photo of a piece of clothing">
           <Doodle name="camera" size={40} />
           <span>snap a piece</span>
         </button>
-        <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={(e) => (snap(e.target.files?.[0]), (e.target.value = ''))} aria-label="Camera" />
+        <input ref={input} type="file" accept="image/*" capture="environment" disabled={busy} hidden onChange={(e) => (snap(e.target.files?.[0]), (e.target.value = ''))} aria-label="Camera" />
         {shown.map((g, i) => (
           <figure key={g.id} className="closet-item" style={{ transform: `rotate(${((i * 37) % 5) - 2}deg)` }}>
             {g.image ? <img src={garmentImage(g.image)} alt={g.name} loading="lazy" /> : <span className="closet-swatch" style={{ background: g.color }} />}
@@ -133,42 +169,7 @@ function Closet({ wardrobe, input }: { wardrobe: Garment[]; input: RefObject<HTM
       {error && <p className="ac-problem" role="alert">{error}</p>}
       {cameraCount >= MAX_CAMERA && <p className="dim small">That's {MAX_CAMERA} camera photos, the most this device keeps. Remove one to add another.</p>}
 
-      {draft && (
-        <form
-          className="details-form"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (!draft.name.trim()) return setError('Give it a name.')
-            if (cameraCount >= MAX_CAMERA) return setError('Remove a camera photo before adding another.')
-            if (JSON.stringify(state).length + draft.image.length > 1_500_000) return setError('This browser’s photo storage is full. Export a backup, then remove some photos before adding more.')
-            dispatch({ type: 'addGarment', garment: { id: uid(), name: draft.name.trim(), category: draft.category, color: draft.color, vibe: ['casual'], image: draft.image, isolated: draft.isolated, source: 'camera', addedAt: Date.now() } })
-            setDraft(null)
-            setError(null)
-          }}
-        >
-          <img src={draft.image} alt="New piece" className="closet-preview" />
-          <label>
-            <span>what is it?</span>
-            <input className="chalk-input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. striped linen shirt" autoFocus />
-          </label>
-          <div className="chips wrap">
-            {CATS.map((c) => (
-              <Chip key={c.id} on={draft.category === c.id} onClick={() => setDraft({ ...draft, category: c.id })}>
-                {c.label.replace(/s$/, '').replace(/sse$/, 'ss')}
-              </Chip>
-            ))}
-          </div>
-          <div className="ac-buttons">
-            <Btn kind="solid" type="submit">
-              add to closet
-            </Btn>
-            <Btn kind="ghost" type="button" onClick={() => setDraft(null)}>
-              discard
-            </Btn>
-          </div>
-          <p className="dim small">Saved on this browser, with location metadata removed. Uploaded photos are references; automatic garment extraction is not connected. A transparent garment PNG can be worn on the figure.</p>
-        </form>
-      )}
+
     </section>
   )
 }

@@ -21,6 +21,7 @@ try {
   // Reload returns to the explicit unavailable state; opting in restores the preview.
   await page.getByRole('button', { name: 'explore a sample trip', exact: true }).click()
   await page.locator('.fo-pill').nth(1).click()
+  await page.getByRole('dialog', { name: 'Magic' }).getByRole('button', { name: 'Send', exact: true }).click()
   const action = page.locator('.action-card').last()
   await action.getByRole('button', { name: 'Approve', exact: true }).click()
   await page.getByRole('button', { name: '7:00pm Saturday', exact: true }).click({ timeout: 15000 })

@@ -35,7 +35,7 @@ export function AccountPanel() {
   const exportAll = () => {
     const out = buildExport(state, workspace.storageKey.endsWith(':preview') ? [] : Object.values(server.actions))
     download(`tatada-export-${out.exportedAt.slice(0, 10)}.json`, JSON.stringify(out, null, 2))
-    setMsg({ ok: true, text: 'Exported. The file holds your trips, closet photos, saved outfits, tasks, memories, Magic history and past requests. No passwords or tokens.' })
+    setMsg({ ok: true, text: 'Exported. The file holds your trips, closet photos, saved outfits, travel-photo timeline, tasks, memories, Magic history and past requests. No passwords or tokens.' })
   }
 
   const pick = async (f?: File) => {

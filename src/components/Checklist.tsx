@@ -64,8 +64,8 @@ export function ChecklistRow({ item, showTrip }: { item: ChecklistItem; showTrip
         item.magicPrompt &&
         !item.done &&
         !action && (
-          <button className="fo-pill" onClick={() => openMagic({ tripId: item.tripId, prefill: item.magicPrompt, itemId: item.id, autoSend: true })}>
-            <Doodle name="sparkle" size={15} /> Fo
+          <button className="fo-pill task-star" aria-label={`Ask Magic about ${item.text}`} title="Ask Magic about this task" onClick={() => openMagic({ tripId: item.tripId, prefill: item.magicPrompt, itemId: item.id, autoSend: false })}>
+            <Doodle name="star" size={18} />
           </button>
         )
       )}

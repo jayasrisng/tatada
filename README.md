@@ -15,7 +15,7 @@ npm run dev        # open http://localhost:5173
 
 Trips, closet photos, kept outfits and itinerary edits save in localStorage in this browser. They do not sync across browsers/devices. Use **profile → export/import** for backups; clearing site data removes local saves. Seeded trips are samples, and Magic actions are simulated.
 
-Style includes a camera/upload button, individual transparent garment images reconstructed from the reference photos, a 2D outfit figure, mix-and-match, itinerary-based suggestions and a packing moodboard. These are visual outfit previews, not accurate body/size or fabric-fit simulations. New uploads remain photo references unless they already have transparency; automatic extraction of new uploads is not connected.
+Style includes a camera/upload button, individual transparent garment images reconstructed from the reference photos, a 2D outfit figure, mix-and-match, itinerary-based suggestions and a packing moodboard. These are visual outfit previews, not accurate body/size or fabric-fit simulations. New outfit uploads are automatically segmented into visible individual pieces by a browser-local detector, then reviewed before adding to the closet. Detection can miss edges or merge layers; it does not reconstruct hidden fabric.
 
 For backend development only, explicitly opt in with `VITE_ENABLE_BACKEND=true npm run dev` plus `npm run server`. `npm run predemo` opts in against an isolated mock backend. Keep this flag off for the browser-only presentation. Existing backend code is retained for later integration; Wajo authorization has not been validated end-to-end and must not be presented as ready.
 
@@ -29,12 +29,19 @@ Presentation flow:
 
 Reset sample data from the profile. Export real work before resetting or importing another workspace.
 
+## Discover and remember
+
+Tap the central star for coffee, restaurants or events. Choose your current location or a city, refine mapped preferences, and save places to your trip/tasks. Event providers currently open search links; Tatada does not aggregate their listings or supply ratings.
+
+In **Trips → my map & timeline**, import selected local photos, review dates and city/country labels, then add them to your history. Available GPS creates map points, photos appear in trip journals, and **find clothes** sends a photo to the closet detector. Google Photos account linking is not active. Exported/original files can be selected manually. [Feature boundaries](docs/feature-limits.md) describe data, storage and provider limitations.
+
 ## Checks
 
 ```bash
 npm test           # state, portability, OAuth, ownership, actions, chat, hosting
 npm run build      # typecheck frontend and server; build production frontend
 npm run check:browser # browser-only checks against the preview at port 5174
+node scripts/check-discovery-history.mjs # controlled discovery and photo-history browser checks
 npm run predemo    # isolated /tatada/ build + separate mock API; smoke and theme checks
 ```
 
@@ -48,7 +55,7 @@ GitHub Pages hosts the standalone frontend beneath `/tatada/`. A separate backen
 npm run build:website
 ```
 
-The default build is browser-only and does not call an API. For future backend opt-in, the build command retains the public API address `https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-api`. The frontend also accepts `VITE_API_URL` for another HTTPS API origin and `VITE_BASE_PATH` for another subpath. These are public build settings, never secrets.
+The default build keeps workspace saves in the browser and does not call Tatada’s paused backend. User-triggered discovery uses public map APIs; clothing detection downloads model files for local inference. For future backend opt-in, the build command retains the public API address `https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-api`. The frontend also accepts `VITE_API_URL` for another HTTPS API origin and `VITE_BASE_PATH` for another subpath. These are public build settings, never secrets.
 
 The portfolio's `scripts/sync-tatada.mjs` copies only the reviewed `dist/` bundle into its `public/tatada/` directory. Its existing Pages deployment preserves that page during future portfolio builds. No `.data/`, credentials, or user workspace is published.
 

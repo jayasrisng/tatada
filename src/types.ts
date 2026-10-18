@@ -270,6 +270,7 @@ export interface AppState {
   /** Read-only history of Fo requests brought in by an import. Never re-executed. */
   archivedActions?: ArchivedAction[]
   /** Clothes from the traveler's own photos or camera. */
+  photoHistory?: TravelPhoto[]
   wardrobe?: Garment[]
   /** Outfits kept or skipped while swiping, per trip. */
   looks?: Look[]
@@ -324,4 +325,18 @@ export interface ArchivedAction {
   summary?: string
   evidence: string[]
   progress: { at: number; text: string }[]
+}
+
+export interface TravelPhoto {
+  id: string
+  tripId?: string
+  fingerprint: string
+  filename: string
+  capturedAt: string
+  dateSource: 'exif' | 'you'
+  city: string
+  country: string
+  lat?: number
+  lon?: number
+  image: string
 }

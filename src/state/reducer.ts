@@ -1,8 +1,10 @@
-import type { AppState, Booking, CanvasPos, ChatMessage, ChecklistItem, DecisionRecord, FoAction, Garment, ItineraryItem, Look, Memory, Profile, StayDetails, Trip } from '../types'
+import type { AppState, Booking, CanvasPos, ChatMessage, ChecklistItem, DecisionRecord, FoAction, Garment, ItineraryItem, Look, Memory, Profile, StayDetails, TravelPhoto, Trip } from '../types'
 import { outcome } from '../magic/engine'
 import { uid } from './id'
 
 export type Act =
+  | { type: 'importTravelPhotos'; photos: TravelPhoto[]; trips: Trip[] }
+  | { type: 'deleteTravelPhoto'; id: string }
   | { type: 'reset'; state: AppState }
   | { type: 'onboard'; profile: Profile }
   | { type: 'addTrip'; trip: Trip; items: ChecklistItem[] }
@@ -88,6 +90,14 @@ export function reducer(s: AppState, a: Act): AppState {
       return saveStayDetails(s, a.tripId, a.details, a.messageId)
     case 'addBooking':
       return { ...s, trips: s.trips.map((t) => (t.id === a.tripId ? { ...t, bookings: [...t.bookings, a.booking] } : t)) }
+    case 'importTravelPhotos': {
+      const seen = new Set((s.photoHistory ?? []).map((p) => p.fingerprint))
+      const photos = a.photos.filter((p) => !seen.has(p.fingerprint) && !!seen.add(p.fingerprint))
+      const referenced = new Set(photos.map((p) => p.tripId))
+      return { ...s, trips: [...s.trips, ...a.trips.filter((t) => referenced.has(t.id) && !s.trips.some((old) => old.id === t.id))], photoHistory: [...(s.photoHistory ?? []), ...photos] }
+    }
+    case 'deleteTravelPhoto':
+      return { ...s, photoHistory: (s.photoHistory ?? []).filter((p) => p.id !== a.id) }
     case 'addGarment':
       return { ...s, wardrobe: [...(s.wardrobe ?? []), a.garment] }
     case 'editGarment':
