@@ -4,7 +4,7 @@ Discovery notes from Oct 17, 2026. The initial checks used public metadata GETs,
 
 ## Verdict
 
-The server advertises dynamic client registration and public clients with PKCE. Tatada implements that OAuth flow, but successful registration, consent, and token refresh against the live provider still need verification.
+The server advertises dynamic client registration and public clients with PKCE. Tatada implements that OAuth flow, but registration and redirect to Wajo consent were verified from the hosted Supabase API. Completing consent, token refresh, and an actual Fo action still require a user-authorized live session.
 
 ## Evidence
 
@@ -67,13 +67,17 @@ The server advertises dynamic client registration and public clients with PKCE. 
 
 Implemented and tested against a fake Wajo (`server/tests/oauth.test.ts`) and the mock adapter (`server/tests/actions.test.ts`): discovery, registration, state + PKCE, code exchange, sealed tokens, refresh, 401 retry, approval binding, idempotency, duplicate guard, reconciliation, needs-input, timeout, restart recovery, and evidence-based verification.
 
-**Not yet verified against the real Wajo server.** Advertised metadata is evidence that OAuth should work, not proof. Two things are still unknown: whether registration accepts the redirect URI, and the real shape of Fo's replies and transcripts. The parsers accept several shapes, and an unrecognized shape degrades to "working" or "unverified", never to "done". If Fo's transcript doesn't expose tool send records, live actions will end as *unverified* until the evidence rules are adjusted to what Fo actually returns.
+**Hosted registration verified:** the Supabase API successfully registered Tatada and returned a redirect to Wajo's `/oauth/authorize` endpoint with a login cookie. Consent completion, refresh, and the real shape of authenticated Fo replies/transcripts remain unverified. The parsers accept several shapes, and an unrecognized shape degrades to "working" or "unverified", never to "done". If Fo's transcript doesn't expose tool send records, live actions will end as *unverified* until the evidence rules are adjusted to what Fo actually returns.
 
 ## Still unknown (needs approval to test)
-1. Whether `/oauth/register` accepts `http://localhost` redirect URIs. Registration creates a record on Wajo, so it's a write.
+1. Consent completion and local redirect registration; the hosted HTTPS redirect is registered.
 2. Token lifetime and refresh behaviour.
 3. Whether one `mcp` token covers both `/fo` and `/mcp` (the `resource` param suggests per-resource tokens).
 4. Real latency and capability of `ask_fo`, especially outbound calls to businesses.
 
 ## If live integration is unavailable
 Run the labeled mock adapter. The app does not implement importing manually executed Fo tasks, and Claude Code credentials must not be reused by the server.
+
+## Hosted runtime
+
+The website frontend lives at `/tatada/` on GitHub Pages. Its Supabase Edge API is `https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-api`. Postgres stores private runtime state under a service-role-only table with RLS enabled. Database leases serialize writes and are checked before provider calls. Hosted sessions use browser-bound, one-use sign-in exchanges and tab-scoped bearer tokens; Wajo tokens never reach the browser. When a stable Wajo identity is unavailable, OAuth may create a separate private connection session, explicitly labeled in the profile; accounts are never merged by a guessed identity.
