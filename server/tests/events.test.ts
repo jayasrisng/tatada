@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { parseEventbrite, parseLuma, parsePartiful, eventbritePlace } from '../events/sources.ts'
+import { parseEventbrite, parseLuma, parsePartiful, eventbritePlace, eventbriteUrl, lumaUrl } from '../events/sources.ts'
 import { dedupe, inWindow, parseInterests, rankEvents } from '../events/aggregate.ts'
 import { zonedToUtc } from '../events/time.ts'
 import { createFetcher, UpstreamError, type Fetcher } from '../events/fetch.ts'
@@ -192,4 +192,40 @@ test('events HTTP handler validates input, rate-limits and only grants CORS to a
   assert.equal(evil.headers.get('access-control-allow-origin'), null)
   assert.equal((await handle(new Request('http://x/events-api/search?lat=1&lon=1'))).status, 429)
   assert.equal((await handle(new Request('http://x/events-api/search', { method: 'POST' }))).status, 405)
+})
+
+test('hosted protections: origin required, per-instance cap, source cooldown, bounded cache keys and memory', async () => {
+  const hosted = createEventsHandler({ fetcher: fakeFetcher({ 'api.lu.ma': LUMA }), now: () => NOW, allowedOrigins: ['https://jayasrisng.com'], requireOrigin: true, perMinute: 50, instancePerMinute: 2 })
+  const ask = (origin?: string, client = 'a') => hosted(new Request('http://x/tatada-events/search?lat=37.77&lon=-122.42&city=Nowhere', { headers: origin ? { origin } : {} }), client)
+  assert.equal((await ask()).status, 403, 'scripts without an Origin are refused')
+  assert.equal((await ask('https://evil.example')).status, 403)
+  assert.equal((await hosted(new Request('http://x/tatada-events/health'))).status, 200)
+  assert.equal((await ask('https://jayasrisng.com', 'a')).status, 200)
+  assert.equal((await ask('https://jayasrisng.com', 'b')).status, 200)
+  assert.equal((await ask('https://jayasrisng.com', 'c')).status, 429, 'instance-wide cap applies across clients')
+
+  // Snapped coordinates share one upstream page; odd interest words fall back to the city page.
+  assert.equal(lumaUrl(37.7749, -122.4194), lumaUrl(37.7801, -122.4111))
+  assert.match(lumaUrl(37.7749, -122.4194), /latitude=37\.78&longitude=-122\.42/)
+  assert.equal(eventbriteUrl('ca--san-francisco', 'jazz'), 'https://www.eventbrite.com/d/ca--san-francisco/jazz--events/')
+  assert.equal(eventbriteUrl('ca--san-francisco', 'x'.repeat(40)), 'https://www.eventbrite.com/d/ca--san-francisco/events/')
+
+  let clock = 0, calls = 0
+  const limited = createFetcher((async () => { calls++; return new Response('slow down', { status: 429, headers: { 'retry-after': '600' } }) }) as typeof fetch, () => clock)
+  await assert.rejects(limited('https://api.lu.ma/a'), /429/)
+  await assert.rejects(limited('https://api.lu.ma/b'), /slow down/)
+  clock += 9 * 60_000
+  await assert.rejects(limited('https://api.lu.ma/c'), /slow down/)
+  clock += 2 * 60_000
+  await assert.rejects(limited('https://api.lu.ma/d'), /429/)
+  assert.equal(calls, 2, 'no upstream calls during the requested cooldown')
+
+  const big = 'x'.repeat(3_900_000)
+  let served = 0
+  const cached = createFetcher((async () => { served++; return new Response(big) }) as typeof fetch, () => clock)
+  for (let i = 0; i < 12; i++) await cached(`https://h${i}.example/`)
+  await cached('https://h11.example/')
+  assert.equal(served, 12, 'recent entries stay cached')
+  await cached('https://h0.example/')
+  assert.equal(served, 13, 'oldest entries are evicted beyond ~40 MB')
 })

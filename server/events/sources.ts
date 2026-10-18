@@ -23,8 +23,11 @@ function money(cents: number, currency?: string) {
 }
 
 /* ── Luma ── */
+// Coordinates are snapped to a ~2 km grid: nearby searches share one cached
+// upstream page, and arbitrary coordinates can't bypass the cache.
+const snap = (v: number) => (Math.round(v * 50) / 50).toFixed(2)
 export const lumaUrl = (lat: number, lon: number, cursor?: string) =>
-  `https://api.lu.ma/discover/get-paginated-events?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}&pagination_limit=50${cursor ? `&pagination_cursor=${encodeURIComponent(cursor)}` : ''}`
+  `https://api.lu.ma/discover/get-paginated-events?latitude=${snap(lat)}&longitude=${snap(lon)}&pagination_limit=50${cursor ? `&pagination_cursor=${encodeURIComponent(cursor)}` : ''}`
 
 export function parseLuma(body: string): { events: RawEvent[]; nextCursor?: string } {
   const data = JSON.parse(body) as Json
@@ -67,8 +70,11 @@ export function eventbritePlace(city?: string, region?: string, country?: string
   return prefix && slug(city) ? `${prefix}--${slug(city)}` : undefined
 }
 
-export const eventbriteUrl = (place: string, interest?: string) =>
-  `https://www.eventbrite.com/d/${place}/${interest ? `${slug(interest)}--events` : 'events'}/`
+/** Interest pages only for short plain words; anything else uses the city page. */
+export const eventbriteUrl = (place: string, interest?: string) => {
+  const word = interest && /^[a-z][a-z0-9-]{1,23}$/.test(slug(interest)) ? slug(interest) : undefined
+  return `https://www.eventbrite.com/d/${place}/${word ? `${word}--events` : 'events'}/`
+}
 
 function serverData(html: string): Json {
   const marker = 'window.__SERVER_DATA__ = '

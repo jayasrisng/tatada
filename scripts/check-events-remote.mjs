@@ -17,4 +17,6 @@ for (const [label, query] of [['San Francisco', 'lat=37.7749&lon=-122.4194&city=
 }
 const blocked = await fetch(`${base}/search?lat=1&lon=1`, { headers: { origin: 'https://evil.example' } })
 assert.equal(blocked.headers.get('access-control-allow-origin'), null)
+assert.equal(blocked.status, 403, 'other origins are refused')
+assert.equal((await fetch(`${base}/search?lat=1&lon=1`)).status, 403, 'callers without an Origin are refused')
 console.log('Hosted events function OK.')
