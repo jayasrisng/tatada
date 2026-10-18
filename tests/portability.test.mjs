@@ -94,3 +94,14 @@ test('accounts on a shared browser keep separate local data; real accounts start
   assert.ok(rec.warning)
   assert.equal(data.get(`${accountKey('b')}:recovery`), '{bad')
 })
+
+test('closet photos, kept outfits and itinerary survive export and restore', () => {
+  let s = structuredClone(seed())
+  s = reducer(s, { type: 'addGarment', garment: { id: 'camera-top', name: 'My top', category: 'top', color: '#abcdef', vibe: ['casual'], image: 'data:image/png;base64,AAAA', isolated: true, source: 'camera', addedAt: 1 } })
+  s = reducer(s, { type: 'swipeLook', look: { id: 'saved-look', tripId: 'lisbon', garmentIds: ['camera-top', 'straight-jeans'], day: '2026-11-08', verdict: 'keep', at: 2 } })
+  const restored = parseImport(JSON.stringify(buildExport(s, [])))
+  assert.equal(restored.ok, true)
+  assert.deepEqual(restored.state.wardrobe, s.wardrobe)
+  assert.deepEqual(restored.state.looks, s.looks)
+  assert.deepEqual(restored.state.trips[0].itinerary, s.trips[0].itinerary)
+})

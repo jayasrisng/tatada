@@ -30,10 +30,10 @@ export type ViaServer = (email: EmailDraft, trip: Trip, checklistItemId?: string
 
 const Ctx = createContext<Store | null>(null)
 
-export function StoreProvider({ children, workspace, initialState }: { children: ReactNode; workspace: Workspace; initialState?: AppState }) {
+export function StoreProvider({ children, workspace, initialState, initialWarning }: { children: ReactNode; workspace: Workspace; initialState?: AppState; initialWarning?: string | null }) {
   const fresh = (workspace.kind === 'wajo' || workspace.kind === 'connected') ? emptyState : seed
   const [initial] = useState(() =>
-    initialState ? { state: initialState, warning: null } : loadState(() => window.localStorage, workspace.storageKey, fresh),
+    initialState ? { state: initialState, warning: initialWarning ?? null } : loadState(() => window.localStorage, workspace.storageKey, fresh),
   )
   const [state, dispatch] = useReducer(reducer, initial.state)
   const [storageWarning, setStorageWarning] = useState(initial.warning)

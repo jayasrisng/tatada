@@ -316,11 +316,11 @@ export const emptyState = (): AppState => ({
 })
 
 /**
- * Jayasri's closet, cropped from her own photos (metadata, incl. GPS, removed;
- * originals stay out of the repo). Colors are sampled by eye for the avatar.
+ * Jayasri's closet, reconstructed as individual transparent garments from her photos (
+ * originals stay out of the repo). Hidden garment details are approximate.
  */
 const g = (id: string, name: string, category: Garment['category'], color: string, vibe: Garment['vibe']): Garment =>
-  ({ id, name, category, color, vibe, image: `/wardrobe/${id}.jpg`, source: 'photo', addedAt: 1792200000000 })
+  ({ id, name, category, color, vibe, image: `/wardrobe/${id}.png`, source: 'photo', addedAt: 1792200000000 })
 export const WARDROBE: Garment[] = [
   g('white-sweater', 'White fuzzy sweater', 'top', '#f2efe8', ['casual', 'warm']),
   g('black-nike-top', 'Black long-sleeve top', 'top', '#1b1b1d', ['casual', 'active']),

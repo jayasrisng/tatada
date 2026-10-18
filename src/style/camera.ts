@@ -6,7 +6,7 @@
 
 export const MAX_SIDE = 360
 
-export async function processPhoto(file: File): Promise<{ dataUrl: string; color: string }> {
+export async function processPhoto(file: File): Promise<{ dataUrl: string; color: string; isolated: boolean }> {
   if (!file.type.startsWith('image/')) throw new Error('That file isn\'t a photo.')
   if (file.size > 25 * 1024 * 1024) throw new Error('That photo is too large.')
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
@@ -23,5 +23,7 @@ export async function processPhoto(file: File): Promise<{ dataUrl: string; color
   const n = data.length / 4
   for (let i = 0; i < data.length; i += 4) (r += data[i]), (gr += data[i + 1]), (b += data[i + 2])
   const hex = (v: number) => Math.round(v / n).toString(16).padStart(2, '0')
-  return { dataUrl: canvas.toDataURL('image/jpeg', 0.68), color: `#${hex(r)}${hex(gr)}${hex(b)}` }
+  const pixels = g.getImageData(0, 0, canvas.width, canvas.height).data
+  const isolated = pixels.some((v, i) => i % 4 === 3 && v < 255)
+  return { dataUrl: isolated ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.68), color: `#${hex(r)}${hex(gr)}${hex(b)}`, isolated }
 }

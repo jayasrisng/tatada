@@ -23,7 +23,7 @@ const run = (args, env) => new Promise((resolve, reject) => {
 })
 let site
 try {
-  await run(['node_modules/vite/bin/vite.js', 'build', '--base', '/tatada/', '--outDir', join(work, 'dist')], { VITE_API_URL: api })
+  await run(['node_modules/vite/bin/vite.js', 'build', '--base', '/tatada/', '--outDir', join(work, 'dist')], { VITE_API_URL: api, VITE_ENABLE_BACKEND: 'true' })
   const server = start(['server/index.ts'], { NODE_ENV: 'development', PORT: '18787', APP_URL: `${front}/tatada`, PUBLIC_URL: api, TATADA_FO_MODE: 'mock', TATADA_SINGLE_OWNER: '0', TATADA_DATA_DIR: join(work, 'data') })
   let ready = false
   for (let attempt = 0; attempt < 50; attempt++) {

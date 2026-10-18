@@ -59,7 +59,7 @@ const stateShape = shape({
   canvas: record(shape({ x: num, y: num, r: num })),
   wardrobe: optional(list(shape({
     id: str, name: str, category: oneOf('top', 'bottom', 'dress', 'layer', 'shoes'), color: str,
-    vibe: list(oneOf('casual', 'dressy', 'active', 'warm')), image: optional(str), source: oneOf('photo', 'camera'), addedAt: num,
+    vibe: list(oneOf('casual', 'dressy', 'active', 'warm')), image: optional(str), source: oneOf('photo', 'camera'), isolated: optional(bool), addedAt: num,
   }))),
   looks: optional(list(shape({ id: str, tripId: str, garmentIds: strings, day: optional(str), verdict: oneOf('keep', 'skip'), at: num }))),
   archivedActions: optional(list(shape({

@@ -814,3 +814,10 @@ input[type='range'] { width: 100%; accent-color: var(--yellow); height: 30px; }
   .moodboard { color: #000; }
   .board-look { box-shadow: none; border: 1px solid #ccc; }
 }
+
+/* Isolated garment silhouettes, never cropped person photos. */
+.style-camera { margin: 12px 0 16px; }
+.style-camera .btn { width: 100%; }
+.style-camera p { text-align: center; margin: 7px 0; }
+.closet-item img, .swiper-card img, .swipe-pieces img, .board-pics img { object-fit: contain; background: #f3f0e8; }
+[hidden] { display: none !important; }

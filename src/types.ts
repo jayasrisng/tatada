@@ -288,9 +288,11 @@ export interface Garment {
   /** Main color, used to draw it on the avatar. */
   color: string
   vibe: Vibe[]
-  /** '/wardrobe/x.jpg' for extracted photos, or a small data: URL from the camera. */
+  /** '/wardrobe/x.png' for extracted photos, or a small data: URL from the camera. */
   image?: string
   source: 'photo' | 'camera'
+  /** A transparent garment image suitable for layering on the figure. */
+  isolated?: boolean
   addedAt: number
 }
 

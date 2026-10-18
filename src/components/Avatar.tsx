@@ -1,10 +1,10 @@
-import { useId, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Garment } from '../types'
+import { garmentImage } from '../style/images'
 
-/*
- * A hand-drawn stick figure that wears real clothes: each garment is drawn as
- * a simple shape filled with its own photo (color as fallback), outlined in
- * the theme's chalk or marker ink. Drag sideways to turn it in 3D.
+/* Individual transparent garment images are layered on a front-facing figure.
+ * Uploaded reference photos use a color silhouette, never a person-photo texture.
+ * Turning the board is decorative: this is a 2D outfit preview, not a fit simulation.
  */
 
 const SHAPES = {
@@ -17,7 +17,6 @@ const SHAPES = {
 } as const
 
 export function Avatar({ outfit, size = 220, still = false }: { outfit: Garment[]; size?: number; still?: boolean }) {
-  const uid = useId().replace(/:/g, '')
   const [turn, setTurn] = useState(0)
   const drag = useRef<{ x: number; t: number } | null>(null)
   const slot = (c: Garment['category']) => outfit.find((g) => g.category === c)
@@ -27,7 +26,11 @@ export function Avatar({ outfit, size = 220, still = false }: { outfit: Garment[
   const layer = slot('layer')
   const shoes = slot('shoes')
   const short = bottom && /short|skirt/i.test(bottom.name)
-  const fill = (g?: Garment) => (g ? (g.image ? `url(#${uid}-${g.id})` : g.color) : 'none')
+  const extracted = (g: Garment) => g.source === 'photo' || g.isolated === true
+  const piece = (g: Garment, x: number, y: number, width: number, height: number, fallback: string) =>
+    g.image && extracted(g)
+      ? <image href={garmentImage(g.image)} x={x} y={y} width={width} height={height} preserveAspectRatio="none" />
+      : <path d={fallback} fill={g.color} className="avatar-cloth" />
 
   return (
     <div
@@ -42,40 +45,25 @@ export function Avatar({ outfit, size = 220, still = false }: { outfit: Garment[
       onPointerUp={() => (drag.current = null)}
       onPointerCancel={() => (drag.current = null)}
       role="img"
-      aria-label={outfit.length ? `Stick figure wearing ${outfit.map((g) => g.name).join(', ')}` : 'Stick figure'}
+      aria-label={outfit.length ? `Outfit figure wearing ${outfit.map((g) => g.name).join(', ')}` : 'Stick figure'}
     >
       <div className="avatar-body" style={{ transform: `rotateY(${turn}deg)` }}>
         <svg viewBox="0 0 200 340" width="100%" height="100%">
-          <defs>
-            {outfit.filter((g) => g.image).map((g) => (
-              <pattern key={g.id} id={`${uid}-${g.id}`} patternContentUnits="objectBoundingBox" width="1" height="1">
-                <rect width="1" height="1" fill={g.color} />
-                <image href={g.image} x="-0.2" y="-0.15" width="1.4" height="1.3" preserveAspectRatio="xMidYMid slice" />
-              </pattern>
-            ))}
-          </defs>
           <ellipse className="avatar-shadow" cx="100" cy="330" rx="54" ry="7" />
           <g className="avatar-ink" style={{ filter: 'var(--stroke-filter)' }}>
             <circle cx="100" cy="50" r="24" className="avatar-skin" />
             <path className="avatar-face" d="M90 46q3-4 6 0M104 46q3-4 6 0M92 58q8 7 16 0" />
             <path className="avatar-bone" d="M100 74V190M100 96L50 160M100 96L150 160M100 190L82 318M100 190L118 318" />
           </g>
-          {/* clothes, back to front: photo fills stay crisp (no chalk filter) */}
+          {/* Transparent product silhouettes retain their actual collars, sleeves and hems. */}
           <g>
-            {bottom && <path d={short ? SHAPES.shorts : SHAPES.pants} fill={fill(bottom)} className="avatar-cloth" />}
-            {(top || dress) && <path d={dress ? SHAPES.dress : SHAPES.top} fill={fill(dress ?? top)} className="avatar-cloth" />}
-            {layer && (
-              <>
-                <path d={SHAPES.layerL} fill={fill(layer)} className="avatar-cloth" />
-                <path d={SHAPES.layerR} fill={fill(layer)} className="avatar-cloth" />
-              </>
-            )}
-            {shoes && (
-              <>
-                <ellipse cx="78" cy="320" rx="15" ry="8" fill={fill(shoes)} className="avatar-cloth" />
-                <ellipse cx="122" cy="320" rx="15" ry="8" fill={fill(shoes)} className="avatar-cloth" />
-              </>
-            )}
+            {bottom && piece(bottom, 63, 186, 74, short ? 55 : 128, short ? SHAPES.shorts : SHAPES.pants)}
+            {top && piece(top, 43, 90, 114, 109, SHAPES.top)}
+            {dress && piece(dress, 43, 90, 114, 218, SHAPES.dress)}
+            {layer && piece(layer, 28, 88, 144, 123, `${SHAPES.layerL} ${SHAPES.layerR}`)}
+            {shoes && (shoes.image && extracted(shoes)
+              ? <image href={garmentImage(shoes.image)} x="57" y="300" width="86" height="32" preserveAspectRatio="none" />
+              : <g fill={shoes.color}><ellipse cx="78" cy="320" rx="15" ry="8" /><ellipse cx="122" cy="320" rx="15" ry="8" /></g>)}
           </g>
         </svg>
       </div>

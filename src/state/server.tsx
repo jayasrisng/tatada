@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { EmailDraft, Profile, Trip } from '../types'
-import { apiUrl, usesBearer, sessionHeaders, saveSession, loginBinding } from '../config'
+import { apiUrl, usesBearer, sessionHeaders, saveSession, loginBinding, browserOnly } from '../config'
 import { sharedData, stayBooking } from '../magic/stay'
 
 /*
@@ -61,6 +61,7 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+  if (browserOnly) throw new Error('Fo is paused. This workspace saves in your browser.')
   const res = await fetch(apiUrl(path), {
     ...init,
     signal: init.signal ?? AbortSignal.timeout(15000),
@@ -115,6 +116,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
   const put = (list: ServerAction[]) => setActions((prev) => ({ ...prev, ...Object.fromEntries(list.map((a) => [a.id, a])) }))
 
   const refresh = useCallback(async () => {
+    if (browserOnly) return setInfo({ checked: true, available: false })
     if (refreshing.current) return
     refreshing.current = true
     try {

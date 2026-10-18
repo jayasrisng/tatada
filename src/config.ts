@@ -1,3 +1,6 @@
+/** Sign-in and hosted actions are paused; explicitly opt in for backend rehearsals. */
+export const browserOnly = import.meta.env.VITE_ENABLE_BACKEND !== 'true'
+
 /** Public API base; local development uses Vite's /api proxy. */
 const base = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 if (base) {

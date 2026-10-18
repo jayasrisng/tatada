@@ -1,4 +1,4 @@
-import { beginSignIn, apiUrl, usesBearer, sessionHeaders } from '../config'
+import { beginSignIn, apiUrl, usesBearer, sessionHeaders, browserOnly } from '../config'
 import { useEffect, useState } from 'react'
 import { useStore } from '../state/store'
 import { useServer } from '../state/server'
@@ -131,6 +131,8 @@ export function FoConnection() {
       setBusy(false)
     }
   }
+
+  if (browserOnly) return <section className="fo-connection"><h2 className="section-h">Fo · paused</h2><p className="dim">Sign-in and live actions are on hold. Your trips and closet save in this browser. Magic can demonstrate scripted actions without sending messages or bookings.</p></section>
 
   if (workspace.storageKey.endsWith(':preview')) return <section className="fo-connection"><h2 className="section-h">Fo preview</h2><p className="dim">This sample workspace uses simulated actions. Return to live Tatada to authorize Fo.</p></section>
 

@@ -12,10 +12,10 @@ const lisbon = (s) => s.trips.find((t) => t.id === 'lisbon')
 const byId = new Map(WARDROBE.map((g) => [g.id, g]))
 const cats = (ids) => ids.map((id) => byId.get(id).category)
 
-test('the closet extracted from the photos is in the seed and valid', () => {
+test('the reconstructed closet is in the seed and valid', () => {
   const s = seed()
   assert.equal(s.wardrobe.length, 13)
-  for (const g of s.wardrobe) assert.match(g.image, /^\/wardrobe\/[\w-]+\.jpg$/)
+  for (const g of s.wardrobe) assert.match(g.image, /^\/wardrobe\/[\w-]+\.png$/)
   assert.equal(isAppState(s), true)
 })
 

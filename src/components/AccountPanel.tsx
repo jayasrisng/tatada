@@ -1,4 +1,4 @@
-import { beginSignIn, apiUrl } from '../config'
+import { beginSignIn, apiUrl, browserOnly } from '../config'
 import { useRef, useState } from 'react'
 import { useStore } from '../state/store'
 import { useServer } from '../state/server'
@@ -35,7 +35,7 @@ export function AccountPanel() {
   const exportAll = () => {
     const out = buildExport(state, workspace.storageKey.endsWith(':preview') ? [] : Object.values(server.actions))
     download(`tatada-export-${out.exportedAt.slice(0, 10)}.json`, JSON.stringify(out, null, 2))
-    setMsg({ ok: true, text: 'Exported. The file holds your trips, tasks, memories, Magic history and past requests. No passwords or tokens.' })
+    setMsg({ ok: true, text: 'Exported. The file holds your trips, closet photos, saved outfits, tasks, memories, Magic history and past requests. No passwords or tokens.' })
   }
 
   const pick = async (f?: File) => {
@@ -70,7 +70,7 @@ export function AccountPanel() {
         </>
       )}
       {workspace.kind === 'owner' && <p className="dim">Your private workspace on this computer. Fo authorization is managed below.</p>}
-      {workspace.kind !== 'wajo' && workspace.kind !== 'owner' && workspace.kind !== 'connected' && <p className="dim">Demo workspace with sample data. It isn't a real account.</p>}
+      {workspace.kind !== 'wajo' && workspace.kind !== 'owner' && workspace.kind !== 'connected' && <p className="dim">{browserOnly ? 'Saved in this browser on this device. Export a backup before clearing browser data or moving to another device.' : "Demo workspace with sample data. It isn't a real account."}</p>}
 
       {workspace.kind === 'connected' && <p className="dim small">Wajo did not provide a stable account ID. This is a private connection session, not a reusable Wajo account. Export before signing out; another connection may open a new workspace.</p>}
       <h3 className="section-h small-h">your data</h3>

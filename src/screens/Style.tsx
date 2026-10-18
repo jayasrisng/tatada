@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, type RefObject } from 'react'
 import type { DressCode, Garment, GarmentCategory, ItineraryItem, Trip } from '../types'
 import { uid, useStore } from '../state/store'
 import { Doodle } from '../components/Doodle'
@@ -7,6 +7,7 @@ import { Btn, Chip, Heading, TopBar } from '../components/ui'
 import { fmtDay } from '../magic/dates'
 import { byCategory, dayCode, generateLooks, packingList, tripDays, type Suggestion } from '../style/looks'
 import { processPhoto } from '../style/camera'
+import { garmentImage } from '../style/images'
 
 type Tab = 'itinerary' | 'closet' | 'mix' | 'swipe' | 'board'
 const TABS: { id: Tab; label: string }[] = [
@@ -33,6 +34,7 @@ export function Style() {
   const [tab, setTab] = useState<Tab>('swipe')
   const trip = trips.find((t) => t.id === tripId) ?? trips[0]
   const wardrobe = state.wardrobe ?? []
+  const camera = useRef<HTMLInputElement>(null)
 
   return (
     <div className="screen style style-screen">
@@ -40,6 +42,12 @@ export function Style() {
       <Heading tint="var(--pink)" sub="your closet, mixed and matched for the trip">
         Style
       </Heading>
+      <div className="style-camera no-print">
+        <Btn kind="solid" icon="camera" onClick={() => { setTab('closet'); camera.current?.click() }}>
+          add clothing · camera / upload
+        </Btn>
+        <p className="dim small">Your closet saves in this browser. On a phone, you can take a photo.</p>
+      </div>
 
       {trips.length > 0 && (
         <div className="chips no-print" role="group" aria-label="Trip">
@@ -59,11 +67,11 @@ export function Style() {
         ))}
       </nav>
 
-      {tab === 'closet' && <Closet wardrobe={wardrobe} />}
+      <div hidden={tab !== 'closet'}><Closet wardrobe={wardrobe} input={camera} /></div>
       {!trip && tab !== 'closet' && <p className="empty">Plan a trip first, then style it here.</p>}
-      {trip && tab === 'itinerary' && <Itinerary trip={trip} />}
-      {trip && tab === 'mix' && <Mix trip={trip} wardrobe={wardrobe} />}
-      {trip && tab === 'swipe' && <Swipe trip={trip} wardrobe={wardrobe} onDone={() => setTab('board')} />}
+      {trip && tab === 'itinerary' && <Itinerary key={trip.id} trip={trip} />}
+      {trip && tab === 'mix' && <Mix key={trip.id} trip={trip} wardrobe={wardrobe} />}
+      {trip && tab === 'swipe' && <Swipe key={trip.id} trip={trip} wardrobe={wardrobe} onDone={() => setTab('board')} />}
       {trip && tab === 'board' && <Board trip={trip} wardrobe={wardrobe} onSwipe={() => setTab('swipe')} />}
     </div>
   )
@@ -71,21 +79,21 @@ export function Style() {
 
 /* ───────────── closet + camera ───────────── */
 
-function Closet({ wardrobe }: { wardrobe: Garment[] }) {
-  const { dispatch } = useStore()
+function Closet({ wardrobe, input }: { wardrobe: Garment[]; input: RefObject<HTMLInputElement | null> }) {
+  const { state, dispatch } = useStore()
   const [filter, setFilter] = useState<GarmentCategory | 'all'>('all')
-  const [draft, setDraft] = useState<{ image: string; color: string; name: string; category: GarmentCategory } | null>(null)
+  const [draft, setDraft] = useState<{ image: string; color: string; name: string; category: GarmentCategory; isolated: boolean } | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const input = useRef<HTMLInputElement>(null)
   const cameraCount = wardrobe.filter((g) => g.source === 'camera').length
   const shown = filter === 'all' ? wardrobe : wardrobe.filter((g) => g.category === filter)
 
   const snap = async (file?: File) => {
     if (!file) return
     setError(null)
+    if (cameraCount >= MAX_CAMERA) return setError('Remove a camera photo before adding another.')
     try {
       const p = await processPhoto(file)
-      setDraft({ image: p.dataUrl, color: p.color, name: '', category: 'top' })
+      setDraft({ image: p.dataUrl, color: p.color, name: '', category: 'top', isolated: p.isolated })
     } catch (e) {
       setError((e as Error).message)
     }
@@ -112,7 +120,7 @@ function Closet({ wardrobe }: { wardrobe: Garment[] }) {
         <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={(e) => (snap(e.target.files?.[0]), (e.target.value = ''))} aria-label="Camera" />
         {shown.map((g, i) => (
           <figure key={g.id} className="closet-item" style={{ transform: `rotate(${((i * 37) % 5) - 2}deg)` }}>
-            {g.image ? <img src={g.image} alt={g.name} loading="lazy" /> : <span className="closet-swatch" style={{ background: g.color }} />}
+            {g.image ? <img src={garmentImage(g.image)} alt={g.name} loading="lazy" /> : <span className="closet-swatch" style={{ background: g.color }} />}
             <figcaption>
               <span>{g.name}</span>
               <button className="iconbtn small-x" onClick={() => dispatch({ type: 'deleteGarment', id: g.id })} aria-label={`Remove ${g.name}`}>
@@ -131,7 +139,9 @@ function Closet({ wardrobe }: { wardrobe: Garment[] }) {
           onSubmit={(e) => {
             e.preventDefault()
             if (!draft.name.trim()) return setError('Give it a name.')
-            dispatch({ type: 'addGarment', garment: { id: uid(), name: draft.name.trim(), category: draft.category, color: draft.color, vibe: ['casual'], image: draft.image, source: 'camera', addedAt: Date.now() } })
+            if (cameraCount >= MAX_CAMERA) return setError('Remove a camera photo before adding another.')
+            if (JSON.stringify(state).length + draft.image.length > 1_500_000) return setError('This browser’s photo storage is full. Export a backup, then remove some photos before adding more.')
+            dispatch({ type: 'addGarment', garment: { id: uid(), name: draft.name.trim(), category: draft.category, color: draft.color, vibe: ['casual'], image: draft.image, isolated: draft.isolated, source: 'camera', addedAt: Date.now() } })
             setDraft(null)
             setError(null)
           }}
@@ -156,7 +166,7 @@ function Closet({ wardrobe }: { wardrobe: Garment[] }) {
               discard
             </Btn>
           </div>
-          <p className="dim small">Photos are shrunk and stripped of location data before they're saved.</p>
+          <p className="dim small">Saved on this browser, with location metadata removed. Uploaded photos are references; automatic garment extraction is not connected. A transparent garment PNG can be worn on the figure.</p>
         </form>
       )}
     </section>
@@ -327,7 +337,7 @@ function Swiper({ label, item, count, onStep }: { label: string; item?: Garment;
           if (Math.abs(dx) > 30) onStep(dx < 0 ? 1 : -1)
         }}
       >
-        {item?.image ? <img src={item.image} alt="" draggable={false} /> : <span className="closet-swatch" style={{ background: item?.color ?? 'transparent' }} />}
+        {item?.image ? <img src={garmentImage(item.image)} alt="" draggable={false} /> : <span className="closet-swatch" style={{ background: item?.color ?? 'transparent' }} />}
         <span className="swiper-label">{item ? item.name : count ? `no ${label}` : `no ${label}s yet`}</span>
       </div>
       <button className="iconbtn flip" onClick={() => onStep(1)} aria-label={`Next ${label}`} disabled={!count}>
@@ -400,7 +410,7 @@ function Swipe({ trip, wardrobe, onDone }: { trip: Trip; wardrobe: Garment[]; on
         <div className="swipe-pieces">
           {outfit.map((g) => (
             <figure key={g.id}>
-              {g.image ? <img src={g.image} alt={g.name} draggable={false} /> : <span className="closet-swatch" style={{ background: g.color }} />}
+              {g.image ? <img src={garmentImage(g.image)} alt={g.name} draggable={false} /> : <span className="closet-swatch" style={{ background: g.color }} />}
               <figcaption>{g.name}</figcaption>
             </figure>
           ))}
@@ -453,7 +463,7 @@ function Board({ trip, wardrobe, onSwipe }: { trip: Trip; wardrobe: Garment[]; o
             <figure key={l.id} className="board-look" style={{ transform: `rotate(${((n * 41) % 7) - 3}deg)` }}>
               <Avatar outfit={outfit} size={92} still />
               <div className="board-pics">
-                {outfit.slice(0, 4).map((g) => (g.image ? <img key={g.id} src={g.image} alt={g.name} /> : <span key={g.id} className="closet-swatch" style={{ background: g.color }} />))}
+                {outfit.slice(0, 4).map((g) => (g.image ? <img key={g.id} src={garmentImage(g.image)} alt={g.name} /> : <span key={g.id} className="closet-swatch" style={{ background: g.color }} />))}
               </div>
               <figcaption>
                 {l.day ? fmtDay(l.day) : 'any day'}

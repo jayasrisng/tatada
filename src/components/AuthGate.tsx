@@ -1,4 +1,4 @@
-import { beginSignIn, apiUrl, hasHostedApi } from '../config'
+import { beginSignIn, apiUrl, hasHostedApi, browserOnly } from '../config'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppState } from '../types'
 import { useServer } from '../state/server'
@@ -90,6 +90,8 @@ export function AuthGate() {
     [accountId],
   )
 
+  if (browserOnly) return <BrowserWorkspace />
+
   if (preview) return (
     <>
       <div className="mode-banner"><button className="linkbtn" onClick={() => setPreview(false)}>back to live Tatada</button></div>
@@ -126,9 +128,14 @@ export function AuthGate() {
   )
 }
 
-function Mount({ workspace, initialState, banner }: { workspace: Workspace; initialState?: AppState; banner?: string }) {
+function BrowserWorkspace() {
+  const [initial] = useState(() => loadState(() => window.localStorage, `${STORAGE_KEY}:preview`, () => bestLocalCopy() ?? seed()))
+  return <Mount workspace={{ kind: 'local-demo', storageKey: `${STORAGE_KEY}:preview` }} initialState={personalize(initial.state)} initialWarning={initial.warning} banner="Saved in this browser · sample trips · Fo and sign-in paused" />
+}
+
+function Mount({ workspace, initialState, initialWarning, banner }: { workspace: Workspace; initialState?: AppState; initialWarning?: string | null; banner?: string }) {
   return (
-    <StoreProvider workspace={workspace} initialState={initialState}>
+    <StoreProvider workspace={workspace} initialState={initialState} initialWarning={initialWarning}>
       <UIProvider>
         {banner && (
           <p className="mode-banner" role="status">
