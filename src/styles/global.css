@@ -826,13 +826,37 @@ input[type='range'] { width: 100%; accent-color: var(--yellow); height: 30px; }
 .detected-piece { display: grid; grid-template-columns: 22px 70px 1fr; align-items: center; gap: 8px; }
 .detected-piece .closet-preview { width: 70px; height: 90px; object-fit: contain; background: #eeeae0; }
 .detected-piece select { grid-column: 3; min-width: 0; }
-.discover-panel { padding: 16px 20px 100px; overflow-y: auto; flex: 1; min-height: 0; }
-.discover-panel .chalk-input { width: 100%; margin: 8px 0; }
-.discover-location { margin: 14px 0; }
-.discover-location form { display: flex; align-items: center; gap: 8px; }
-.nearby-card { border: 1px solid var(--chalk-line); border-radius: 14px; padding: 14px; margin: 12px 0; }
-.nearby-card h3 { font-size: 23px; margin: 0 0 4px; }
-.nearby-card .ac-buttons { align-items: center; font-size: 14px; margin: 10px 0; }
+.discover-panel { padding: 18px 22px 110px; overflow-y: auto; flex: 1; min-height: 0; max-width: 560px; margin: 0 auto; width: 100%; }
+.discover-panel .chalk-input { width: 100%; }
+.discover-query { font-size: 20px; padding: 14px 16px; }
+.discover-kinds { display: flex; gap: 22px; margin: 14px 2px 4px; }
+.discover-kinds button { font-size: 18px; color: var(--chalk-2); padding: 4px 0; border-bottom: 2px solid transparent; }
+.discover-kinds button.on { color: var(--chalk); border-bottom-color: var(--chalk); }
+.discover-where { margin: 18px 0 10px; display: grid; gap: 10px; }
+.discover-where p { margin: 0; }
+.discover-where .small { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
+.discover-where .btn { justify-self: start; }
+.discover-filters { margin: 8px 0 4px; }
+.discover-filters .chips { margin-bottom: 8px; }
+.link-btn { color: var(--chalk-2); text-decoration: underline; text-underline-offset: 3px; padding: 4px 6px; font-size: inherit; }
+.discover-go { width: 100%; margin: 14px 0 6px; min-height: 48px; }
+.discover-results { margin-top: 22px; }
+.results { list-style: none; padding: 0; margin: 0; }
+.result { padding: 20px 0; border-bottom: 1px solid var(--chalk-line); }
+.result h3 { font-size: 22px; margin: 0 0 4px; line-height: 1.2; overflow-wrap: anywhere; }
+.result-meta { margin: 2px 0; color: var(--chalk-2); font-size: 16px; }
+.result-why { margin: 10px 0 0; padding-left: 18px; font-size: 16px; }
+.result-why li { margin: 3px 0; }
+.result-actions { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; margin-top: 12px; }
+.result-actions details { font-size: 15px; color: var(--chalk-2); }
+.result-actions details[open] { flex-basis: 100%; }
+.result-actions summary, .coverage summary { cursor: pointer; padding: 6px 0; text-decoration: underline; text-underline-offset: 3px; }
+.result-actions details ul { padding-left: 18px; margin: 6px 0; }
+.result .links { display: flex; flex-wrap: wrap; gap: 14px; }
+.coverage { display: inline; margin-left: 8px; }
+.coverage ul { margin: 6px 0; padding-left: 18px; }
+.discover-more { width: 100%; margin-top: 16px; }
+.discover-foot { margin-top: 28px; }
 .travel-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; margin: 18px 0; }
 .travel-stats strong { display: block; font-size: 34px; color: var(--blue); }
 .travel-map { height: 420px; width: 100%; margin: 20px 0; border-radius: 14px; z-index: 0; background: #e7e9df; }
