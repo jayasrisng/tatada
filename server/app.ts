@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomToken, sha256 } from './crypto.ts'
 import { ActionError, type ActionService } from './actions.ts'
@@ -31,6 +32,13 @@ interface Deps {
   resolveIdentity?: ResolveIdentity
   appUrl: string
   secureCookies: boolean
+  /** Exact frontend origin for split-host deployments; enables credentialed CORS. */
+  allowedOrigin?: string
+  /** Cookie-independent session exchange for hosted cross-site APIs. */
+  bearerSessions?: boolean
+  /** New isolated session workspace when Fo authorizes but exposes no stable account ID. */
+  browserAccounts?: boolean
+  loginCookiePath?: string
   now?: () => number
   chats?: FoChatService
   /**
@@ -80,6 +88,7 @@ export function createApp(deps: Deps) {
   const authLimit = new Limiter(10, 10 * 60_000, now)
   const writeLimit = new Limiter(120, 60_000, now)
   const secure = deps.secureCookies ? '; Secure' : ''
+  const loginCookiePath = deps.loginCookiePath ?? '/api/'
 
   const send = (res: ServerResponse, status: number, body: unknown, headers: Record<string, string | string[]> = {}) => {
     res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', ...headers })
@@ -93,7 +102,8 @@ export function createApp(deps: Deps) {
   const clear = (name: string, path = '/') => `${name}=; HttpOnly; SameSite=Lax; Path=${path}; Max-Age=0${secure}`
 
   const cookie = (req: IncomingMessage, name: string) =>
-    (req.headers.cookie ?? '')
+    (name === COOKIE && deps.bearerSessions && /^Bearer [\w-]{20,100}$/.test(String(req.headers.authorization ?? ''))
+      ? `${COOKIE}=${String(req.headers.authorization).slice(7)}` : req.headers.cookie ?? '')
       .split(';')
       .map((c) => c.trim().split('='))
       .find(([k]) => k === name)?.[1]
@@ -168,6 +178,26 @@ export function createApp(deps: Deps) {
     const method = req.method ?? 'GET'
     try {
       if (!path.startsWith('/api/')) return send(res, 404, { error: 'Not found' })
+      if (deps.allowedOrigin) {
+        res.setHeader('vary', 'Origin')
+        const origin = req.headers.origin
+        if (origin && origin !== deps.allowedOrigin) return send(res, 403, { error: 'Request origin not allowed' })
+        if (origin === deps.allowedOrigin) {
+          res.setHeader('access-control-allow-origin', origin)
+          res.setHeader('access-control-allow-credentials', 'true')
+        }
+        if (method === 'OPTIONS') {
+          if (origin !== deps.allowedOrigin) return send(res, 403, { error: 'Request origin not allowed' })
+          const headers = String(req.headers['access-control-request-headers'] ?? '').toLowerCase().split(',').map((h) => h.trim()).filter(Boolean)
+          if (headers.some((h) => !['content-type', 'x-tatada', 'authorization'].includes(h))) return send(res, 403, { error: 'Request headers not allowed' })
+          res.setHeader('access-control-allow-methods', 'GET, POST, PUT, PATCH, OPTIONS')
+          res.setHeader('access-control-allow-headers', 'Content-Type, X-Tatada, Authorization')
+          res.writeHead(204)
+          return res.end()
+        }
+        if (method !== 'GET' && origin !== deps.allowedOrigin) return send(res, 403, { error: 'Request origin not allowed' })
+      }
+      if (path === '/api/health' && method === 'GET') return send(res, 200, { ok: true, provider: actions.provider })
       if (method !== 'GET' && req.headers['x-tatada'] !== '1') return send(res, 403, { error: 'Missing X-Tatada header' })
 
       // Owner mode: refuse anything that isn't this machine's own app (blocks LAN access and DNS rebinding).
@@ -176,6 +206,15 @@ export function createApp(deps: Deps) {
         const origin = req.headers.origin
         if (method !== 'GET' && (!origin || !deps.owner.allowedOrigins.includes(origin))) return send(res, 403, { error: 'Request origin not allowed' })
         if (!store.data.accounts[OWNER_ID]) store.update((d) => (d.accounts[OWNER_ID] = { kind: 'owner', createdAt: now(), lastLoginAt: now() }))
+      }
+      if (deps.bearerSessions && path === '/api/auth/exchange' && method === 'POST') {
+        const body = await readBody(req)
+        const code = typeof body.code === 'string' ? body.code : ''
+        const binding = typeof body.binding === 'string' ? sha256(body.binding) : ''
+        const entry = store.data.sessionExchanges?.[sha256(code)]
+        if (!entry || entry.expiresAt < now() || entry.binding !== binding) return send(res, 401, { error: 'Sign-in link expired or belongs to another browser' })
+        store.update((d) => delete d.sessionExchanges?.[sha256(code)])
+        return send(res, 200, { sessionToken: newSession(entry.userId) })
       }
       const current = deps.owner ? undefined : sessionOf(req)
       const userId = deps.owner ? OWNER_ID : current?.s.userId
@@ -188,7 +227,8 @@ export function createApp(deps: Deps) {
         if (!live) {
           const id = randomToken(12)
           store.update((d) => (d.accounts[id] = { kind: 'demo', createdAt: now(), lastLoginAt: now() }))
-          return send(res, 200, status(id), { 'set-cookie': sessionCookie(newSession(id)) })
+          const sid = newSession(id)
+          return send(res, 200, { ...status(id), ...(deps.bearerSessions ? { sessionToken: sid } : {}) }, { 'set-cookie': sessionCookie(sid) })
         }
         return send(res, 200, status())
       }
@@ -196,17 +236,27 @@ export function createApp(deps: Deps) {
       if ((path === '/api/auth/wajo/start' || path === '/api/fo/connect') && method === 'GET') {
         if (!live || !oauth) return redirect(res, `${appUrl}/#/welcome?auth=demo_mode`)
         if (!authLimit.allow(`start:${ip(req)}`)) return redirect(res, `${appUrl}/#/welcome?auth=rate_limited`)
+        const clientBinding = url.searchParams.get('client_binding') ?? ''
+        if (deps.bearerSessions && !/^[a-f0-9]{64}$/.test(clientBinding)) return redirect(res, `${appUrl}/#/welcome?auth=error&reason=browser_binding`)
         const nonce = randomToken(24)
         try {
           const to = await oauth.start(sha256(nonce))
-          return redirect(res, to, [`${LOGIN_COOKIE}=${nonce}; HttpOnly; SameSite=Lax; Path=/api/; Max-Age=600${secure}`])
+          if (deps.bearerSessions) {
+            const state = new URL(to).searchParams.get('state')!
+            store.update((d) => {
+              const bindings = d.loginBindings ??= {}
+              for (const key of Object.keys(bindings)) if (!d.pendingAuth[key]) delete bindings[key]
+              bindings[state] = clientBinding
+            })
+          }
+          return redirect(res, to, [`${LOGIN_COOKIE}=${nonce}; HttpOnly; SameSite=Lax; Path=${loginCookiePath}; Max-Age=600${secure}`])
         } catch (e) {
           return redirect(res, `${appUrl}/#/welcome?auth=error&reason=${encodeURIComponent(e instanceof OAuthError ? e.code : 'error')}`)
         }
       }
 
       if (path === '/api/fo/callback' && method === 'GET') {
-        const done = (q: string, cookies: string[] = []) => redirect(res, `${appUrl}/#/${q}`, [clear(LOGIN_COOKIE, '/api/'), ...cookies])
+        const done = (q: string, cookies: string[] = []) => redirect(res, `${appUrl}/#/${q}`, [clear(LOGIN_COOKIE, loginCookiePath), ...cookies])
         if (!live || !oauth || (!deps.resolveIdentity && !deps.owner)) return done('welcome?auth=demo_mode')
         if (url.searchParams.get('error')) return done(deps.owner ? '?fo=denied' : 'welcome?auth=denied')
         let login
@@ -235,20 +285,39 @@ export function createApp(deps: Deps) {
           d.identityObservations.push({ at: now(), source: resolved.identity?.source ?? null, field: resolved.identity?.field, foShape: resolved.foShape })
           if (d.identityObservations.length > 20) d.identityObservations.shift()
         })
-        // No verified Wajo identity: refuse, and keep nothing (the tokens are dropped here).
-        if (!resolved.identity) return done('welcome?auth=no_identity')
-        const key = subjectKey(resolved.identity)
+        // No stable identity never merges workspaces. Hosted pre-demos may create
+        // a new isolated connection session after real OAuth consent instead.
+        if (!resolved.identity && !deps.browserAccounts) return done('welcome?auth=no_identity')
         const accountId = store.update((d) => {
+          if (!resolved.identity) {
+            const id = randomToken(12)
+            d.accounts[id] = { kind: 'connected', createdAt: now(), lastLoginAt: now(), identitySource: 'oauth_connection_session' }
+            return id
+          }
+          const key = subjectKey(resolved.identity)
           let id = d.subjects[key]
           if (!id || !d.accounts[id]) {
             id = randomToken(12)
             d.subjects[key] = id
-            d.accounts[id] = { kind: 'wajo', subjectKey: key, identitySource: resolved.identity!.source, createdAt: now(), lastLoginAt: now() }
+            d.accounts[id] = { kind: 'wajo', subjectKey: key, identitySource: resolved.identity.source, createdAt: now(), lastLoginAt: now() }
           }
           d.accounts[id].lastLoginAt = now()
           return id
         })
         oauth.saveFor(accountId, login.tokens)
+        if (deps.bearerSessions) {
+          const state = url.searchParams.get('state') ?? ''
+          const binding = store.data.loginBindings?.[state]
+          if (!binding) return done('welcome?auth=error&reason=browser_binding')
+          const code = randomToken(32)
+          store.update((d) => {
+            delete d.loginBindings?.[state]
+            const exchanges = d.sessionExchanges ??= {}
+            for (const [key, value] of Object.entries(exchanges)) if (value.expiresAt <= now()) delete exchanges[key]
+            exchanges[sha256(code)] = { userId: accountId, binding, expiresAt: now() + 60_000 }
+          })
+          return done(`?auth_exchange=${code}`)
+        }
         // Rotate: whatever session this browser had is replaced.
         return done('?auth=signed_in', [sessionCookie(newSession(accountId, current?.key))])
       }

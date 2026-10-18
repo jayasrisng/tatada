@@ -17,7 +17,7 @@ const themeOf = (page) => page.evaluate(() => document.documentElement.dataset.t
 for (const scheme of ['light', 'dark']) {
   const ctx = await browser.newContext({ colorScheme: scheme, viewport: { width: 390, height: 844 } })
   const page = await ctx.newPage()
-  await page.goto(BASE)
+  await page.goto(`${BASE}/`)
   check((await themeOf(page)) === scheme, `first load follows system ${scheme}`)
   await page.getByRole('button', { name: /Switch to/ }).click()
   const flipped = scheme === 'light' ? 'dark' : 'light'
@@ -34,7 +34,7 @@ for (const theme of ['dark', 'light']) {
     const page = await ctx.newPage()
     const errors = []
     page.on('pageerror', (e) => errors.push(e.message))
-    await page.goto(BASE)
+    await page.goto(`${BASE}/`)
     await page.evaluate(() => localStorage.clear())
     const shot = async (name, hash) => {
       if (hash) await page.goto(`${BASE}/#${hash}`)

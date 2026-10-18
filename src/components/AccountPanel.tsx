@@ -1,3 +1,4 @@
+import { beginSignIn, apiUrl } from '../config'
 import { useRef, useState } from 'react'
 import { useStore } from '../state/store'
 import { useServer } from '../state/server'
@@ -32,7 +33,7 @@ export function AccountPanel() {
   })()
 
   const exportAll = () => {
-    const out = buildExport(state, Object.values(server.actions))
+    const out = buildExport(state, workspace.storageKey.endsWith(':preview') ? [] : Object.values(server.actions))
     download(`tatada-export-${out.exportedAt.slice(0, 10)}.json`, JSON.stringify(out, null, 2))
     setMsg({ ok: true, text: 'Exported. The file holds your trips, tasks, memories, Magic history and past requests. No passwords or tokens.' })
   }
@@ -50,26 +51,28 @@ export function AccountPanel() {
       <h2 id="acct-h" className="section-h">
         <Doodle name="heart" size={20} /> you
       </h2>
-      {workspace.kind === 'wajo' && (
+      {(workspace.kind === 'wajo' || workspace.kind === 'connected') && (
         <>
-          <p>Signed in with Wajo{info.account?.since ? ` since ${new Date(info.account.since).toLocaleDateString()}` : ''}.</p>
+          <p>{workspace.kind === 'connected' ? 'Fo connected for this session' : 'Signed in with Wajo'}{info.account?.since ? ` since ${new Date(info.account.since).toLocaleDateString()}` : ''}.</p>
           {!info.foConnected && (
             <p className="ac-problem">
-              Wajo access ended (expired or revoked). <a href="/api/auth/wajo/start">Sign in with Wajo again</a> to keep using Fo. Your data is safe.
+              Wajo access ended (expired or revoked). <a href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>Sign in with Wajo again</a> to keep using Fo. Your data is safe.
             </p>
           )}
           <div className="ac-buttons">
-            <Btn kind="ghost" onClick={() => server.logout(false)}>
+            <Btn kind="ghost" onClick={() => void server.logout(false).catch((e) => setMsg({ ok: false, text: `Could not sign out: ${e.message}` }))}>
               sign out
             </Btn>
-            <Btn kind="ghost" onClick={() => server.logout(true)}>
+            <Btn kind="ghost" onClick={() => void server.logout(true).catch((e) => setMsg({ ok: false, text: `Could not sign out: ${e.message}` }))}>
               sign out everywhere
             </Btn>
           </div>
         </>
       )}
-      {workspace.kind !== 'wajo' && <p className="dim">Demo workspace with sample data. It isn't a real account.</p>}
+      {workspace.kind === 'owner' && <p className="dim">Your private workspace on this computer. Fo authorization is managed below.</p>}
+      {workspace.kind !== 'wajo' && workspace.kind !== 'owner' && workspace.kind !== 'connected' && <p className="dim">Demo workspace with sample data. It isn't a real account.</p>}
 
+      {workspace.kind === 'connected' && <p className="dim small">Wajo did not provide a stable account ID. This is a private connection session, not a reusable Wajo account. Export before signing out; another connection may open a new workspace.</p>}
       <h3 className="section-h small-h">your data</h3>
       <div className="ac-buttons">
         <Btn kind="ghost" icon="book" onClick={exportAll}>

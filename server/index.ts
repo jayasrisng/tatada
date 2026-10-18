@@ -23,7 +23,7 @@ import { fromAccessToken, fromFoApi, fromTokenResponse } from './identity.ts'
 
 const env = process.env
 const port = Number(env.PORT ?? 8787)
-const appUrl = env.APP_URL ?? 'http://localhost:5173'
+const appUrl = (env.APP_URL ?? 'http://localhost:5173').replace(/\/$/, '')
 const publicUrl = env.PUBLIC_URL ?? `http://localhost:${port}`
 const mode = env.TATADA_FO_MODE === 'live' ? 'live' : 'mock'
 /*
@@ -32,6 +32,12 @@ const mode = env.TATADA_FO_MODE === 'live' ? 'live' : 'mock'
  */
 const singleOwner = env.TATADA_SINGLE_OWNER === '1'
 const appOrigin = new URL(appUrl).origin
+if (env.NODE_ENV === 'production') {
+  if (singleOwner) throw new Error('Single-owner mode cannot run on a public production server')
+  if (!env.APP_URL || !env.PUBLIC_URL || !appUrl.startsWith('https://') || !publicUrl.startsWith('https://')) throw new Error('Production requires HTTPS APP_URL and PUBLIC_URL')
+  if (!env.TATADA_SECRET || env.TATADA_SECRET.length < 32) throw new Error('Production requires TATADA_SECRET with at least 32 characters')
+  if (!env.TATADA_DATA_DIR) throw new Error('Production requires TATADA_DATA_DIR on persistent storage')
+}
 if (singleOwner && !/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(appOrigin)) {
   console.error('[tatada] single-owner mode only runs with a localhost APP_URL')
   process.exit(1)
@@ -85,7 +91,7 @@ const owner = singleOwner
       allowedOrigins: [`http://localhost:${appPort}`, `http://127.0.0.1:${appPort}`],
     }
   : undefined
-const handle = createApp({ store, actions, fo, oauth, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, secureCookies: publicUrl.startsWith('https://') })
+const handle = createApp({ store, actions, fo, oauth, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, allowedOrigin: singleOwner ? undefined : appOrigin, secureCookies: publicUrl.startsWith('https://') })
 // Single-owner mode listens on the loopback interface only.
 createServer((req, res) => void handle(req, res)).listen(port, singleOwner ? '127.0.0.1' : undefined, () => {
   console.log(`[tatada] server on ${publicUrl}${singleOwner ? ' · single-owner, localhost only' : ''} · Fo ${mode}${mode === 'live' ? ` · live recipients: ${actions.liveAllowlist.join(', ') || 'none (sends blocked)'}` : ''}`)

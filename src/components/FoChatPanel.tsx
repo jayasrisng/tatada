@@ -1,3 +1,4 @@
+import { beginSignIn, apiUrl } from '../config'
 import { useEffect, useRef, useState } from 'react'
 import type { Trip } from '../types'
 import * as fo from '../state/foChat'
@@ -108,7 +109,7 @@ export function FoChatPanel({ trip, onSimulated }: { trip?: Trip; onSimulated: (
         <div className="fo-auth">
           <p>Tatada needs your permission to use Fo from your Wajo account. You'll approve it on Wajo; the authorization stays on this computer's Tatada server.</p>
           <div className="ac-buttons">
-            <a className="btn btn-solid" href="/api/auth/wajo/start">
+            <a className="btn btn-solid" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>
               <span>authorize Fo</span>
             </a>
             <Btn kind="ghost" onClick={onSimulated}>

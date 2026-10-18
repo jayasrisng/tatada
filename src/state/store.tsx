@@ -19,7 +19,7 @@ interface Store {
 }
 
 export interface Workspace {
-  kind: 'local-demo' | 'demo' | 'wajo' | 'owner'
+  kind: 'local-demo' | 'demo' | 'wajo' | 'owner' | 'connected'
   storageKey: string
   /** Called after each change is saved locally (e.g. to sync to the server). */
   onChange?: (state: AppState) => void
@@ -31,7 +31,7 @@ export type ViaServer = (email: EmailDraft, trip: Trip, checklistItemId?: string
 const Ctx = createContext<Store | null>(null)
 
 export function StoreProvider({ children, workspace, initialState }: { children: ReactNode; workspace: Workspace; initialState?: AppState }) {
-  const fresh = workspace.kind === 'wajo' ? emptyState : seed
+  const fresh = (workspace.kind === 'wajo' || workspace.kind === 'connected') ? emptyState : seed
   const [initial] = useState(() =>
     initialState ? { state: initialState, warning: null } : loadState(() => window.localStorage, workspace.storageKey, fresh),
   )

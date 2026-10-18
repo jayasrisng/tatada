@@ -2,8 +2,9 @@ import { api } from './server'
 
 /* Client for the server's Fo chat. The browser never talks to MCP directly. */
 
-export type RiskCategory = 'payment' | 'booking' | 'cancellation' | 'third_party_message'
+export type RiskCategory = 'fo_authorization' | 'payment' | 'booking' | 'cancellation' | 'third_party_message'
 export const RISK_LABELS: Record<RiskCategory, string> = {
+  fo_authorization: 'Fo may carry out this exact request using my connected services; the helper email allowlist does not limit Fo chat',
   payment: 'Fo may spend money or make a purchase',
   booking: 'Fo may book or reserve something',
   cancellation: 'Fo may cancel, refund, or delete something',

@@ -1,3 +1,4 @@
+import { beginSignIn, apiUrl, hasHostedApi } from '../config'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppState } from '../types'
 import { useServer } from '../state/server'
@@ -17,6 +18,7 @@ import { Doodle, MagicBuddy } from './Doodle'
  *   - no server                          → a labeled simulated workspace in this browser
  */
 export function AuthGate() {
+  const [preview, setPreview] = useState(false)
   const server = useServer()
   const { info } = server
   const [loaded, setLoaded] = useState<{ accountId: string; version: number; state?: AppState; gen: number } | null>(null)
@@ -88,14 +90,29 @@ export function AuthGate() {
     [accountId],
   )
 
+  if (preview) return (
+    <>
+      <div className="mode-banner"><button className="linkbtn" onClick={() => setPreview(false)}>back to live Tatada</button></div>
+      <Mount workspace={{ kind: 'local-demo', storageKey: `${STORAGE_KEY}:preview` }} initialState={loadState(() => window.localStorage, `${STORAGE_KEY}:preview`, seed).state} banner="Interactive preview · sample data · no real messages or bookings" />
+    </>
+  )
   if (!info.checked) return <Splash />
 
+  if (!info.available && hasHostedApi) return (
+    <div className="frame"><main className="app chromeless"><div className="screen center">
+      <MagicBuddy size={84} /><h1 className="logo big">tatada</h1>
+      <p>The live connection is unavailable right now.</p>
+      <p className="dim">You can explore a sample trip while it reconnects. Preview actions are simulated.</p>
+      <button className="btn btn-solid" onClick={() => setPreview(true)}>explore a sample trip</button>
+      <button className="linkbtn" onClick={() => void server.refresh()}>try live connection again</button>
+    </div></main></div>
+  )
   if (!info.available) {
     // No server: still open directly, clearly labeled, with nothing real able to happen.
     return <Mount workspace={{ kind: 'local-demo', storageKey: STORAGE_KEY }} initialState={personalize(bestLocalCopy() ?? seed())} banner="Tatada server offline · simulated mode · nothing real can happen" />
   }
 
-  if (!info.authenticated || !accountId) return <SignIn />
+  if (!info.authenticated || !accountId) return <SignIn onDemo={() => setPreview(true)} />
   if (!loaded || loaded.accountId !== accountId) return <Splash />
 
   const workspace: Workspace = { kind: info.account?.kind ?? 'demo', storageKey: accountKey(accountId), onChange }
@@ -146,7 +163,7 @@ const AUTH_MESSAGES: Record<string, string> = {
   error: 'Signing in with Wajo didn\'t work.',
 }
 
-function SignIn() {
+function SignIn({ onDemo }: { onDemo: () => void }) {
   const q = hashQuery()
   const auth = q.get('auth')
   const reason = q.get('reason')
@@ -169,10 +186,11 @@ function SignIn() {
               {reason ? ` (${reason})` : ''}
             </p>
           )}
-          <a className="btn btn-solid signin-btn" href="/api/auth/wajo/start">
+          <a className="btn btn-solid signin-btn" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>
             <Doodle name="arrow" size={20} />
             <span>Continue with Wajo</span>
           </a>
+          <button className="linkbtn" onClick={onDemo}>explore a sample trip first</button>
           <p className="dim small signin-fine">
             Tatada signs you in with your Wajo account. Fo only acts for you after you approve each request. Your Wajo password and tokens never reach this page.
           </p>

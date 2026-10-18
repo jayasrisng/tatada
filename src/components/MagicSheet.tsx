@@ -15,8 +15,10 @@ const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), textar
 
 export function MagicSheet() {
   const { magic, closeMagic } = useUI()
-  const { state, ask, dispatch } = useStore()
+  const { state, ask, dispatch, workspace } = useStore()
   const server = useServer()
+  const isPreview = workspace.storageKey.endsWith(':preview')
+  const canUseServer = server.info.available && !isPreview
   const [text, setText] = useState('')
   const [tripId, setTripId] = useState<string | undefined>()
   const endRef = useRef<HTMLDivElement>(null)
@@ -29,7 +31,7 @@ export function MagicSheet() {
 
   // Server path for email requests: mock Fo always, live Fo once connected.
   const viaServer: ViaServer | undefined =
-    server.info.available && (server.info.provider === 'mock' || server.info.foConnected)
+    canUseServer && (server.info.provider === 'mock' || server.info.foConnected)
       ? async (email, trip, checklistItemId) => {
           const a = await server.create(draftPayload(email, trip, state.profile, checklistItemId))
           return a.id
@@ -42,7 +44,7 @@ export function MagicSheet() {
     const t = magic.tripId ?? state.trips.find((x) => x.status !== 'past')?.id
     setTripId(t)
     // Task shortcuts open the scripted drafting helper; the Fo button opens the real Fo chat.
-    setView(magic.prefill || !server.info.available ? 'scripted' : 'fo')
+    setView(magic.prefill || !canUseServer ? 'scripted' : 'fo')
     if (magic.autoSend && magic.prefill) {
       void ask(magic.prefill, t, magic.itemId, undefined, true, viaServer)
       setText('')
@@ -92,8 +94,8 @@ export function MagicSheet() {
     setItemId(undefined)
   }
   const contexts = state.trips.filter((t) => t.status !== 'past')
-  const mode = !server.info.available
-    ? 'scripted helper · Tatada server offline, so everything here is simulated in this browser'
+  const mode = !canUseServer
+    ? 'interactive preview · scripted replies · actions are simulated in this browser'
     : server.info.provider === 'mock'
       ? 'scripted helper · scripted replies, not Fo · drafted emails run through mock Fo'
       : server.info.foConnected
@@ -110,7 +112,7 @@ export function MagicSheet() {
           <h2 className="magic-title" id="magic-title">
             <Doodle name="sparkle" size={26} className="spin-slow" /> Magic
           </h2>
-          <span className="powered">powered by Wajo Fo</span>
+          <span className="powered">{canUseServer ? 'powered by Wajo Fo' : 'interactive preview · simulated'}</span>
         </div>
         {view === 'scripted' && state.chat.length > 0 ? (
           <button className="linkbtn" onClick={() => dispatch({ type: 'clearChat' })}>
@@ -133,7 +135,7 @@ export function MagicSheet() {
         </Chip>
       </div>
 
-      {server.info.available && (
+      {canUseServer && (
         <div className="seg magic-seg" role="tablist" aria-label="Who you're talking to">
           <button role="tab" aria-selected={view === 'fo'} className={view === 'fo' ? 'on' : ''} onClick={() => setView('fo')}>
             Fo chat
@@ -144,7 +146,7 @@ export function MagicSheet() {
         </div>
       )}
 
-      {view === 'fo' && server.info.available ? (
+      {view === 'fo' && canUseServer ? (
         <FoChatPanel trip={trip} onSimulated={() => setView('scripted')} />
       ) : (
       <>

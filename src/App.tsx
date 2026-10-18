@@ -73,15 +73,16 @@ export function App() {
 
 /** Tracks server actions referenced in chat and copies verified outcomes onto their own trip's task. */
 function useServerSync() {
-  const { state, dispatch } = useStore()
+  const { state, dispatch, workspace } = useStore()
   const { actions, track } = useServer()
   const ids = state.chat.map((m) => m.serverActionId).filter((x): x is string => !!x)
   const key = ids.join(',')
   useEffect(() => {
-    track(ids)
+    if (!workspace.storageKey.endsWith(':preview')) track(ids)
   }, [key])
 
   useEffect(() => {
+    if (workspace.storageKey.endsWith(':preview')) return
     for (const a of Object.values(actions)) {
       const r = a.result
       const itemId = a.draft.checklistItemId

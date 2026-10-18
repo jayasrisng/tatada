@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { EmailDraft, Profile, Trip } from '../types'
+import { apiUrl, usesBearer, sessionHeaders, saveSession, loginBinding } from '../config'
 import { sharedData, stayBooking } from '../magic/stay'
 
 /*
@@ -46,7 +47,7 @@ export interface ServerInfo {
   demo?: boolean
   authenticated?: boolean
   owner?: boolean
-  account?: { id: string; kind: 'wajo' | 'demo' | 'owner'; identitySource?: string; since: number }
+  account?: { id: string; kind: 'wajo' | 'demo' | 'owner' | 'connected'; identitySource?: string; since: number }
   foConnected?: boolean
   liveRecipients?: string[]
 }
@@ -60,10 +61,11 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     ...init,
-    credentials: 'same-origin',
-    headers: { ...(init.method && init.method !== 'GET' ? { 'x-tatada': '1' } : {}), ...(init.json !== undefined ? { 'content-type': 'application/json' } : {}) },
+    signal: init.signal ?? AbortSignal.timeout(15000),
+    credentials: usesBearer ? 'omit' : 'include',
+    headers: { ...sessionHeaders(), ...(init.method && init.method !== 'GET' ? { 'x-tatada': '1' } : {}), ...(init.json !== undefined ? { 'content-type': 'application/json' } : {}) },
     body: init.json !== undefined ? JSON.stringify(init.json) : undefined,
   })
   const body = await res.json().catch(() => ({}))
@@ -108,16 +110,27 @@ export function ServerProvider({ children }: { children: ReactNode }) {
   const [info, setInfo] = useState<ServerInfo>({ checked: false, available: false })
   const [actions, setActions] = useState<Record<string, ServerAction>>({})
   const tracked = useRef(new Set<string>())
+  const refreshing = useRef(false)
 
   const put = (list: ServerAction[]) => setActions((prev) => ({ ...prev, ...Object.fromEntries(list.map((a) => [a.id, a])) }))
 
   const refresh = useCallback(async () => {
+    if (refreshing.current) return
+    refreshing.current = true
     try {
-      const s = await api<Omit<ServerInfo, 'available' | 'checked'>>('/api/session', { method: 'POST' })
+      const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
+      const code = params.get('auth_exchange')
+      if (usesBearer && code) {
+        const result = await api<{ sessionToken: string }>('/api/auth/exchange', { method: 'POST', json: { code, binding: loginBinding() } })
+        saveSession(result.sessionToken)
+        history.replaceState(null, '', `${location.pathname}${location.search}#/`)
+      }
+      const s = await api<Omit<ServerInfo, 'available' | 'checked'> & { sessionToken?: string }>('/api/session', { method: 'POST' })
+      if (s.sessionToken) saveSession(s.sessionToken)
       setInfo({ checked: true, available: true, ...s })
     } catch {
       setInfo({ checked: true, available: false })
-    }
+    } finally { refreshing.current = false }
   }, [])
 
   useEffect(() => {
@@ -152,17 +165,18 @@ export function ServerProvider({ children }: { children: ReactNode }) {
   const value: Ctx = {
     info,
     logout: async (everywhere = false) => {
-      await api('/api/auth/logout', { method: 'POST', json: { everywhere } }).catch(() => {})
+      await api('/api/auth/logout', { method: 'POST', json: { everywhere } })
+      saveSession()
       tracked.current.clear()
       setActions({})
       await refresh()
     },
     loadWorkspace: () => api<{ version: number; state: unknown }>('/api/workspace'),
     saveWorkspace: async (baseVersion, state) => {
-      const res = await fetch('/api/workspace', {
+      const res = await fetch(apiUrl('/api/workspace'), {
         method: 'PUT',
-        credentials: 'same-origin',
-        headers: { 'x-tatada': '1', 'content-type': 'application/json' },
+        credentials: usesBearer ? 'omit' : 'include',
+        headers: { ...sessionHeaders(), 'x-tatada': '1', 'content-type': 'application/json' },
         body: JSON.stringify({ baseVersion, state }),
       })
       const body = await res.json().catch(() => ({}))

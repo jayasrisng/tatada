@@ -1,6 +1,8 @@
+import { beginSignIn, apiUrl, usesBearer, sessionHeaders } from '../config'
 import { useEffect, useState } from 'react'
+import { useStore } from '../state/store'
 import { useServer } from '../state/server'
-import { hashQuery } from '../state/ui'
+import { go, hashQuery } from '../state/ui'
 import { Doodle } from './Doodle'
 import { Btn } from './ui'
 
@@ -35,10 +37,10 @@ function ReadOnlyCheck() {
   const [d, setD] = useState<Diagnostics | null>(null)
   const [obs, setObs] = useState<Observation[] | null>(null)
   const [refreshMsg, setRefreshMsg] = useState<string | null>(null)
-  const loadObs = async () => setObs((await (await fetch('/api/fo/oauth-observations', { credentials: 'same-origin' })).json()).observations)
+  const loadObs = async () => setObs((await (await fetch(apiUrl('/api/fo/oauth-observations'), { credentials: usesBearer ? 'omit' : 'include', headers: sessionHeaders() })).json()).observations)
   const testRefresh = async () => {
     setRefreshMsg('refreshing…')
-    const res = await fetch('/api/fo/test-refresh', { method: 'POST', headers: { 'x-tatada': '1' }, credentials: 'same-origin' })
+    const res = await fetch(apiUrl('/api/fo/test-refresh'), { method: 'POST', headers: { ...sessionHeaders(), 'x-tatada': '1' }, credentials: usesBearer ? 'omit' : 'include' })
     const body = await res.json()
     setRefreshMsg(res.ok ? `Refresh worked${body.observation?.refreshRotated ? ' (refresh token rotated)' : ''}.` : `Refresh failed: ${body.error}${body.connected === false ? '. Reconnect Fo.' : ''}`)
     await loadObs()
@@ -49,7 +51,7 @@ function ReadOnlyCheck() {
     setBusy(true)
     setErr(null)
     try {
-      const res = await fetch('/api/fo/diagnostics', { credentials: 'same-origin' })
+      const res = await fetch(apiUrl('/api/fo/diagnostics'), { credentials: usesBearer ? 'omit' : 'include', headers: sessionHeaders() })
       const body = await res.json()
       if (!res.ok) throw new Error(body.error ?? res.status)
       setD(body)
@@ -105,8 +107,10 @@ function ReadOnlyCheck() {
 }
 
 export function FoConnection() {
-  const { info, refresh } = useServer()
+  const { workspace } = useStore()
+  const { info, refresh, logout } = useServer()
   const [busy, setBusy] = useState(false)
+  const [disconnectError, setDisconnectError] = useState<string | null>(null)
   const q = hashQuery()
   const result = q.get('fo')
   const reason = q.get('reason')
@@ -117,16 +121,25 @@ export function FoConnection() {
 
   const disconnect = async () => {
     setBusy(true)
-    await fetch('/api/fo/disconnect', { method: 'POST', headers: { 'x-tatada': '1' }, credentials: 'same-origin' }).catch(() => {})
-    await refresh()
-    setBusy(false)
+    setDisconnectError(null)
+    try {
+      await logout(false)
+      go('/welcome')
+    } catch (e) {
+      setDisconnectError(`Could not disconnect Fo: ${(e as Error).message}`)
+    } finally {
+      setBusy(false)
+    }
   }
+
+  if (workspace.storageKey.endsWith(':preview')) return <section className="fo-connection"><h2 className="section-h">Fo preview</h2><p className="dim">This sample workspace uses simulated actions. Return to live Tatada to authorize Fo.</p></section>
 
   return (
     <section className="fo-connection" aria-labelledby="fo-h">
       <h2 id="fo-h" className="section-h">
         <Doodle name="bolt" size={22} /> Fo
       </h2>
+      {disconnectError && <p className="ac-problem" role="alert">{disconnectError}</p>}
       {result && (
         <p className={result === 'connected' ? 'added' : 'ac-problem'} role="status">
           {RESULT[result] ?? 'Something happened.'}
@@ -136,11 +149,11 @@ export function FoConnection() {
       {!info.available ? (
         <p className="dim">The Tatada server isn't running, so Magic simulates actions in this browser. Start it with <code>npm run server</code>.</p>
       ) : info.provider === 'mock' ? (
-        <p className="dim">Mock Fo: every request goes through the real approval and verification pipeline, but no email is sent. To use your real Fo, restart the server with <code>npm run server:live</code>.</p>
+        <p className="dim">Mock Fo: every request goes through the real approval and verification pipeline, but no email is sent. For the local live presentation, run <code>npm run server:fo</code>.</p>
       ) : info.foConnected ? (
         <>
-          <p>Connected to your Wajo account. Approved emails are really sent.</p>
-          <p className="dim small">Live sends are limited to: {info.liveRecipients?.length ? info.liveRecipients.join(', ') : 'nobody yet (set TATADA_LIVE_RECIPIENTS)'}</p>
+          <p>Fo is authorized. Approved helper emails are sent to allowed recipients; Fo chat can act beyond that email list.</p>
+          <p className="dim small">Helper email recipients: {info.liveRecipients?.length ? info.liveRecipients.join(', ') : 'nobody yet (set TATADA_LIVE_RECIPIENTS)'}</p>
           <ReadOnlyCheck />
           <Btn kind="ghost" disabled={busy} onClick={disconnect}>
             disconnect
@@ -148,9 +161,9 @@ export function FoConnection() {
         </>
       ) : (
         <>
-          <p>Your Wajo access has ended, so Fo can't act for you right now. Sign in with Wajo again; your workspace stays as it is.</p>
-          <a className="btn btn-solid" href="/api/auth/wajo/start">
-            <span>sign in with Wajo again</span>
+          <p>Fo is not authorized. Connect your Wajo account to use real Fo; your workspace stays as it is.</p>
+          <a className="btn btn-solid" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>
+            <span>{info.owner ? 'authorize Fo' : 'sign in with Wajo'}</span>
           </a>
         </>
       )}

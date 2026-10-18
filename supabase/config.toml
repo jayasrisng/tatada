@@ -1,0 +1,6 @@
+project_id = "tatada"
+[functions.tatada-api]
+verify_jwt = false
+entrypoint = "./functions/tatada-api/index.ts"
+[db.migrations]
+schema_paths = ["./schemas/*.sql"]

@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { createApp, SESSION_IDLE, SESSION_TTL } from '../app.ts'
 import { FoOAuth } from '../oauth.ts'
-import { Sealer } from '../crypto.ts'
+import { sha256, Sealer } from '../crypto.ts'
 import { Store } from '../store.ts'
 import { MockFoAdapter } from '../fo.ts'
 import { ActionService } from '../actions.ts'
@@ -33,7 +33,7 @@ function fakeWajo(identity: () => Record<string, unknown>) {
   }) as typeof fetch
 }
 
-async function boot(o: { identity?: () => Record<string, unknown> } = {}) {
+async function boot(o: { identity?: () => Record<string, unknown>; bearer?: boolean; browserAccounts?: boolean } = {}) {
   let who: Record<string, unknown> = { user_id: 'wajo-user-1' }
   const clock = { t: 10_000_000 }
   const store = Store.memory()
@@ -42,7 +42,7 @@ async function boot(o: { identity?: () => Record<string, unknown> } = {}) {
   const actions = new ActionService({ store, fo, now: () => clock.t })
   const oauth = new FoOAuth({ store, sealer: new Sealer('k'.repeat(40)), resource: RESOURCE, redirectUri: 'http://localhost/api/fo/callback', fetch: fakeWajo(o.identity ?? (() => who)), now: () => clock.t })
   const handle = createApp({
-    store, actions, fo, oauth, appUrl: 'http://app.test', secureCookies: false, now: () => clock.t,
+    store, actions, fo, oauth, bearerSessions: o.bearer, browserAccounts: o.browserAccounts, appUrl: 'http://app.test', secureCookies: false, now: () => clock.t,
     resolveIdentity: async ({ body, tokens, issuer }) => ({ identity: fromTokenResponse(body, issuer) ?? fromAccessToken(tokens.accessToken, issuer, clock.t) }),
   })
   const server: Server = createServer((req, res) => void handle(req, res))
@@ -221,4 +221,42 @@ test('identity sources: token fields, Wajo-issued unexpired JWT sub, nothing els
   assert.equal(fromAccessToken(jwt({ iss: 'https://evil.test', sub: 'abc' }), ISSUER, Date.now()), null)
   assert.equal(fromAccessToken(jwt({ iss: ISSUER, sub: 'abc', exp: 1 }), ISSUER, Date.now()), null)
   assert.equal(fromAccessToken('opaque-token', ISSUER, Date.now()), null)
+})
+
+
+test('hosted sign-in uses a single-use exchange bound to the starting browser', async () => {
+  const t = await boot({ bearer: true })
+  try {
+    const b = t.browser()
+    const binding = 'browser-only-secret'
+    const start = await b.call(`/api/auth/wajo/start?client_binding=${sha256(binding)}`)
+    const state = new URL(start.location).searchParams.get('state')
+    const callback = await b.call(`/api/fo/callback?code=good&state=${state}`)
+    const code = new URLSearchParams(callback.location.split('?')[1]).get('auth_exchange')
+    assert.ok(code)
+    assert.equal((await b.call('/api/auth/exchange', { method: 'POST', json: { code, binding: 'another-browser' } })).status, 401)
+    const result = await b.call('/api/auth/exchange', { method: 'POST', json: { code, binding } })
+    assert.equal(result.status, 200)
+    assert.ok(result.body.sessionToken)
+    assert.ok(t.store.data.sessions[sha256(result.body.sessionToken)])
+    assert.equal((await b.call('/api/auth/exchange', { method: 'POST', json: { code, binding } })).status, 401)
+    assert.equal(JSON.stringify(t.store.data).includes(result.body.sessionToken), false)
+  } finally { t.server.close() }
+})
+
+
+test('hosted OAuth without a stable identity creates fresh isolated connection sessions', async () => {
+  const t = await boot({ identity: () => ({}), browserAccounts: true })
+  try {
+    const a = t.browser()
+    const b = t.browser()
+    await a.login()
+    await b.login()
+    const first = await a.call('/api/session', { method: 'POST' })
+    const second = await b.call('/api/session', { method: 'POST' })
+    assert.equal(first.body.account.kind, 'connected')
+    assert.notEqual(first.body.account.id, second.body.account.id)
+    assert.equal(first.body.foConnected, true)
+    assert.equal(Object.keys(t.store.data.subjects).length, 0, 'no stable identity is claimed')
+  } finally { t.server.close() }
 })

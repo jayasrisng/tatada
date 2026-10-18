@@ -6,6 +6,7 @@ import { chromium } from 'playwright-core'
 import { mkdirSync } from 'node:fs'
 
 const BASE = process.env.BASE ?? 'http://localhost:5173'
+const API_BASE = process.env.API_BASE ?? new URL(BASE).origin
 const OUT = new URL('./out/', import.meta.url).pathname
 mkdirSync(OUT, { recursive: true })
 
@@ -39,10 +40,10 @@ const magic = () => page.getByRole('dialog', { name: 'Magic' })
 const serverCard = () => magic().locator('[data-server-action]').last()
 
 try {
-  const status = await page.request.post(`${BASE}/api/session`, { headers: { 'x-tatada': '1' } }).then((r) => r.json()).catch(() => null)
+  const status = await page.request.post(`${API_BASE}/api/session`, { headers: { 'x-tatada': '1', origin: new URL(BASE).origin } }).then((r) => r.json()).catch(() => null)
   check(status?.provider === 'mock', 'Tatada server reachable in mock mode (run `npm run server`)')
 
-  await page.goto(BASE)
+  await page.goto(`${BASE}/`)
   await page.evaluate(() => localStorage.clear())
   await visit('/')
   await shot('01-home')
@@ -117,7 +118,7 @@ try {
   const preview = magic().getByTestId('fo-preview')
   await preview.waitFor()
   check(/What should I pack for the hills\?/.test(await preview.locator('.fo-message').textContent()) && /Tatada ref T-/.test(await preview.locator('.fo-message').textContent()), 'preview shows the exact outgoing text')
-  check((await page.request.get(`${BASE}/api/fo/chats?tripId=`).then((r) => r.json())).chats.every((c) => c.turns.length === 0), 'opening and previewing sent nothing')
+  check((await page.request.get(`${API_BASE}/api/fo/chats?tripId=`).then((r) => r.json())).chats.every((c) => c.turns.length === 0), 'opening and previewing sent nothing')
   await preview.getByRole('button', { name: 'Send to Fo' }).click()
   check(await magic().getByText('mock Fo says').first().waitFor({ timeout: 15000 }).then(() => true, () => false), 'Fo\'s reply appears, labeled as Fo\'s words')
   await foBox.fill('Book a table for two at 8')

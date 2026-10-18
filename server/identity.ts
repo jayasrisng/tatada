@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { sha256 } from './crypto.ts'
 import type { McpClient } from './mcp.ts'
 import { describeShape } from './fo.ts'

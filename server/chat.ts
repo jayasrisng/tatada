@@ -102,7 +102,7 @@ export class FoChatService {
     const first = !c.conversationId && !c.turns.some((t) => t.role === 'me')
     const message = [context, text, first ? `(Tatada ref ${c.ref})` : ''].filter(Boolean).join('\n\n')
     const answering = c.status === 'needs_input' ? [...c.turns].reverse().find((t) => t.role === 'fo')?.text : undefined
-    const risk = riskOf(message, answering)
+    const risk: RiskCategory[] = [...(this.fo.mode === 'live' ? ['fo_authorization' as const] : []), ...riskOf(message, answering)]
     c.pending = { text, message, risk, hash: sha256(canonical({ id: c.id, message, risk })), preparedAt: this.now() }
     this.touch(c)
     return this.view(c)
@@ -162,8 +162,8 @@ export class FoChatService {
     })
   }
 
-  async runDue(): Promise<number> {
-    const due = Object.values(this.chats).filter((c) => BUSY.includes(c.status) && (c.nextRunAt ?? 0) <= this.now() && !this.inFlight.has(c.id))
+  async runDue(limit = Infinity): Promise<number> {
+    const due = Object.values(this.chats).filter((c) => BUSY.includes(c.status) && (c.nextRunAt ?? 0) <= this.now() && !this.inFlight.has(c.id)).slice(0, limit)
     for (const c of due) {
       this.inFlight.add(c.id)
       try {

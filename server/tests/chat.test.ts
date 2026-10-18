@@ -242,3 +242,15 @@ test('single-owner mode: Fo is authorized for the owner without any Wajo identit
     t.server.close()
   }
 })
+
+test('all live chat messages require explicit broad Fo authorization', () => {
+  const store = Store.memory()
+  const fo = new MockFoAdapter(store)
+  Object.defineProperty(fo, 'mode', { value: 'live' })
+  const service = new FoChatService({ store, fo })
+  const c = service.create('owner')
+  const prepared = service.prepare('owner', c.id, { text: 'What can you help with?' })
+  assert.ok(prepared.pending!.risk.includes('fo_authorization'))
+  assert.throws(() => service.send('owner', c.id, { hash: prepared.pending!.hash, idempotencyKey: 'live-key-123', confirm: [] }), ActionError)
+  assert.equal(service.send('owner', c.id, { hash: prepared.pending!.hash, idempotencyKey: 'live-key-123', confirm: ['fo_authorization'] }).status, 'sending')
+})

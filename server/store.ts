@@ -18,7 +18,7 @@ export interface PendingAuth {
 
 export interface Account {
   /** 'owner': the single local owner of a localhost-only server (no Wajo identity). */
-  kind: 'wajo' | 'demo' | 'owner'
+  kind: 'wajo' | 'demo' | 'owner' | 'connected'
   subjectKey?: string
   identitySource?: string
   createdAt: number
@@ -47,6 +47,8 @@ export interface Data {
   identityObservations: { at: number; source: string | null; field?: string; foShape?: unknown }[]
   /** sha256(session id) → session. Raw session ids are never stored. */
   sessions: Record<string, Session>
+  sessionExchanges?: Record<string, { userId: string; expiresAt: number; binding: string }>
+  loginBindings?: Record<string, string>
   oauthClient?: { issuer: string; clientId: string; redirectUri: string; registeredAt: number }
   /** OAuth state → pending login. Single use, short-lived. */
   pendingAuth: Record<string, PendingAuth>
@@ -88,8 +90,11 @@ const empty = (): Data => ({ users: {}, accounts: {}, subjects: {}, workspaces: 
 export class Store {
   data: Data
   private file?: string
+  private persist?: (data: Data) => Promise<void>
+  private pending: Promise<void> = Promise.resolve()
 
-  constructor(file?: string) {
+  constructor(file?: string, persist?: (data: Data) => Promise<void>) {
+    this.persist = persist
     this.file = file
     this.data = empty()
     if (file && existsSync(file)) this.data = { ...empty(), ...JSON.parse(readFileSync(file, 'utf8')) }
@@ -101,6 +106,11 @@ export class Store {
   }
 
   save() {
+    if (this.persist) {
+      const snapshot = structuredClone(this.data)
+      this.pending = this.pending.then(() => this.persist!(snapshot))
+      void this.pending.catch(() => {}) // flush() reports persistence failures to the caller
+    }
     if (!this.file) return
     mkdirSync(dirname(this.file), { recursive: true })
     const tmp = join(dirname(this.file), `.${Date.now()}-${process.pid}.tmp`)
@@ -108,6 +118,8 @@ export class Store {
     renameSync(tmp, this.file)
     chmodSync(this.file, 0o600)
   }
+
+  async flush() { await this.pending }
 
   /** Mutate and persist in one step. */
   update<T>(fn: (d: Data) => T): T {

@@ -279,10 +279,10 @@ export class ActionService {
   }
 
   /** Runs every action that's due, one at a time. Returns how many ran. */
-  async runDue(): Promise<number> {
+  async runDue(limit = Infinity): Promise<number> {
     const due = Object.values(this.store.data.actions).filter(
       (a) => !TERMINAL.includes(a.status) && !['proposed', 'needs_input'].includes(a.status) && (a.nextRunAt ?? 0) <= this.now() && !this.inFlight.has(a.id),
-    )
+    ).slice(0, limit)
     for (const a of due) {
       this.inFlight.add(a.id)
       try {

@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { pkceChallenge, randomToken, Sealer } from './crypto.ts'
 import type { OAuthObservation, Store } from './store.ts'
 import type { TokenSet } from './types.ts'
