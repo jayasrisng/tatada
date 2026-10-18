@@ -13,6 +13,7 @@
     "server": "node server/index.ts",
     "server:live": "TATADA_FO_MODE=live node server/index.ts",
     "server:fo": "TATADA_FO_MODE=live TATADA_SINGLE_OWNER=1 node server/index.ts",
+    "events": "node server/events/serve.ts",
     "dev:lan": "vite --host",
     "predemo": "npm run typecheck && node scripts/predemo.mjs",
     "build:website": "VITE_BASE_PATH=/tatada/ VITE_API_URL=https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-api npm run build",
