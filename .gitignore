@@ -9,3 +9,4 @@ scripts/out
 *.tsbuildinfo
 .data
 outfits/
+supabase/.temp
