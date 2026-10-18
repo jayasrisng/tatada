@@ -9,9 +9,9 @@ const {reducer}=require('./state/reducer.js')
 const {buildExport,parseImport}=require('./state/portability.js')
 const photo=(id,day,extra={})=>({id,fingerprint:id,filename:`${id}.jpg`,capturedAt:`${day}T12:00:00`,dateSource:'you',city:'Paris',country:'France',image:'data:image/jpeg;base64,AAAA',...extra})
 test('travel counts use confirmed photos; nearby GPS collapses into stops and missing GPS stays unmapped',()=>{
- assert.deepEqual(travelStats([]),{countries:0,cities:0,stops:0,photos:0})
+ assert.deepEqual(travelStats([]),{countries:0,cities:0,places:0,stops:0,photos:0})
  const ps=[photo('a','2020-01-01',{lat:48.85,lon:2.35}),photo('b','2020-01-02',{lat:48.8501,lon:2.3501,city:' paris ',country:' FRANCE '}),photo('c','2020-01-03'),photo('d','2020-01-04',{lat:48.86,lon:2.36})]
- assert.deepEqual(travelStats(ps),{countries:1,cities:1,stops:2,photos:4})
+ assert.deepEqual(travelStats(ps),{countries:1,cities:1,places:0,stops:2,photos:4})
  assert.equal(photoGroups([...ps,photo('e','2020-05-01')]).length,2)
 })
 test('photo import deduplicates files and export/restoration preserves GPS, labels and trip links',()=>{

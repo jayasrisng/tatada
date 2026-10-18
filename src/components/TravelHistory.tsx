@@ -1,70 +1,62 @@
-import { lazy, Suspense, useRef, useState } from 'react'
-import type { TravelPhoto, Trip } from '../types'
-import { uid, useStore } from '../state/store'
+import { useMemo, useState } from 'react'
+import { useStore } from '../state/store'
 import { go } from '../state/ui'
-import { normalizeName, photoDay, photoGroups, travelStats } from '../travel/history'
-import { readTravelPhoto } from '../travel/photos'
+import { allCountries, countryCode } from '../travel/countries'
+import { normalizeName, photoDay, placeTree, plannedCountries, travelStats, visitedCountries } from '../travel/history'
+import { distanceMeters, validPoint } from '../discovery/places'
+import { WorldMap } from './WorldMap'
+import { PhotoImport } from './PhotoImport'
 import { Btn } from './ui'
-const TravelMap = lazy(() => import('./TravelMap'))
 
+/** My map & timeline: the same chalk map as Home, a concise place list, and hand-editable countries. */
 export function TravelHistory() {
   const { state, dispatch } = useStore()
   const photos = state.photoHistory ?? []
+  const marks = state.countryMarks ?? {}
+  const visited = visitedCountries(photos, marks), planned = plannedCountries(state.trips)
+  const fromPhotos = new Set(photos.map((p) => countryCode(p.country)).filter((c): c is string => !!c))
   const stats = travelStats(photos)
-  const [showMap, setShowMap] = useState(false), [busy, setBusy] = useState(false), [message, setMessage] = useState('')
-  const [drafts, setDrafts] = useState<(TravelPhoto & { selected: boolean })[]>([])
-  const [city, setCity] = useState(''), [country, setCountry] = useState('')
-  const file = useRef<HTMLInputElement>(null)
-  const upload = async (files: FileList | null) => {
-    if (!files?.length) return
-    if (files.length > 20) return setMessage('Choose up to 20 photos at a time, from one city. Originals stay outside Tatada.')
-    setBusy(true); setMessage(''); setDrafts([])
-    const out = [], errors = []
-    const seen = new Set(photos.map((p) => p.fingerprint))
-    for (const f of Array.from(files)) {
-      try { const p = await readTravelPhoto(f); if (!seen.has(p.fingerprint)) { out.push({ ...p, selected: true }); seen.add(p.fingerprint) } }
-      catch (e) { errors.push((e as Error).message) }
-    }
-    setDrafts(out); setBusy(false)
-    setMessage(errors.join(' ') || (!out.length ? 'These photos are already in your timeline.' : 'Review dates and label the city/country before importing. Missing GPS stays unmapped.'))
-  }
-  const save = () => {
-    const selected = drafts.filter((p) => p.selected).map(({ selected: _s, ...p }) => ({ ...p, city: city.trim(), country: country.trim() }))
-    if (!city.trim() || !country.trim() || !selected.length) return setMessage('Choose photos and enter their city and country.')
-    const today = new Date().toLocaleDateString('en-CA')
-    if (selected.some((p) => !/^\d{4}-\d{2}-\d{2}T/.test(p.capturedAt) || photoDay(p) > today)) return setMessage('Check the dates. Travel history needs a known date in the past or today.')
-    const trips: Trip[] = []
-    for (const group of photoGroups(selected)) {
-      const start = photoDay(group[0]), end = photoDay(group.at(-1)!)
-      const existing = state.trips.find((t) => normalizeName(t.destination) === normalizeName(city) && normalizeName(t.country) === normalizeName(country) && t.start <= start && t.end >= end)
-      const tripId = existing?.id ?? uid()
-      if (!existing) trips.push({ id: tripId, destination: city.trim(), country: country.trim(), start, end, travelers: 1, companions: 'from my photos', budget: 0, vibe: [], constraints: [], discounts: [], status: end < today ? 'past' : 'upcoming', tint: 'blue', summary: {}, options: [], bookings: [], memories: [] })
-      group.forEach((p) => { p.tripId = tripId })
-    }
-    if (JSON.stringify(state).length + JSON.stringify(selected).length > 1_500_000) return setMessage('Browser photo storage is full. Export a backup and remove some photos first.')
-    dispatch({ type: 'importTravelPhotos', photos: selected, trips }); setDrafts([]); setMessage(`Imported ${selected.length} photos into your travel timeline.`)
-  }
-  return <section className="travel-history" aria-label="My travel history">
-    <h2 className="chalk-title">where life has taken you</h2>
-    <div className="travel-stats"><div><strong>{stats.countries}</strong> countries</div><div><strong>{stats.cities}</strong> cities</div><div><strong>{stats.stops}</strong> photo stops</div></div>
-    <p className="dim small">Counts use your imported photos and the city/country labels you confirm. Stops group GPS points within 100 m; they aren't a count of businesses. Sample and planned trips aren't counted.</p>
-    <div className="ac-buttons"><Btn kind="solid" icon="camera" disabled={busy} onClick={() => file.current?.click()}>{busy ? 'reading photos…' : 'import travel photos'}</Btn><Btn kind="ghost" icon="pin" onClick={() => setShowMap(!showMap)}>{showMap ? 'hide map' : 'open my map'}</Btn></div>
-    <input type="file" multiple accept="image/*" hidden ref={file} aria-label="Travel photos" onChange={(e) => { void upload(e.target.files); e.target.value = '' }} />
-    <p className="dim small">Select files exported/downloaded from Google Photos, or your camera roll. Dates and GPS are read on this device. No Google account connection or whole-library scan is active. Labels and GPS save in this browser and your exported backup.</p>
-    {showMap && <><Suspense fallback={<p>Loading map…</p>}><TravelMap photos={photos} /></Suspense><p className="dim small">Map tiles load from OpenStreetMap. Only photos with GPS can be placed. Your photo list and images are not sent to the map provider.</p></>}
-    {drafts.length > 0 && <form className="details-form" onSubmit={(e) => { e.preventDefault(); save() }}>
-      <h3 className="section-h">review this city's photos</h3>
-      <label>city<input className="chalk-input" aria-label="Photo city" value={city} onChange={(e) => setCity(e.target.value)} required /></label>
-      <label>country<input className="chalk-input" aria-label="Photo country" value={country} onChange={(e) => setCountry(e.target.value)} required /></label>
-      {drafts.map((p, i) => <div className="travel-photo-review" key={p.id}>
-        <input type="checkbox" aria-label={`Import ${p.filename}`} checked={p.selected} onChange={(e) => setDrafts((all) => all.map((v, n) => n === i ? { ...v, selected: e.target.checked } : v))} />
-        <img src={p.image} alt={p.filename} />
-        <label>{p.filename}<input className="chalk-input" aria-label={`Date for ${p.filename}`} type="date" value={photoDay(p)} onChange={(e) => setDrafts((all) => all.map((v, n) => n === i ? { ...v, capturedAt: `${e.target.value}T12:00:00`, dateSource: 'you' } : v))} /><span className="small dim">{p.dateSource === 'exif' ? 'photo date' : 'date you choose'} · {p.lat === undefined ? 'no GPS' : 'GPS available'}</span></label>
-      </div>)}
-      <div className="ac-buttons"><Btn kind="solid" type="submit">add to my timeline</Btn><Btn kind="ghost" type="button" onClick={() => setDrafts([])}>discard</Btn></div>
-    </form>}
-    {message && <p role="status" className="small">{message}</p>}
-    {!photos.length && <p className="empty">Your own travel story starts with a few photos. Nothing is inferred from sample trips.</p>}
-    <ol className="photo-timeline">{[...photos].sort((a, b) => b.capturedAt.localeCompare(a.capturedAt)).map((p) => <li key={p.id}><img src={p.image} alt={p.filename} loading="lazy" /><div><strong>{p.city}, {p.country}</strong><p className="small">{photoDay(p)} · {p.lat === undefined ? 'location label confirmed by you; no GPS' : 'photo GPS'}</p><div className="ac-buttons">{p.tripId && <button className="linkbtn" onClick={() => go(`/trip/${p.tripId}/journal`)}>open trip</button>}<button className="linkbtn" onClick={() => go(`/style?photo=${p.id}`)}>find clothes</button><button className="linkbtn danger" onClick={() => dispatch({ type: 'deleteTravelPhoto', id: p.id })}>remove photo</button></div></div></li>)}</ol>
+  const tree = placeTree(photos, visited)
+  const [importing, setImporting] = useState(false), [editing, setEditing] = useState(false), [filter, setFilter] = useState('')
+  const stops = useMemo(() => {
+    const out: { lat: number; lon: number }[] = []
+    for (const p of photos) if (p.lat !== undefined && p.lon !== undefined && validPoint({ lat: p.lat, lon: p.lon }) && !out.some((s) => distanceMeters(s, { lat: p.lat!, lon: p.lon! }) < 100)) out.push({ lat: p.lat, lon: p.lon })
+    return out
+  }, [photos])
+  const countries = useMemo(() => allCountries(), [])
+  const shown = countries.filter((c) => !filter.trim() || normalizeName(c.name).includes(normalizeName(filter)))
+  const toggle = (code: string, on: boolean) => dispatch({ type: 'markCountry', code, mark: on === fromPhotos.has(code) ? null : on ? 'visited' : 'not_visited' })
+
+  return <section className="travel-history" aria-label="My map and timeline">
+    <WorldMap visited={visited} planned={planned} points={stops} label="Places you've been" />
+    <p className="home-legend small dim"><i className="lg visited" /> been <i className="lg planned" /> planned{stops.length > 0 && <> <i className="lg point" /> photo spots</>}</p>
+    <p className="travel-stats-line" aria-label="Travel counts">{visited.size} {visited.size === 1 ? 'country' : 'countries'} · {stats.cities} {stats.cities === 1 ? 'city' : 'cities'} · {stats.places} {stats.places === 1 ? 'place' : 'places'}</p>
+
+    <div className="ac-buttons">
+      <Btn kind="solid" icon="camera" onClick={() => setImporting(true)} disabled={importing}>add photos</Btn>
+      <Btn kind="ghost" onClick={() => setEditing(!editing)} aria-expanded={editing}>{editing ? 'done editing' : 'edit countries'}</Btn>
+    </div>
+    {importing && <PhotoImport onClose={() => setImporting(false)} />}
+
+    {editing && <div className="country-editor">
+      <input className="chalk-input" placeholder="find a country" aria-label="Find a country" value={filter} onChange={(e) => setFilter(e.target.value)} />
+      <ul className="country-checks">{shown.map((c) => (
+        <li key={c.code}><label><input type="checkbox" checked={visited.has(c.code)} onChange={(e) => toggle(c.code, e.target.checked)} /> {c.name}{fromPhotos.has(c.code) && <span className="small dim"> · from photos</span>}{planned.has(c.code) && !visited.has(c.code) && <span className="small dim"> · planned</span>}</label></li>
+      ))}</ul>
+    </div>}
+
+    {tree.length ? <ul className="place-tree">{tree.map((c) => (
+      <li key={c.code ?? c.name}><strong>{c.name}</strong>{c.cities.length > 0 && <span className="dim"> · {c.cities.map((city) => city.places.length ? `${city.name} (${city.places.join(', ')})` : city.name).join(', ')}</span>}</li>
+    ))}</ul> : !importing && <p className="empty">Add a few photos or tick the countries you've been to. Nothing is inferred from sample trips.</p>}
+    {planned.size > 0 && <p className="small dim">Planned: {state.trips.filter((t) => t.status !== 'past').map((t) => t.destination).join(', ')}</p>}
+
+    {photos.length > 0 && <details className="photo-manage">
+      <summary>imported photos ({photos.length})</summary>
+      <ul>{[...photos].sort((a, b) => b.capturedAt.localeCompare(a.capturedAt)).map((p) => (
+        <li key={p.id}><span>{[p.place, p.city, p.country].filter(Boolean).join(', ') || 'no location'} · {p.capturedAt ? photoDay(p) : 'no date'}</span>
+          {p.tripId && <button className="link-btn" onClick={() => go(`/trip/${p.tripId}/journal`)}>trip</button>}
+          <button className="link-btn danger" aria-label={`Remove ${p.filename}`} onClick={() => dispatch({ type: 'deleteTravelPhoto', id: p.id })}>remove</button></li>
+      ))}</ul>
+    </details>}
   </section>
 }

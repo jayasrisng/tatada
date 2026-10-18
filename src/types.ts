@@ -272,8 +272,10 @@ export interface AppState {
   /** Clothes from the traveler's own photos or camera. */
   photoHistory?: TravelPhoto[]
   wardrobe?: Garment[]
-  /** Outfits kept or skipped while swiping, per trip. */
+  /** Outfits kept or skipped while swiping, per trip (or 'today'). */
   looks?: Look[]
+  /** Countries ticked or unticked by hand, keyed by ISO code. Overrides what photos imply. */
+  countryMarks?: Record<string, 'visited' | 'not_visited'>
 }
 
 /* ── Style ── */
@@ -294,6 +296,8 @@ export interface Garment {
   source: 'photo' | 'camera'
   /** A transparent garment image suitable for layering on the figure. */
   isolated?: boolean
+  /** SHA-256 of the photo it was detected in, so the same photo isn't imported twice. */
+  sourceFingerprint?: string
   addedAt: number
 }
 
@@ -336,6 +340,10 @@ export interface TravelPhoto {
   dateSource: 'exif' | 'you'
   city: string
   country: string
+  /** A named place (venue, landmark, neighborhood) the traveler confirmed. Never derived from bare coordinates. */
+  place?: string
+  /** Where the labels came from: photo metadata, a reverse-geocoding proposal the traveler accepted, or typed by them. */
+  labelSource?: 'metadata' | 'geocoded' | 'you'
   lat?: number
   lon?: number
   image: string

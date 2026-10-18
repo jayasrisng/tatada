@@ -31,7 +31,7 @@ export function App() {
       screen = <Home />
       break
     case 'trips':
-      screen = <Trips />
+      screen = <Trips key={id ?? 'trips'} initial={id === 'map' ? 'history' : 'trips'} />
       break
     case 'trip':
       screen = tab === 'print' ? <PrintView id={id} doc={sub} /> : <TripWorkspace id={id} tab={tab} />

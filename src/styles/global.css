@@ -2,15 +2,15 @@
  * One set of tokens, two boards. The names are shared roles, not colors:
  *   --board*  the surface        --chalk*  the ink (chalk or marker)
  *   --yellow  the primary accent --pink / --blue / --green / --orange  secondary inks
- * Dark = chalkboard (chalk dust, grainy strokes, pastel chalk).
+ * Dark = charcoal-black chalkboard (chalk dust, grainy strokes, pastel chalk).
  * Light = whiteboard (dry-erase marker, smooth saturated ink, faint ghosting).
  */
 
 :root,
 [data-theme='dark'] {
-  --board: #1d2723;
-  --board-2: #24302b;
-  --board-deep: #151c19;
+  --board: #1c1d1f;
+  --board-2: #26282b;
+  --board-deep: #131416;
   --chalk: #f4f1e8;
   --chalk-2: rgba(244, 241, 232, 0.74);
   --chalk-3: rgba(244, 241, 232, 0.5);
@@ -23,7 +23,7 @@
   --on-accent: #2a2618;
   --sticky: #f5dd7a;
   --on-sticky: #3a3216;
-  --on-tint: #151c19;
+  --on-tint: #131416;
   --paper: #f6f1e3;
   --graphite: #3b3a36;
 
@@ -871,3 +871,62 @@ input[type='range'] { width: 100%; accent-color: var(--yellow); height: 30px; }
 .trip-photo-timeline figure { margin: 0; }
 .trip-photo-timeline img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
 .trip-photo-timeline figcaption { font-size: 13px; }
+
+/* ── Home: the world map is the canvas ── */
+.home-now { margin: 14px 0 6px; }
+.home-trip { display: flex; flex-direction: column; align-items: flex-start; text-align: left; padding: 4px 0; }
+.home-trip strong { font-family: var(--title); font-size: 34px; line-height: 1.05; color: var(--chalk); text-shadow: var(--text-glow); }
+.home-trip span { color: var(--chalk-2); font-size: 17px; }
+.home-map { margin: 10px -8px 0; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.world-map { display: block; width: 100%; height: auto; }
+.world-map.tappable { cursor: pointer; }
+.wm-land path { fill: color-mix(in srgb, var(--chalk) 9%, transparent); stroke: var(--chalk-3); stroke-width: 0.8; stroke-linejoin: round; filter: var(--stroke-filter); }
+.wm-land path.visited { fill: color-mix(in srgb, var(--yellow) 55%, transparent); stroke: var(--yellow); }
+.wm-land path.planned { fill: color-mix(in srgb, var(--blue) 22%, transparent); stroke: var(--blue); stroke-dasharray: 5 3; stroke-width: 1.6; }
+.wm-points circle { fill: var(--pink); stroke: var(--board-deep); stroke-width: 1.2; }
+.wm-star { fill: var(--yellow); stroke: var(--board-deep); stroke-width: 1.5; }
+.home-legend { display: flex; align-items: center; gap: 6px; margin: 6px 4px 0; }
+.lg { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-left: 6px; }
+.lg.visited { background: color-mix(in srgb, var(--yellow) 60%, transparent); border: 1px solid var(--yellow); }
+.lg.planned { border: 1.5px dashed var(--blue); }
+.lg.point { background: var(--pink); border-radius: 50%; }
+.home-links { display: flex; gap: 18px; margin: 18px 4px 0; font-size: 17px; }
+.home-links button { color: var(--chalk-2); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--chalk-line); padding: 6px 0; }
+.home-links button:first-child { color: var(--chalk); }
+
+/* ── Trips & map history ── */
+.trip-group { font-family: var(--title); font-size: 22px; color: var(--chalk-2); margin: 16px 0 4px; font-weight: 400; }
+.past-trips { margin-top: 18px; }
+.past-trips summary, .photo-manage summary { cursor: pointer; color: var(--chalk-2); padding: 8px 0; }
+.travel-stats-line { font-family: var(--title); font-size: 24px; margin: 12px 0; }
+.place-tree { margin: 14px 0; display: grid; gap: 8px; }
+.place-tree li { line-height: 1.35; }
+.country-editor { margin: 12px 0; }
+.country-checks { max-height: 320px; overflow-y: auto; margin-top: 8px; padding-right: 6px; border-top: 1px solid var(--chalk-line); }
+.country-checks li label { display: flex; gap: 8px; align-items: center; padding: 5px 0; }
+.photo-manage ul { display: grid; gap: 6px; margin: 6px 0; }
+.photo-manage li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: 15px; }
+
+/* ── one photo import ── */
+.photo-import { margin: 14px 0; padding: 14px 0; border-top: 1px dashed var(--chalk-line); border-bottom: 1px dashed var(--chalk-line); display: grid; gap: 10px; }
+.photo-import .btn { justify-self: start; }
+.pi-head { display: flex; justify-content: space-between; align-items: baseline; }
+.pi-head .section-h { margin: 0; }
+.pi-toggle { display: flex; gap: 8px; align-items: center; font-size: 16px; }
+.pi-consent, .pi-bulk { padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--chalk) 6%, transparent); display: grid; gap: 8px; }
+.pi-list { display: grid; gap: 4px; }
+.pi-row { padding: 12px 0; border-bottom: 1px solid var(--chalk-line); display: grid; gap: 8px; }
+.pi-photo { display: grid; grid-template-columns: 20px 56px 1fr auto; gap: 8px; align-items: center; }
+.pi-photo img { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; }
+.pi-file { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.pi-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.pi-fields label { display: flex; flex-direction: column; font-size: 14px; color: var(--chalk-2); min-width: 0; }
+.pi-fields .chalk-input { font-size: 16px; padding: 6px 8px; }
+.pi-fields p { grid-column: 1 / -1; }
+.pi-fields label em { font-style: normal; color: var(--chalk-3); }
+.pi-clothes { display: grid; gap: 6px; }
+.pi-piece { display: grid; grid-template-columns: 52px 1fr auto; gap: 6px 8px; align-items: center; }
+.pi-piece img { width: 52px; height: 64px; object-fit: contain; background: #eeeae0; border-radius: 6px; grid-row: span 2; }
+.pi-piece label { grid-column: 2 / -1; display: flex; gap: 6px; align-items: center; }
+.pi-errors { color: var(--orange); }
+.import-result { display: grid; gap: 4px; }

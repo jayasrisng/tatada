@@ -42,7 +42,8 @@ export function MagicSheet() {
   useEffect(() => {
     if (!magic || handled.current === magic) return
     handled.current = magic
-    const t = magic.tripId ?? state.trips.find((x) => x.status !== 'past')?.id
+    // Only an explicit trip (from a trip page or task) sets the context; otherwise it's "today".
+    const t = magic.tripId
     setTripId(t)
     // Task shortcuts open the scripted drafting helper; the Fo button opens the real Fo chat.
     setView(magic.prefill ? 'scripted' : 'discover')
@@ -126,14 +127,14 @@ export function MagicSheet() {
 
       <div className="magic-context" role="group" aria-label="Trip context">
         <span className="dim">for</span>
+        <Chip on={!tripId} onClick={() => (setTripId(undefined), setItemId(undefined))}>
+          today
+        </Chip>
         {contexts.map((t) => (
           <Chip key={t.id} on={tripId === t.id} tint={t.tint} onClick={() => (setTripId(t.id), setItemId(undefined))}>
             {t.destination}
           </Chip>
         ))}
-        <Chip on={!tripId} onClick={() => (setTripId(undefined), setItemId(undefined))}>
-          anything
-        </Chip>
       </div>
 
       <div className="seg magic-seg" role="tablist" aria-label="Magic modes">

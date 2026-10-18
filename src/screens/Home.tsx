@@ -1,89 +1,21 @@
-import { useRef, useState, type ReactNode } from 'react'
 import { useStore } from '../state/store'
-import { go, useUI } from '../state/ui'
-import { CurvyArrow, Doodle, MagicBuddy } from '../components/Doodle'
+import { go } from '../state/ui'
 import { ThemeToggle } from '../components/ThemeToggle'
-import { daysUntil } from '../components/ui'
-import type { CanvasPos } from '../types'
-
-/* Default spots on the board, as fractions of its width/height. */
-const DEFAULTS: Record<string, CanvasPos> = {
-  trips: { x: 0.05, y: 0.04, r: -3 },
-  tasks: { x: 0.53, y: 0.08, r: 2.5 },
-  next: { x: 0.56, y: 0.66, r: 4 },
-  note: { x: 0.04, y: 0.68, r: -4 },
-  style: { x: 0.02, y: 0.43, r: -6 },
-}
-
-function Draggable({ id, children, onTap, className }: { id: string; children: ReactNode; onTap: () => void; className?: string }) {
-  const { state, dispatch } = useStore()
-  const pos = state.canvas[id] ?? DEFAULTS[id]
-  const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null)
-  const start = useRef<{ x: number; y: number; moved: boolean } | null>(null)
-  const el = useRef<HTMLDivElement>(null)
-
-  const onDown = (e: React.PointerEvent) => {
-    start.current = { x: e.clientX, y: e.clientY, moved: false }
-    el.current?.setPointerCapture(e.pointerId)
-  }
-  const onMove = (e: React.PointerEvent) => {
-    if (!start.current) return
-    const dx = e.clientX - start.current.x
-    const dy = e.clientY - start.current.y
-    if (!start.current.moved && Math.hypot(dx, dy) < 7) return
-    start.current.moved = true
-    setDrag({ dx, dy })
-  }
-  const onUp = () => {
-    const s = start.current
-    start.current = null
-    if (!s) return
-    if (!s.moved) return onTap()
-    const board = el.current?.parentElement?.getBoundingClientRect()
-    const me = el.current?.getBoundingClientRect()
-    if (board && me && drag) {
-      const clamp = (v: number, max: number) => Math.min(Math.max(v, 0), max)
-      const x = clamp(pos.x + drag.dx / board.width, 1 - me.width / board.width)
-      const y = clamp(pos.y + drag.dy / board.height, 1 - me.height / board.height)
-      dispatch({ type: 'moveCard', id, pos: { x, y, r: pos.r } })
-    }
-    setDrag(null)
-  }
-
-  return (
-    <div
-      ref={el}
-      className={`canvas-card ${drag ? 'dragging' : ''} ${className ?? ''}`}
-      style={{
-        left: `${pos.x * 100}%`,
-        top: `${pos.y * 100}%`,
-        transform: `translate(${drag?.dx ?? 0}px, ${drag?.dy ?? 0}px) rotate(${drag ? 0 : pos.r}deg) scale(${drag ? 1.05 : 1})`,
-      }}
-      onPointerDown={onDown}
-      onPointerMove={onMove}
-      onPointerUp={onUp}
-      onPointerCancel={() => ((start.current = null), setDrag(null))}
-      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onTap())}
-      role="button"
-      tabIndex={0}
-    >
-      {children}
-    </div>
-  )
-}
+import { WorldMap } from '../components/WorldMap'
+import { TODAY, daysUntil, fmtRange } from '../components/ui'
+import { countryCode } from '../travel/countries'
+import { plannedCountries, tripOfTheMoment, visitedCountries } from '../travel/history'
 
 export function Home() {
   const { state } = useStore()
-  const { openMagic } = useUI()
-  const upcoming = state.trips.filter((t) => t.status !== 'past').sort((a, b) => a.start.localeCompare(b.start))
-  const next = upcoming[0]
+  const moment = tripOfTheMoment(state.trips, TODAY)
+  const visited = visitedCountries(state.photoHistory ?? [], state.countryMarks)
+  const planned = plannedCountries(state.trips)
   const open = state.items.filter((i) => !i.done).length
-  const done = state.items.filter((i) => i.done).length
-  const needsYou = state.actions.filter((a) => a.status === 'needs_input' || a.status === 'proposed').length
-  const days = next ? daysUntil(next.start) : 0
-  // The next trip's most useful open task: one Fo can help with, else the first open booking.
-  const nextOpen = state.items.filter((i) => i.tripId === next?.id && !i.done)
-  const nudge = nextOpen.find((i) => i.magicPrompt) ?? nextOpen.find((i) => i.kind === 'booking')
+  const trip = moment?.trip
+  const day = trip && moment.now ? daysUntil(trip.start) * -1 + 1 : 0
+  const length = trip ? daysUntil(trip.end) - daysUntil(trip.start) + 1 : 0
+  const away = trip && !moment.now ? daysUntil(trip.start) : 0
 
   return (
     <div className="screen home">
@@ -94,64 +26,31 @@ export function Home() {
           {state.profile.name.slice(0, 1) || '?'}
         </button>
       </header>
-      <p className="home-hi">Hi {state.profile.name || 'there'}!</p>
-      <p className="home-sub">Where to next?</p>
 
-      <div className="board" aria-label="Your canvas. Drag cards around.">
-        <Draggable id="trips" onTap={() => go('/trips')} className="cc-trips">
-          <Doodle name="suitcase" size={44} />
-          <strong>Trips</strong>
-          <span className="cc-meta">{state.trips.length}</span>
-        </Draggable>
-
-        <Draggable id="tasks" onTap={() => go('/tasks')} className="cc-tasks">
-          <Doodle name="check" size={44} />
-          <strong>Tasks</strong>
-          <span className="cc-meta">
-            {open} open
-            {needsYou > 0 && <i className="dot inline">{needsYou}</i>}
-          </span>
-          <span className="cc-bar">
-            <i style={{ width: `${(done / Math.max(done + open, 1)) * 100}%` }} />
-          </span>
-        </Draggable>
-
-        <Draggable id="style" onTap={() => go('/style')} className="cc-style">
-          <Doodle name="shirt" size={28} />
-          <span>Style</span>
-        </Draggable>
-
-        {next && (
-          <Draggable id="next" onTap={() => go(`/trip/${next.id}`)} className={`cc-polaroid tint-${next.tint}`}>
-            <div className="polaroid-pic">
-              <Doodle name="plane" size={38} />
-            </div>
-            <strong>{next.destination}</strong>
-            <span>{days > 0 ? `in ${days} days` : days === 0 ? 'today!' : 'now'}</span>
-          </Draggable>
-        )}
-
-        {nudge && next && (
-          <Draggable
-            id="note"
-            onTap={() => (nudge.magicPrompt ? openMagic({ tripId: next.id, prefill: nudge.magicPrompt, itemId: nudge.id }) : go(`/trip/${next.id}`))}
-            className="cc-note"
-          >
-            <span>{nudge.text}</span>
-            <em>
-              <Doodle name="sparkle" size={14} /> {nudge.magicPrompt ? 'Fo can help' : `still open · ${next.destination}`}
-            </em>
-          </Draggable>
-        )}
-
-        <div className="board-magic">
-          <CurvyArrow className="magic-arrow" flip />
-          <button className="magic-orb" onClick={() => openMagic()} aria-label="Ask Magic">
-            <MagicBuddy size={104} />
+      <div className="home-now">
+        {trip ? (
+          <button className="home-trip" onClick={() => go(`/trip/${trip.id}`)}>
+            <strong>{moment.now ? `In ${trip.destination}` : trip.destination}</strong>
+            <span>{moment.now ? `day ${day} of ${length}` : away === 1 ? 'tomorrow' : `in ${away} days`} · {fmtRange(trip.start, trip.end)}</span>
           </button>
-          <span className="magic-label">ask Magic</span>
-        </div>
+        ) : (
+          <button className="home-trip" onClick={() => go('/new')}>
+            <strong>Where should we go next?</strong>
+            <span>plan a trip</span>
+          </button>
+        )}
       </div>
+
+      <div className="home-map">
+        <WorldMap visited={visited} planned={planned} star={trip ? countryCode(trip.country) : undefined} onSelect={() => go('/trips/map')} label="Your world" />
+        <p className="home-legend small dim"><i className="lg visited" /> been <i className="lg planned" /> planned</p>
+      </div>
+
+      <nav className="home-links" aria-label="Shortcuts">
+        <button onClick={() => go('/tasks')}>{open ? `${open} to do` : 'nothing to do'}</button>
+        <button onClick={() => go('/trips')}>trips</button>
+        <button onClick={() => go('/style')}>style</button>
+      </nav>
     </div>
   )
 }

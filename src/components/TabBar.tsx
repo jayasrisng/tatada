@@ -13,7 +13,8 @@ const TABS = [
 export function TabBar({ current, tripId }: { current: string; tripId?: string }) {
   const { openMagic } = useUI()
   const { state } = useStore()
-  const waiting = state.actions.filter((a) => a.status === 'needs_input' || a.status === 'proposed').length
+  // Compact pending count: open tasks plus requests waiting for the traveler.
+  const pending = state.items.filter((i) => !i.done).length + state.actions.filter((a) => a.status === 'needs_input' || a.status === 'proposed').length
 
   return (
     <nav className="tabbar" aria-label="Main">
@@ -26,7 +27,7 @@ export function TabBar({ current, tripId }: { current: string; tripId?: string }
           <button key={t.id} className={`tab ${current === t.id ? 'on' : ''}`} onClick={() => go(`/${t.id}`)} aria-current={current === t.id ? 'page' : undefined}>
             <Doodle name={t.icon} size={24} />
             <span>{t.label}</span>
-            {t.id === 'tasks' && waiting > 0 && <i className="dot">{waiting}</i>}
+            {t.id === 'tasks' && pending > 0 && <i className="dot" aria-label={`${pending} pending`}>{pending > 99 ? '99+' : pending}</i>}
           </button>
         ),
       )}

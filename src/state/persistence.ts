@@ -57,10 +57,11 @@ const stateShape = shape({
   chat: list(shape({ id: str, from: oneOf('me', 'tatada'), text: str, actionId: optional(str), bullets: optional(strings), addedItems: optional(strings),
     form: optional(form), serverActionId: optional(str) })),
   canvas: record(shape({ x: num, y: num, r: num })),
-  photoHistory: optional(list(shape({ id: str, tripId: optional(str), fingerprint: str, filename: str, capturedAt: str, dateSource: oneOf('exif', 'you'), city: str, country: str, lat: optional(num), lon: optional(num), image: str }))),
+  photoHistory: optional(list(shape({ id: str, tripId: optional(str), fingerprint: str, filename: str, capturedAt: str, dateSource: oneOf('exif', 'you'), city: str, country: str, place: optional(str), labelSource: optional(oneOf('metadata', 'geocoded', 'you')), lat: optional(num), lon: optional(num), image: str }))),
+  countryMarks: optional(record(oneOf('visited', 'not_visited'))),
   wardrobe: optional(list(shape({
     id: str, name: str, category: oneOf('top', 'bottom', 'dress', 'layer', 'shoes'), color: str,
-    vibe: list(oneOf('casual', 'dressy', 'active', 'warm')), image: optional(str), source: oneOf('photo', 'camera'), isolated: optional(bool), addedAt: num,
+    vibe: list(oneOf('casual', 'dressy', 'active', 'warm')), image: optional(str), source: oneOf('photo', 'camera'), isolated: optional(bool), sourceFingerprint: optional(str), addedAt: num,
   }))),
   looks: optional(list(shape({ id: str, tripId: str, garmentIds: strings, day: optional(str), verdict: oneOf('keep', 'skip'), at: num }))),
   archivedActions: optional(list(shape({

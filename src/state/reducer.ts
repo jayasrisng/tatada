@@ -5,6 +5,7 @@ import { uid } from './id'
 export type Act =
   | { type: 'importTravelPhotos'; photos: TravelPhoto[]; trips: Trip[] }
   | { type: 'deleteTravelPhoto'; id: string }
+  | { type: 'markCountry'; code: string; mark: 'visited' | 'not_visited' | null }
   | { type: 'reset'; state: AppState }
   | { type: 'onboard'; profile: Profile }
   | { type: 'addTrip'; trip: Trip; items: ChecklistItem[] }
@@ -98,6 +99,12 @@ export function reducer(s: AppState, a: Act): AppState {
     }
     case 'deleteTravelPhoto':
       return { ...s, photoHistory: (s.photoHistory ?? []).filter((p) => p.id !== a.id) }
+    case 'markCountry': {
+      const marks = { ...(s.countryMarks ?? {}) }
+      if (a.mark) marks[a.code] = a.mark
+      else delete marks[a.code]
+      return { ...s, countryMarks: marks }
+    }
     case 'addGarment':
       return { ...s, wardrobe: [...(s.wardrobe ?? []), a.garment] }
     case 'editGarment':
