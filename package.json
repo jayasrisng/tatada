@@ -16,9 +16,10 @@
     "events": "node server/events/serve.ts",
     "dev:lan": "vite --host",
     "predemo": "npm run typecheck && node scripts/predemo.mjs",
-    "build:website": "VITE_BASE_PATH=/tatada/ VITE_API_URL=https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-api npm run build",
+    "build:website": "VITE_BASE_PATH=/tatada/ VITE_API_URL=https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-api VITE_EVENTS_URL=https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-events npm run build",
     "check:browser": "node scripts/browser-local.mjs",
-    "check:features": "node scripts/check-discovery-history.mjs"
+    "check:features": "node scripts/check-discovery-history.mjs",
+    "check:events-remote": "node scripts/check-events-remote.mjs"
   },
   "dependencies": {
     "@fontsource/cabin-sketch": "^5.3.0",
