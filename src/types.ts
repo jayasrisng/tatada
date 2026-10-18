@@ -90,6 +90,8 @@ export interface Trip {
   bookings: Booking[]
   memories: Memory[]
   localAddress?: string
+  /** Day-by-day plan the traveler can add to, edit, and delete. */
+  itinerary?: ItineraryItem[]
   /** Expected arrival at the destination, local 'YYYY-MM-DDTHH:mm'. */
   arrival?: string
   /** Scripted sample scenarios exist only for fixture trips. */
@@ -267,6 +269,47 @@ export interface AppState {
   decisions?: DecisionRecord[]
   /** Read-only history of Fo requests brought in by an import. Never re-executed. */
   archivedActions?: ArchivedAction[]
+  /** Clothes from the traveler's own photos or camera. */
+  wardrobe?: Garment[]
+  /** Outfits kept or skipped while swiping, per trip. */
+  looks?: Look[]
+}
+
+/* ── Style ── */
+
+export type GarmentCategory = 'top' | 'bottom' | 'dress' | 'layer' | 'shoes'
+export type Vibe = 'casual' | 'dressy' | 'active' | 'warm'
+export type DressCode = 'casual' | 'active' | 'dressy' | 'cold'
+
+export interface Garment {
+  id: string
+  name: string
+  category: GarmentCategory
+  /** Main color, used to draw it on the avatar. */
+  color: string
+  vibe: Vibe[]
+  /** '/wardrobe/x.jpg' for extracted photos, or a small data: URL from the camera. */
+  image?: string
+  source: 'photo' | 'camera'
+  addedAt: number
+}
+
+export interface Look {
+  id: string
+  tripId: string
+  garmentIds: string[]
+  day?: string
+  verdict: 'keep' | 'skip'
+  at: number
+}
+
+export interface ItineraryItem {
+  id: string
+  day: string
+  time?: string
+  title: string
+  dress: DressCode
+  note?: string
 }
 
 export interface ArchivedAction {

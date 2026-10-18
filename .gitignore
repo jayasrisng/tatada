@@ -8,3 +8,4 @@ dist
 scripts/out
 *.tsbuildinfo
 .data
+outfits/

@@ -1,4 +1,4 @@
-import type { AppState, Booking, CanvasPos, ChatMessage, ChecklistItem, DecisionRecord, FoAction, Memory, Profile, StayDetails, Trip } from '../types'
+import type { AppState, Booking, CanvasPos, ChatMessage, ChecklistItem, DecisionRecord, FoAction, Garment, ItineraryItem, Look, Memory, Profile, StayDetails, Trip } from '../types'
 import { outcome } from '../magic/engine'
 import { uid } from './id'
 
@@ -24,6 +24,14 @@ export type Act =
   | { type: 'applyServerOutcome'; tripId: string; itemId: string; actionId: string; done: boolean; note: string }
   | { type: 'setDecisionInput'; tripId: string; key: 'standardCheckIn' | 'policy'; value?: string; at: number }
   | { type: 'recordValidation'; tripId: string; validation: NonNullable<DecisionRecord['validation']> }
+  | { type: 'addGarment'; garment: Garment }
+  | { type: 'editGarment'; id: string; patch: Partial<Pick<Garment, 'name' | 'category' | 'color' | 'vibe'>> }
+  | { type: 'deleteGarment'; id: string }
+  | { type: 'swipeLook'; look: Look }
+  | { type: 'unkeepLook'; id: string }
+  | { type: 'resetLooks'; tripId: string }
+  | { type: 'saveItinerary'; tripId: string; item: ItineraryItem }
+  | { type: 'deleteItinerary'; tripId: string; id: string }
 
 const patchAction = (s: AppState, id: string, fn: (a: FoAction) => FoAction): AppState => ({
   ...s,
@@ -80,6 +88,38 @@ export function reducer(s: AppState, a: Act): AppState {
       return saveStayDetails(s, a.tripId, a.details, a.messageId)
     case 'addBooking':
       return { ...s, trips: s.trips.map((t) => (t.id === a.tripId ? { ...t, bookings: [...t.bookings, a.booking] } : t)) }
+    case 'addGarment':
+      return { ...s, wardrobe: [...(s.wardrobe ?? []), a.garment] }
+    case 'editGarment':
+      return { ...s, wardrobe: (s.wardrobe ?? []).map((g) => (g.id === a.id ? { ...g, ...a.patch } : g)) }
+    case 'deleteGarment':
+      // Looks that relied on the garment lose it; a look with nothing left goes away.
+      return {
+        ...s,
+        wardrobe: (s.wardrobe ?? []).filter((g) => g.id !== a.id),
+        looks: (s.looks ?? []).map((l) => ({ ...l, garmentIds: l.garmentIds.filter((id) => id !== a.id) })).filter((l) => l.garmentIds.length),
+      }
+    case 'swipeLook': {
+      const same = (l: Look) => l.tripId === a.look.tripId && [...l.garmentIds].sort().join() === [...a.look.garmentIds].sort().join()
+      // One verdict per outfit per trip: swiping again replaces the old one.
+      return { ...s, looks: [...(s.looks ?? []).filter((l) => !same(l)), a.look] }
+    }
+    case 'unkeepLook':
+      return { ...s, looks: (s.looks ?? []).map((l) => (l.id === a.id ? { ...l, verdict: 'skip' } : l)) }
+    case 'resetLooks':
+      return { ...s, looks: (s.looks ?? []).filter((l) => l.tripId !== a.tripId) }
+    case 'saveItinerary':
+      return {
+        ...s,
+        trips: s.trips.map((t) => {
+          if (t.id !== a.tripId || a.item.day < t.start || a.item.day > t.end || !a.item.title.trim()) return t
+          const list = t.itinerary ?? []
+          const next = list.some((i) => i.id === a.item.id) ? list.map((i) => (i.id === a.item.id ? a.item : i)) : [...list, a.item]
+          return { ...t, itinerary: next.sort((x, y) => (x.day + (x.time ?? '')).localeCompare(y.day + (y.time ?? ''))) }
+        }),
+      }
+    case 'deleteItinerary':
+      return { ...s, trips: s.trips.map((t) => (t.id === a.tripId ? { ...t, itinerary: (t.itinerary ?? []).filter((i) => i.id !== a.id) } : t)) }
     case 'setDecisionInput':
       return withDecision(s, a.tripId, (d) => {
         const inputs = { ...d.inputs }

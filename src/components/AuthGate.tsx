@@ -5,7 +5,7 @@ import { useServer } from '../state/server'
 import { StoreProvider, type Workspace } from '../state/store'
 import { UIProvider, hashQuery } from '../state/ui'
 import { accountKey, isAppState, loadState, saveState, STORAGE_KEY } from '../state/persistence'
-import { emptyState, seed } from '../data/seed'
+import { LISBON_ITINERARY, WARDROBE, emptyState, seed } from '../data/seed'
 import { App } from '../App'
 import { Doodle, MagicBuddy } from './Doodle'
 
@@ -223,7 +223,9 @@ function writeMeta(id: string, m: { base: number; dirty: boolean }) {
 const OWNER_NAME = 'Jayasri'
 function personalize(s: AppState): AppState {
   const name = !s.profile.name.trim() || s.profile.name === 'Ana' ? OWNER_NAME : s.profile.name
-  return { ...s, onboarded: true, profile: { ...s.profile, name } }
+  // Bring older copies up to date once: Jayasri's closet and the Lisbon starter itinerary.
+  const trips = s.trips.map((t) => (t.id === 'lisbon' && t.demoScenario === 'lisbon' && !t.itinerary ? { ...t, itinerary: LISBON_ITINERARY } : t))
+  return { ...s, trips, wardrobe: s.wardrobe ?? WARDROBE, looks: s.looks ?? [], onboarded: true, profile: { ...s.profile, name } }
 }
 
 /** The richest valid Tatada copy saved in this browser (earlier demo or account caches). */

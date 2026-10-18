@@ -1,4 +1,4 @@
-import type { AppState, ChecklistItem, Trip } from '../types'
+import type { AppState, ChecklistItem, Garment, ItineraryItem, Trip } from '../types'
 
 /*
  * Seeded demo data. Everything here is SAMPLE content: fares, ratings, and
@@ -283,7 +283,9 @@ export const seed = (): AppState => ({
     diet: ['vegetarian'],
     memberships: ['Amex Gold', 'TAP Miles&Go'],
   },
-  trips: [lisbon, bigSur, kyoto],
+  trips: [{ ...lisbon, itinerary: LISBON_ITINERARY }, bigSur, kyoto],
+  wardrobe: WARDROBE,
+  looks: [],
   items,
   actions: [],
   chat: [],
@@ -312,3 +314,34 @@ export const emptyState = (): AppState => ({
   canvas: {},
   decisions: [],
 })
+
+/**
+ * Jayasri's closet, cropped from her own photos (metadata, incl. GPS, removed;
+ * originals stay out of the repo). Colors are sampled by eye for the avatar.
+ */
+const g = (id: string, name: string, category: Garment['category'], color: string, vibe: Garment['vibe']): Garment =>
+  ({ id, name, category, color, vibe, image: `/wardrobe/${id}.jpg`, source: 'photo', addedAt: 1792200000000 })
+export const WARDROBE: Garment[] = [
+  g('white-sweater', 'White fuzzy sweater', 'top', '#f2efe8', ['casual', 'warm']),
+  g('black-nike-top', 'Black long-sleeve top', 'top', '#1b1b1d', ['casual', 'active']),
+  g('converse-tee', 'Black graphic tee', 'top', '#222224', ['casual', 'active']),
+  g('crochet-top', 'Blue crochet crop top', 'top', '#9cc4ec', ['casual']),
+  g('white-crop-top', 'White knit crop top', 'top', '#f4f1ea', ['casual', 'dressy']),
+  g('straight-jeans', 'Straight blue jeans', 'bottom', '#3d5f92', ['casual', 'warm']),
+  g('light-jeans', 'Light-wash jeans', 'bottom', '#8fb0d4', ['casual']),
+  g('black-shorts', 'Black shorts', 'bottom', '#18181a', ['casual', 'active']),
+  g('red-ruffle-dress', 'Red ruffle dress', 'dress', '#e0193a', ['dressy']),
+  g('turquoise-gown', 'Turquoise floral gown', 'dress', '#2ab3c8', ['dressy']),
+  g('floral-denim-jacket', 'Floral denim jacket', 'layer', '#efe9df', ['casual', 'warm']),
+  g('red-converse', 'Red high-tops', 'shoes', '#d42a30', ['casual', 'active']),
+  g('white-sneakers', 'White high-tops', 'shoes', '#ece6d8', ['casual', 'active', 'dressy']),
+]
+
+/** Demo fixture: a starter itinerary for the Lisbon trip, fully editable. */
+export const LISBON_ITINERARY: ItineraryItem[] = [
+  { id: 'it1', day: '2026-11-07', time: '12:00', title: 'Check in at Casa do Largo, wander Alfama', dress: 'casual' },
+  { id: 'it2', day: '2026-11-08', time: '10:00', title: 'Belém + pastéis de nata', dress: 'casual' },
+  { id: 'it3', day: '2026-11-07', time: '19:00', title: 'Saturday dinner at Horta da Graça', dress: 'dressy' },
+  { id: 'it4', day: '2026-11-09', time: '09:00', title: 'Sintra day trip, hilltop palaces', dress: 'active' },
+  { id: 'it5', day: '2026-11-10', time: '18:00', title: 'Sunset at a miradouro', dress: 'cold' },
+]

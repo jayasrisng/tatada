@@ -34,7 +34,8 @@ export function Chip({
 }) {
   const El = onClick ? 'button' : 'span'
   return (
-    <El className={`chip tint-${tint} ${on ? 'on' : ''}`} onClick={onClick} aria-pressed={onClick ? !!on : undefined}>
+    // type="button": a chip inside a form must never submit it.
+    <El className={`chip tint-${tint} ${on ? 'on' : ''}`} onClick={onClick} aria-pressed={onClick ? !!on : undefined} {...(onClick ? { type: 'button' as const } : {})}>
       {icon && <Doodle name={icon} size={15} stroke={2.4} />}
       {children}
     </El>

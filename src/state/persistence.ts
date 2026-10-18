@@ -39,6 +39,7 @@ const trip = shape({
   budget: num, vibe: strings, constraints: strings, discounts: strings,
   status: oneOf('planning', 'upcoming', 'past'), tint, summary: record(str), localAddress: optional(str),
   arrival: optional(str), demoScenario: optional(oneOf('lisbon')),
+  itinerary: optional(list(shape({ id: str, day: str, time: optional(str), title: str, dress: oneOf('casual', 'active', 'dressy', 'cold'), note: optional(str) }))),
   options: list(shape({ id: str, category, title: str, subtitle: str, price: str,
     status: oneOf('chosen', 'considering', 'rejected'), reason: optional(str), highlights: strings,
     tradeoffs: strings, metrics: record(str), sources: list(shape({ label: str, kind: oneOf('reviews', 'official', 'fares', 'forum', 'map') })) })),
@@ -56,6 +57,11 @@ const stateShape = shape({
   chat: list(shape({ id: str, from: oneOf('me', 'tatada'), text: str, actionId: optional(str), bullets: optional(strings), addedItems: optional(strings),
     form: optional(form), serverActionId: optional(str) })),
   canvas: record(shape({ x: num, y: num, r: num })),
+  wardrobe: optional(list(shape({
+    id: str, name: str, category: oneOf('top', 'bottom', 'dress', 'layer', 'shoes'), color: str,
+    vibe: list(oneOf('casual', 'dressy', 'active', 'warm')), image: optional(str), source: oneOf('photo', 'camera'), addedAt: num,
+  }))),
+  looks: optional(list(shape({ id: str, tripId: str, garmentIds: strings, day: optional(str), verdict: oneOf('keep', 'skip'), at: num }))),
   archivedActions: optional(list(shape({
     id: str, provider: oneOf('live', 'mock', 'simulated'), status: str, title: str, to: optional(str),
     outcome: optional(str), summary: optional(str), evidence: strings, progress: list(shape({ at: num, text: str })),
