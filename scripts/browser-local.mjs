@@ -16,7 +16,7 @@ try {
   page.on('pageerror', (e) => errors.push(e.message))
   await page.goto(`${base}/#/style`)
   await page.getByRole('button', { name: 'add from photos', exact: true }).first().waitFor()
-  assert.equal(await page.getByRole('group', { name: 'Style for' }).getByRole('button', { name: 'today', exact: true }).getAttribute('aria-pressed'), 'true', 'Style starts with today, not a trip')
+  assert.equal(await page.getByRole('group', { name: 'Closet for' }).getByRole('button', { name: 'Today', exact: true }).getAttribute('aria-pressed'), 'true', 'Style starts with today, not a trip')
   await page.getByRole('tab', { name: 'closet', exact: true }).click()
   const loaded = await page.locator('.closet-item img').evaluateAll(async (imgs) => {
     await Promise.all(imgs.map((img) => img.decode().catch(() => {})))
@@ -25,7 +25,7 @@ try {
   assert.equal(loaded, true, 'all individual garment images must load beneath the app base')
   await page.getByRole('tab', { name: 'swipe', exact: true }).click()
   const before = await page.locator('.swipe-why').innerText()
-  await page.getByRole('group', { name: 'Style for', exact: true }).getByRole('button', { name: 'Big Sur', exact: true }).click()
+  await page.getByRole('group', { name: 'Closet for', exact: true }).getByRole('button', { name: 'Big Sur', exact: true }).click()
   assert.notEqual(await page.locator('.swipe-why').innerText(), before, 'switching trips must reset the deck')
   await page.getByRole('button', { name: 'pack it', exact: true }).click()
   const state = await page.evaluate(() => JSON.parse(localStorage.getItem('tatada:v1:preview')))

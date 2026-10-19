@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { Store } from '../store.ts'
-import { MockFoAdapter } from '../fo.ts'
+import { MockFoAdapter, type FoAdapter } from '../fo.ts'
 import { FoChatService } from '../chat.ts'
 import { ActionService, ActionError } from '../actions.ts'
 import { createApp, OWNER_ID } from '../app.ts'
@@ -253,4 +253,38 @@ test('all live chat messages require explicit broad Fo authorization', () => {
   assert.ok(prepared.pending!.risk.includes('fo_authorization'))
   assert.throws(() => service.send('owner', c.id, { hash: prepared.pending!.hash, idempotencyKey: 'live-key-123', confirm: [] }), ActionError)
   assert.equal(service.send('owner', c.id, { hash: prepared.pending!.hash, idempotencyKey: 'live-key-123', confirm: ['fo_authorization'] }).status, 'sending')
+})
+
+test('empty completion is fetched again rather than shown as a successful empty reply; sends once',async()=>{
+ const s=setup(), c=s.chats.create(OWNER,'showcase-la');let sends=0,polls=0
+ const adapter:FoAdapter=s.fo
+ adapter.ask=async()=>{sends++;return {status:'complete',conversationId:'empty-first'}}
+ s.fo.reply=async()=>{polls++;return polls<2?{status:'complete',conversationId:'empty-first'}:{status:'complete',conversationId:'empty-first',reply:'Your actual answer.'}}
+ s.say(c.id,'What is next?');await s.chats.runDue()
+ assert.equal(s.chats.get(OWNER,c.id).status,'working');assert.equal(s.chats.get(OWNER,c.id).turns.filter(t=>t.role==='fo').length,0)
+ const done=await s.settle(c.id)
+ assert.equal(done.status,'idle');assert.equal(done.turns.at(-1)?.text,'Your actual answer.');assert.equal(sends,1)
+})
+
+test('restart repairs the old empty placeholder using a read-only check without resending',async()=>{
+ const s=setup(), c=s.chats.create(OWNER,'showcase-la')
+ const raw=(s.store.data.foChats as Record<string,{status:string;conversationId?:string;turns:unknown[]}>)[c.id]
+ raw.status='idle';raw.conversationId='old-provider-conversation';raw.turns=[{id:'me',role:'me',text:'How is LA?',at:1},{id:'old',role:'fo',kind:'reply',text:'(Fo finished without a message.)',at:2}]
+ let polls=0
+ s.fo.reply=async()=>{polls++;return {status:'complete',conversationId:'old-provider-conversation',reply:'Recovered from Wajo.'}}
+ s.chats.recover();await s.chats.runDue()
+ const done=s.chats.get(OWNER,c.id)
+ assert.equal(done.status,'idle');assert.equal(done.turns.at(-1)?.text,'Recovered from Wajo.');assert.equal(done.turns.length,2)
+ assert.equal(s.fo.sends,0);assert.equal(polls,1)
+})
+
+test('genuinely empty provider completions time out and can be rechecked without sending',async()=>{
+ const s=setup(),c=s.chats.create(OWNER);let sends=0,ready=false
+ const adapter:FoAdapter=s.fo
+ adapter.ask=async()=>{sends++;return {status:'complete',conversationId:'empty'}}
+ s.fo.reply=async()=>({status:'complete',conversationId:'empty',...(ready?{reply:'Finally available.'}:{})})
+ s.say(c.id,'Hello');await s.chats.runDue();s.clock.t+=61000;await s.chats.runDue()
+ assert.equal(s.chats.get(OWNER,c.id).status,'timeout');assert.match(s.chats.get(OWNER,c.id).error!,/could not be retrieved/)
+ ready=true;s.chats.check(OWNER,c.id);await s.chats.runDue()
+ assert.equal(s.chats.get(OWNER,c.id).turns.at(-1)?.text,'Finally available.');assert.equal(sends,1)
 })

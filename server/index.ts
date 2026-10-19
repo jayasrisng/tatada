@@ -1,3 +1,6 @@
+import {AmadeusTravel} from './travel.ts'
+import { GmailConnection, GmailPrintDelivery } from './gmail.ts'
+import { IntelligenceService } from './intelligence.ts'
 import { createServer } from 'node:http'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -13,7 +16,7 @@ import { fromAccessToken, fromFoApi, fromTokenResponse } from './identity.ts'
 import { loadLocalEnv } from './env.ts'
 import { ApiKeyCredentials } from './apikey.ts'
 import { OWNER_ID } from './app.ts'
-import { FoPrintDelivery, MockPrintDelivery, PrintService } from './print.ts'
+import { MockPrintDelivery, PrintService } from './print.ts'
 
 /*
  * Tatada server.
@@ -97,9 +100,11 @@ actions.recover()
 
 const chats = new FoChatService({ store, fo, pollWaitSeconds: mode === 'live' ? 20 : 0 })
 chats.recover()
-// Development uses the mock sender; live mode only sends if Fo can really attach the PDF.
-const print = new PrintService({ store, delivery: mode === 'live' ? new FoPrintDelivery(fo) : new MockPrintDelivery(store) })
+// Printing uses an independently authorized Gmail sender, not Fo's text-only API.
+const gmail = new GmailConnection({store,sealer:new Sealer(secret()),clientId:env.GOOGLE_CLIENT_ID,clientSecret:env.GOOGLE_CLIENT_SECRET,redirectUri:env.GOOGLE_REDIRECT_URI ?? `${appUrl}/api/gmail/callback`})
+const print = new PrintService({ store, delivery: mode === 'live' ? new GmailPrintDelivery(gmail) : new MockPrintDelivery(store) })
 print.recover()
+const travel=env.AMADEUS_CLIENT_ID&&env.AMADEUS_CLIENT_SECRET?new AmadeusTravel({clientId:env.AMADEUS_CLIENT_ID,clientSecret:env.AMADEUS_CLIENT_SECRET,environment:env.AMADEUS_ENV==='production'?'production':'test'}):undefined
 const appPort = new URL(appUrl).port
 const owner = singleOwner
   ? {
@@ -107,7 +112,9 @@ const owner = singleOwner
       allowedOrigins: [`http://localhost:${appPort}`, `http://127.0.0.1:${appPort}`],
     }
   : undefined
-const handle = createApp({ store, actions, fo, print, oauth: foAuth === 'api_key' ? undefined : oauth, foAuth, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, allowedOrigin: singleOwner ? undefined : appOrigin, secureCookies: publicUrl.startsWith('https://') })
+const intelligenceKey = env.CLAUDE_API_KEY ?? env.ANTHROPIC_API_KEY
+const intelligence = intelligenceKey ? new IntelligenceService({ key: intelligenceKey, model: env.CLAUDE_MODEL }) : undefined
+const handle = createApp({travel, gmail, intelligence, store, actions, fo, print, oauth: foAuth === 'api_key' ? undefined : oauth, foAuth, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, allowedOrigin: singleOwner ? undefined : appOrigin, secureCookies: publicUrl.startsWith('https://') })
 // Single-owner mode listens on the loopback interface only.
 createServer((req, res) => void handle(req, res)).listen(port, singleOwner ? '127.0.0.1' : undefined, () => {
   console.log(`[tatada] server on ${publicUrl}${singleOwner ? ' · single-owner, localhost only' : ''} · Fo ${mode}${mode === 'live' ? ` (${foAuth})` : ''} · config set: ${configured.join(', ') || 'none'}${mode === 'live' ? ` · live recipients: ${actions.liveAllowlist.join(', ') || 'none (sends blocked)'}` : ''}`)
@@ -120,8 +127,8 @@ setInterval(async () => {
   try {
     await actions.runDue()
     await chats.runDue()
-  } catch (e) {
-    console.error('[tatada] worker', e)
+  } catch {
+    console.error('[tatada] worker failed')
   } finally {
     busy = false
   }

@@ -18,7 +18,7 @@ const geocodeCache = new Map<string, Partial<LocationFields>>()
 type Result = ReturnType<typeof summarize>
 
 /**
- * One import for the map and the closet. Each selected photo is read on this
+ * One import for the map and the closet. New map entries keep metadata only; the review image is discarded after confirmation. Each selected photo is read on this
  * device; its location fields and detected clothes are reviewed separately,
  * and neither part blocks the other.
  */
@@ -37,7 +37,7 @@ export function PhotoImport({ onClose }: { onClose: () => void }) {
   const files = useRef(new Map<string, File>())
   const input = useRef<HTMLInputElement>(null)
   const alive = useRef(true)
-  useEffect(() => () => { alive.current = false }, [])
+  useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   const patch = (id: string, fn: (d: ImportDraft) => ImportDraft): void => { if (alive.current) setDrafts((all) => all.map((d) => d.id === id ? fn(d) : d)) }
 
   async function choose(list: FileList | null) {
@@ -183,7 +183,7 @@ export function PhotoImport({ onClose }: { onClose: () => void }) {
               {d.pieces.map((p, i) => (
                 <div className="pi-piece" key={i}>
                   <img src={p.image} alt="" />
-                  <input className="chalk-input" aria-label={`Name of piece ${i + 1} in ${d.fileName}`} value={p.name} onChange={(e) => patch(d.id, (x) => ({ ...x, pieces: x.pieces.map((q, j) => j === i ? { ...q, name: e.target.value } : q) }))} />
+                  <input className="chalk-input" placeholder="Name this piece…" aria-label={`Name of piece ${i + 1} in ${d.fileName}`} value={p.name} onChange={(e) => patch(d.id, (x) => ({ ...x, pieces: x.pieces.map((q, j) => j === i ? { ...q, name: e.target.value } : q) }))} />
                   <select aria-label={`Category of piece ${i + 1} in ${d.fileName}`} value={p.category} onChange={(e) => patch(d.id, (x) => ({ ...x, pieces: x.pieces.map((q, j) => j === i ? { ...q, category: e.target.value as GarmentCategory } : q) }))}>{CATS.map((c) => <option key={c}>{c}</option>)}</select>
                   <label className="small"><input type="checkbox" aria-label={`I still own piece ${i + 1} in ${d.fileName}`} checked={p.own} onChange={(e) => patch(d.id, (x) => ({ ...x, pieces: x.pieces.map((q, j) => j === i ? { ...q, own: e.target.checked } : q) }))} /> I still own it</label>
                 </div>

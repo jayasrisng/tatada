@@ -1,3 +1,5 @@
+import {accountKey} from './persistence'
+import {OFFLINE_SELECTED} from '../offline/pack'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { EmailDraft, Profile, Trip } from '../types'
 import { apiUrl, usesBearer, sessionHeaders, saveSession, loginBinding, browserOnly } from '../config'
@@ -168,6 +170,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     info,
     logout: async (everywhere = false) => {
       await api('/api/auth/logout', { method: 'POST', json: { everywhere } })
+      if(info.account?.id)try{const prefix=`${accountKey(info.account.id)}:offline:`;for(const k of Object.keys(localStorage))if(k.startsWith(prefix))localStorage.removeItem(k);if(localStorage.getItem(OFFLINE_SELECTED)?.startsWith(prefix))localStorage.removeItem(OFFLINE_SELECTED)}catch{/* Device storage may be unavailable. */}
       saveSession()
       tracked.current.clear()
       setActions({})
@@ -180,6 +183,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
         credentials: usesBearer ? 'omit' : 'include',
         headers: { ...sessionHeaders(), 'x-tatada': '1', 'content-type': 'application/json' },
         body: JSON.stringify({ baseVersion, state }),
+        signal:AbortSignal.timeout(15000),
       })
       const body = await res.json().catch(() => ({}))
       if (res.status === 409) return { ok: false, version: body.version, state: body.state }

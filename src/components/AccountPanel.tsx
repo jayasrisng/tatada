@@ -1,3 +1,4 @@
+import {AccountLifecycle} from './AccountLifecycle'
 import { beginSignIn, apiUrl, browserOnly } from '../config'
 import { useRef, useState } from 'react'
 import { useStore } from '../state/store'
@@ -117,6 +118,7 @@ export function AccountPanel() {
           {msg.text}
         </p>
       )}
+      <AccountLifecycle exportOnly />
       {(state.archivedActions?.length ?? 0) > 0 && <p className="dim small">{state.archivedActions!.length} past requests kept as read-only history.</p>}
     </section>
   )

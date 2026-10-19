@@ -209,3 +209,42 @@ test('two signed-in accounts never see each other\'s printer or print jobs', asy
     assert.equal((await fetch(`${url}/api/print/printer`, { method: 'PUT', headers: { ...h(a), origin: 'https://evil.example' }, body: JSON.stringify(PRINTER) })).status, 403)
   } finally { await new Promise<void>((r) => server.close(() => r())) }
 })
+
+test('direct-print preference is account-scoped and retained in the stored printer profile', () => {
+ const s=make()
+ s.service.setPrinter('a',{...PRINTER,directPrint:true})
+ assert.equal(s.service.printer('a')?.directPrint,true)
+ assert.equal(s.service.printer('b'),undefined)
+ const reopened=new PrintService({store:s.store,delivery:new MockPrintDelivery(s.store)})
+ assert.equal(reopened.printer('a')?.directPrint,true)
+ reopened.setPrinter('a',{...PRINTER,directPrint:false})
+ assert.equal(reopened.printer('a')?.directPrint,false)
+})
+
+test('flight and hotel print jobs retain their document kind through approval and delivery', async () => {
+  const s = make(); s.service.setPrinter('a', PRINTER)
+  for (const kind of ['flights', 'hotels', 'packing'] as const) {
+    const job = await s.service.prepare('a', body(await pdf(1, undefined, kind), {document:{kind,title:kind,tripId:'sydney'},request:{document:kind}}))
+    assert.equal(job.document.kind, kind); assert.equal(job.request.document, kind)
+    assert.equal((await approve(s, 'a', job)).status, 'submitted')
+  }
+  assert.equal(s.outbox().length, 3)
+})
+
+test('a preferred From account must match the authorized Gmail sender, including after preview',async()=>{
+ const store=Store.memory(),delivery={mode:'gmail' as const,sender:async()=>({kind:'gmail' as const,verified:true,label:'authorized@example.test',ok:true}),send:async()=>({ok:true as const,ref:'fixture'})},service=new PrintService({store,delivery})
+ service.setPrinter('a',{...PRINTER,senderEmail:'preferred@example.test'})
+ const blocked=await service.prepare('a',body(await pdf()))
+ assert.match(blocked.blocker!,/Connect preferred/)
+ service.setPrinter('a',{...PRINTER,senderEmail:'authorized@example.test'})
+ const ready=await service.prepare('a',body(await pdf()));assert.equal(ready.blocker,undefined)
+ service.setPrinter('a',{...PRINTER,senderEmail:'different@example.test'})
+ await assert.rejects(service.approve('a',ready.id,{contentHash:ready.contentHash,idempotencyKey:'account-change'}),/preferred sending account changed/)
+})
+
+test('combined All documents retain normal preview and approval protection', async () => {
+ const s=make();s.service.setPrinter('a',PRINTER)
+ const bytes=await pdf(5), job=await s.service.prepare('a',body(bytes,{document:{kind:'all',title:'My whole trip',tripId:'lisbon'},request:{document:'all'}}))
+ assert.equal(job.document.kind,'all');assert.equal(job.pageCount,5);assert.equal(job.status,'awaiting_approval');assert.equal(s.outbox().length,0)
+ assert.deepEqual(s.service.pdf('a',job.id),bytes)
+})

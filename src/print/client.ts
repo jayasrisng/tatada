@@ -3,12 +3,12 @@ import { apiUrl, sessionHeaders, usesBearer } from '../config'
 import type { PlanLine, PrintChoices, PrintPlan, PrintRequest, PrinterProfile } from './plan'
 
 export type PrintStatus = 'awaiting_approval' | 'sending' | 'submitted' | 'send_uncertain' | 'blocked' | 'failed' | 'cancelled'
-export interface Sender { kind: 'mock' | 'fo'; verified: boolean; label: string; ok?: boolean; reason?: string }
+export interface Sender { kind: 'mock' | 'fo' | 'gmail'; verified: boolean; label: string; ok?: boolean; reason?: string }
 export interface PrintJob {
   id: string
   createdAt: number
   updatedAt: number
-  document: { kind: 'card' | 'journal'; title: string; tripId?: string }
+  document: { kind: 'card' | 'journal' | 'flights' | 'hotels' | 'packing' | 'all'; title: string; tripId?: string }
   pdfHash: string
   bytes: number
   pageCount: number
@@ -30,7 +30,7 @@ export interface PrintJob {
 export const getPrinter = () => api<{ printer: PrinterProfile | null }>('/api/print/printer').then((r) => r.printer)
 export const savePrinter = (p: Omit<PrinterProfile, 'updatedAt'>) => api<{ printer: PrinterProfile }>('/api/print/printer', { method: 'PUT', json: p }).then((r) => r.printer)
 export const removePrinter = () => api('/api/print/printer', { method: 'DELETE' })
-export const getSender = () => api<{ delivery: 'mock' | 'fo'; sender: Sender }>('/api/print/sender')
+export const getSender = () => api<{ delivery: 'mock' | 'fo' | 'gmail'; sender: Sender }>('/api/print/sender')
 export const listJobs = () => api<{ jobs: PrintJob[] }>('/api/print/jobs').then((r) => r.jobs)
 
 const toBase64 = (bytes: Uint8Array) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s) }
@@ -55,3 +55,5 @@ export const approveJob = (job: PrintJob, o: { allowDuplicate?: boolean; resendA
   api<{ job: PrintJob }>(`/api/print/jobs/${job.id}/approve`, { method: 'POST', json: { contentHash: job.contentHash, idempotencyKey: approvalKey(job.id, !!o.resendAfterUncertain), ...o }, signal: AbortSignal.timeout(60_000) }).then((r) => r.job)
 export const checkJob = (id: string) => api<{ job: PrintJob }>(`/api/print/jobs/${id}/check`, { method: 'POST' }).then((r) => r.job)
 export const cancelJob = (id: string) => api<{ job: PrintJob }>(`/api/print/jobs/${id}/cancel`, { method: 'POST' }).then((r) => r.job)
+
+export const getJob=(id:string)=>api<{job:PrintJob}>(`/api/print/jobs/${id}`).then(r=>r.job)

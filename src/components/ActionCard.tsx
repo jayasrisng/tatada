@@ -78,7 +78,7 @@ export function ActionCard({ action, compact }: { action: FoAction; compact?: bo
           <Paper className="ac-script" tilt={-0.6}>
             <span className="paper-label">{action.channel === 'call' ? 'what Fo will say' : 'exact words'}</span>
             {editing ? (
-              <textarea value={script} onChange={(e) => setScript(e.target.value)} rows={5} autoFocus aria-label="Edit message" />
+              <textarea value={script} onChange={(e) => setScript(e.target.value)} rows={5} autoFocus aria-label="Edit message" placeholder="Write your message…" />
             ) : (
               <p>{script}</p>
             )}

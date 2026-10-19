@@ -1,20 +1,26 @@
+import {ContextPicker} from '../components/ContextPicker'
+import {printRoute} from '../print/intent'
+import {go} from '../state/ui'
 import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import type { DressCode, Garment, GarmentCategory, ItineraryItem, Trip } from '../types'
 import { uid, useStore } from '../state/store'
 import { Doodle } from '../components/Doodle'
 import { Avatar } from '../components/Avatar'
-import { Btn, Chip, Heading, TODAY, TopBar } from '../components/ui'
-import { fmtDay } from '../magic/dates'
+import { Btn, Chip, Heading, TopBar } from '../components/ui'
+import { TodayStyleChat } from '../components/TodayStyleChat'
+import { useUI } from '../state/ui'
+import { useToday } from '../state/today'
+import { localToday, fmtDay } from '../magic/dates'
 import { byCategory, dayCode, generateLooks, packingList, tripDays, type Suggestion } from '../style/looks'
 import { garmentImage } from '../style/images'
 
 type Tab = 'itinerary' | 'closet' | 'mix' | 'swipe' | 'board'
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'swipe', label: 'swipe' },
-  { id: 'mix', label: 'mix' },
+  { id: 'swipe', label: 'outfits' },
+  { id: 'mix', label: 'mix & match' },
   { id: 'closet', label: 'closet' },
-  { id: 'itinerary', label: 'itinerary' },
-  { id: 'board', label: 'board' },
+  { id: 'itinerary', label: 'day plan' },
+  { id: 'board', label: 'packing' },
 ]
 const CATS: { id: GarmentCategory; label: string }[] = [
   { id: 'top', label: 'tops' },
@@ -30,49 +36,46 @@ const MAX_CAMERA = 24
 const PhotoImport = lazy(() => import('../components/PhotoImport').then((m) => ({ default: m.PhotoImport })))
 
 /** A stand-in "trip" for styling today: never stored, no itinerary or packing list. */
-const todayTrip = (): Trip => ({ id: 'today', destination: 'today', country: '', start: TODAY, end: TODAY, travelers: 1, companions: '', budget: 0, vibe: [], constraints: [], discounts: [], status: 'upcoming', tint: 'pink', summary: {}, options: [], bookings: [], memories: [] })
+const todayTrip = (): Trip => ({ id: 'today', destination: 'today', country: '', start: localToday(), end: localToday(), travelers: 1, companions: '', budget: 0, vibe: [], constraints: [], discounts: [], status: 'upcoming', tint: 'pink', summary: {}, options: [], bookings: [], memories: [] })
 
 export function Style() {
   const { state } = useStore()
+  const { focusTripId } = useUI()
+  useToday()
   const trips = state.trips.filter((t) => t.status !== 'past').sort((a, b) => a.start.localeCompare(b.start))
   // "today" unless the traveler picks a trip; Style never silently selects one.
   const [tripId, setTripId] = useState<string | undefined>(undefined)
   const [tab, setTab] = useState<Tab>('swipe')
   const [importing, setImporting] = useState(false)
-  const chosen = trips.find((t) => t.id === tripId)
+  const chosen = trips.find((t) => t.id === (focusTripId ?? tripId))
   const trip = chosen ?? todayTrip()
   const wardrobe = state.wardrobe ?? []
 
   return (
     <div className="screen style style-screen">
       <TopBar back="/" />
-      <Heading tint="var(--pink)" sub={chosen ? `your closet, mixed and matched for ${chosen.destination}` : 'your closet, mixed and matched for today'}>
-        Style
+      <Heading tint="var(--pink)" sub={chosen?.destination==='Yosemite'?'Pack your bags. The mountains are calling.':'Pack your bags. The world is calling.'}>
+        Closet
       </Heading>
-      <div className="style-camera no-print">
-        <Btn kind="solid" icon="camera" disabled={importing} onClick={() => { setTab('closet'); setImporting(true) }}>
-          add from photos
-        </Btn>
-        <p className="dim small">The same photos can add places to your map. Your closet saves in this browser.</p>
-      </div>
-      {importing && <Suspense fallback={<p className="small dim">opening…</p>}><PhotoImport onClose={() => setImporting(false)} /></Suspense>}
+      <ContextPicker label="Closet for" trips={trips} value={chosen?.id} onChange={setTripId} locked={!!focusTripId}/>
 
-      <div className="chips no-print" role="group" aria-label="Style for">
-        <Chip on={!chosen} onClick={() => setTripId(undefined)}>today</Chip>
-        {trips.map((t) => (
-          <Chip key={t.id} tint={t.tint} on={t.id === chosen?.id} onClick={() => setTripId(t.id)}>
-            {t.destination}
-          </Chip>
-        ))}
-      </div>
-
-      <nav className="seg style-seg no-print" role="tablist" aria-label="Style sections">
+      {!chosen && <TodayStyleChat />}
+      <nav className="seg style-seg no-print" role="tablist" aria-label="Closet sections">
         {TABS.map((t) => (
           <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'on' : ''} onClick={() => setTab(t.id)}>
             {t.label}
           </button>
         ))}
       </nav>
+
+      {(tab === 'closet' || !wardrobe.length) && <div className="style-camera no-print">
+        <Btn kind="solid" icon="camera" disabled={importing} onClick={() => { setTab('closet'); setImporting(true) }}>
+          add from photos
+        </Btn>
+        <p className="dim small">Import once to add clothes and places. Review what to keep before saving.</p>
+      </div>}
+      {importing && <Suspense fallback={<p className="small dim">opening…</p>}><PhotoImport onClose={() => setImporting(false)} /></Suspense>}
+
 
       <div hidden={tab !== 'closet'}><Closet wardrobe={wardrobe} onAdd={() => setImporting(true)} /></div>
       {!chosen && (tab === 'itinerary' || tab === 'board') && <p className="empty">Pick a trip above to plan outfits for its days and packing.</p>}
@@ -331,7 +334,7 @@ function Swipe({ trip, wardrobe, onDone }: { trip: Trip; wardrobe: Garment[]; on
         <p className="chalk-title">that's every idea for now</p>
         <p className="dim">{kept} {kept === 1 ? 'look' : 'looks'} kept for {trip.destination}.</p>
         <Btn kind="solid" icon="book" onClick={onDone}>
-          see the moodboard
+          see saved outfits
         </Btn>
       </div>
     )
@@ -341,7 +344,7 @@ function Swipe({ trip, wardrobe, onDone }: { trip: Trip; wardrobe: Garment[]; on
   return (
     <section aria-label="Swipe outfits" className="swipe">
       <p className="dim small center-text">
-        {i + 1} / {deck.length} · swipe right to pack, left to skip
+        {i + 1} / {deck.length} · swipe right to save, left to skip
       </p>
       <div
         className="swipe-card"
@@ -377,11 +380,11 @@ function Swipe({ trip, wardrobe, onDone }: { trip: Trip; wardrobe: Garment[]; on
           skip
         </Btn>
         <Btn kind="solid" icon="heart" onClick={() => decide('keep')}>
-          pack it
+          save outfit
         </Btn>
       </div>
       <button className="linkbtn small center-text" onClick={onDone}>
-        jump to the moodboard ({kept} kept)
+        saved outfits & packing ({kept})
       </button>
     </section>
   )
@@ -400,10 +403,10 @@ function Board({ trip, wardrobe, onSwipe }: { trip: Trip; wardrobe: Garment[]; o
   if (!kept.length) {
     return (
       <div className="swipe-done">
-        <p className="chalk-title">nothing on the board yet</p>
-        <p className="dim">Swipe right on looks you like, or keep one from mix.</p>
+        <p className="chalk-title">No saved outfits yet</p>
+        <p className="dim">Save an outfit from Outfits or Mix & match, then find your packing list here.</p>
         <Btn kind="solid" onClick={onSwipe}>
-          start swiping
+          find an outfit
         </Btn>
       </div>
     )
@@ -453,8 +456,8 @@ function Board({ trip, wardrobe, onSwipe }: { trip: Trip; wardrobe: Garment[]; o
         >
           {toAdd.length ? `add ${toAdd.length} to packing checklist` : 'all on your checklist'}
         </Btn>
-        <Btn kind="ghost" icon="printer" onClick={() => window.print()}>
-          print board
+        <Btn kind="ghost" icon="printer" onClick={() => go(printRoute(trip.id,'packing'))}>
+          print packing list
         </Btn>
         <Btn kind="ghost" onClick={() => dispatch({ type: 'resetLooks', tripId: trip.id })}>
           start over

@@ -18,7 +18,7 @@ try {
   assert.match(await p.locator('.home-trip').innerText(), /Lisbon[\s\S]*in \d+ days · Nov/)
   assert.ok(await p.locator('.world-map path.planned').count() >= 2, 'Portugal and the US (Big Sur) are planned')
   assert.equal(await p.locator('.world-map path.visited').count(), 0, 'sample trips are not counted as visited')
-  const pending = (await saved()).items.filter((i) => !i.done).length
+  const pending = (await saved()).items.filter((i) => !i.done && i.kind !== 'idea' && i.kind !== 'memory').length
   assert.equal(await p.locator('.tabbar .dot').innerText(), String(pending))
 
   // Magic and Style default to Today; they never silently pick Lisbon.
@@ -31,7 +31,7 @@ try {
   await p.locator('.magic-context button[aria-pressed="true"]', { hasText: 'Lisbon' }).waitFor({ timeout: 5000 }) // explicit trip page context
   await p.getByRole('button', { name: 'Close Magic' }).click()
   await p.goto(`${base}/#/style`)
-  assert.equal(await p.getByRole('group', { name: 'Style for' }).getByRole('button', { name: 'today', exact: true }).getAttribute('aria-pressed'), 'true')
+  assert.equal(await p.getByRole('group', { name: 'Closet for' }).getByRole('button', { name: 'Today', exact: true }).getAttribute('aria-pressed'), 'true')
 
   // One import: metadata labels, consented reverse geocoding (coordinates only), unknown stays blank, clothes in parallel.
   await p.goto(`${base}/#/trips/map`)
@@ -45,7 +45,7 @@ try {
   assert.equal(geocodes.length, 0, 'no coordinates leave the device before consent')
   for (const f of ['City', 'Country', 'Place', 'Date']) assert.equal(await p.getByLabel(`${f} for unknown.jpg`).inputValue(), '', `unknown ${f} stays blank`)
   await p.getByRole('button', { name: 'look up', exact: true }).click()
-  await p.waitForFunction(() => document.querySelector('[aria-label="City for porto-gps.jpg"]')?.value === 'Porto')
+  await p.waitForFunction(() => document.querySelector('[aria-label="City for porto-gps.jpg"]')?.value === 'Porto').catch(async (error) => { console.log('Geocode diagnostic:', geocodes.length, await p.locator('.pi-row').nth(1).innerText(), errors); throw error })
   assert.equal(await p.getByLabel('Place for porto-gps.jpg').inputValue(), '', 'the nearby café is not invented as the place')
   assert.equal(geocodes.length, 1)
   assert.deepEqual([geocodes[0].searchParams.get('lat'), geocodes[0].searchParams.get('lon')], ['41.146', '-8.611'], 'rounded coordinates only')
@@ -72,6 +72,8 @@ try {
   assert.equal(await p.locator('.world-map path.visited').count(), 1)
   assert.equal(await p.locator('.photo-timeline img, .travel-history img').count(), 0, 'no permanent gallery in map history')
 
+  assert.ok(state.photoHistory.every((p) => p.image === ''), 'review images are discarded from new map imports')
+
   // Hand-edited countries, persistence, and duplicate imports.
   await p.getByRole('button', { name: 'edit countries' }).click()
   await p.getByLabel('Find a country').fill('japan')
@@ -86,9 +88,10 @@ try {
   assert.match(await p.locator('.pi-row').first().innerText(), /already on your map/)
   assert.match(await p.locator('.pi-row').nth(1).innerText(), /already in your closet/)
   await p.screenshot({ path: 'scripts/out/import-duplicates.png', fullPage: true })
-  // The trip journal still shows existing photos (journal not redesigned).
+  // New map imports retain metadata only; existing journal photos are unaffected.
   await p.goto(`${base}/#/trip/${state.photoHistory.find((x) => x.city === 'Porto').tripId}/journal`)
-  await p.locator('.trip-photo-timeline img').waitFor()
+  await p.locator('.journal').waitFor()
+  assert.equal(await p.locator('.trip-photo-timeline img').count(), 0)
   assert.deepEqual(errors, [])
   console.log('Passed: home map + countdown + pending count, Today vs explicit trip context, metadata/geocoded/unknown labels, consent and rounded coordinates, mixed batch, recoverable clothing failure, closet confirm, country checkboxes, reload, duplicates, journal photos.')
 } finally { await browser.close() }

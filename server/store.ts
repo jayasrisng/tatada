@@ -33,6 +33,11 @@ export interface Session {
 }
 
 export interface Data {
+  shares?: Record<string,import('./sharing.ts').ShareLink>
+  gmailExchanges?: Record<string,{owner:string;stateHash:string;payload:string;expiresAt:number}>
+  gmailEpochs?: Record<string, number>
+  gmailTokens?: Record<string, string>
+  gmailPending?: Record<string, {owner: string; binding: string; verifier: string; createdAt: number; returnTo: string; epoch: number}>
   users: Record<string, { createdAt: number }>
   /**
    * Tatada accounts. 'wajo' accounts exist only for a verified Wajo identity;

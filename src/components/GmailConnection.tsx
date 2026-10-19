@@ -1,0 +1,18 @@
+import { useEffect, useState } from 'react'
+import { api, useServer } from '../state/server'
+import { apiUrl, usesBearer } from '../config'
+import { Btn } from './ui'
+import { hashQuery } from '../state/ui'
+interface GmailState {configured: boolean; connected: boolean; email?: string; reason?: string}
+const completions=new Map<string,Promise<GmailState>>()
+export function GmailConnection({ returnTo = '/welcome',preferredEmail }: {returnTo?: string;preferredEmail?:string}) {
+  const {info}=useServer(), [status,setStatus]=useState<GmailState|null>(null), [error,setError]=useState(''), [busy,setBusy]=useState(false)
+  const bindingKey=`tatada:gmail-binding:${apiUrl('')}`
+  useEffect(()=>{let live=true;const exchange=hashQuery().get('gmail_exchange');if(info.authenticated&&exchange){const binding=sessionStorage.getItem(bindingKey);if(!binding){setError('Gmail confirmation belongs to another tab. Connect again.');return}(()=>{const key=`${info.account?.id}:${exchange}`;let request=completions.get(key);if(!request){if(completions.size>30)completions.delete(completions.keys().next().value!);request=api<GmailState>('/api/gmail/complete',{method:'POST',json:{exchange,binding}});completions.set(key,request)}return request})().then(s=>{if(live){setStatus(s);sessionStorage.removeItem(bindingKey);history.replaceState(null,'',location.href.replace(/([?&])gmail_exchange=[^&]*/,''))}},()=>{if(live)setError('Gmail confirmation expired. Connect again.')});return()=>{live=false}};if(info.authenticated)api<GmailState>('/api/gmail/status').then(s=>{if(live)setStatus(s)},()=>{if(live)setError('Gmail is unavailable on this server.')});return()=>{live=false}},[info.authenticated])
+  if(!info.authenticated||info.provider==='mock')return null
+  return <section className="gmail-connection" aria-label="Gmail print sender"><h3 className="section-h">Print with Gmail</h3>
+    {status?.connected ? <><p className="small">Connected: {status.email}</p><Btn kind="ghost" disabled={busy} onClick={async()=>{setBusy(true);try{await api('/api/gmail/disconnect',{method:'POST'});setStatus({configured:true,connected:false})}catch{setError('Gmail could not be disconnected. Try again.')}finally{setBusy(false)}}}>disconnect Gmail</Btn></> : <><p className="small dim">Connect Gmail to send PDFs to your printer.</p>{status?.configured && usesBearer ? <Btn disabled={busy} onClick={async()=>{setBusy(true);try{const bytes=crypto.getRandomValues(new Uint8Array(32)),secret=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');sessionStorage.setItem(bindingKey,secret);const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(secret)),binding=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');const result=await api<{url:string}>('/api/gmail/prepare',{method:'POST',json:{binding,returnTo,email:preferredEmail}});location.assign(result.url)}catch{setError('Could not start Gmail consent. Check server configuration.');setBusy(false)}}}>connect Gmail</Btn> : status?.configured ? <a className="btn btn-solid" href={`${apiUrl('/api/gmail/connect')}?returnTo=${encodeURIComponent(returnTo)}${preferredEmail?`&email=${encodeURIComponent(preferredEmail)}`:''}`}>connect Gmail</a> : <p className="small">{status && !status.configured ? 'Gmail setup required.' : status?.reason ?? 'Checking Gmail setup…'}</p>}</>}
+    {hashQuery().get('gmail')==='error'&&<p role="alert">Gmail didn’t connect. Try again after checking the app’s Google authorization setup.</p>}
+    {error&&<p role="alert">{error}</p>}
+  </section>
+}

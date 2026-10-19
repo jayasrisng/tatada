@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { Doodle, Scribble, type DoodleName } from './Doodle'
+import { localToday } from '../magic/dates'
 import { go } from '../state/ui'
 
 type Tint = 'yellow' | 'pink' | 'blue' | 'green' | 'orange' | 'chalk'
@@ -139,4 +140,4 @@ export const fmtRange = (a: string, b: string) => {
 const d = new Date()
 export const TODAY = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 export const daysUntil = (iso: string) =>
-  Math.round((Date.parse(iso + 'T00:00:00Z') - Date.parse(TODAY + 'T00:00:00Z')) / 86400000)
+  Math.round((Date.parse(iso + 'T00:00:00Z') - Date.parse(localToday() + 'T00:00:00Z')) / 86400000)

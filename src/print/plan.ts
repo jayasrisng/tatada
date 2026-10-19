@@ -17,6 +17,9 @@ export type PaperSize = 'letter' | 'a4' | '4x6'
 export type Answer = 'yes' | 'no' | 'unknown'
 
 export interface PrinterProfile {
+  /** Preferred account for Gmail consent; never used to forge the actual sender. */
+  senderEmail?: string
+  directPrint?: boolean
   email: string
   /** As the owner set it in Epson Connect → Print Settings. */
   plainPaper: 'letter' | 'a4' | 'unknown'
@@ -29,7 +32,7 @@ export interface PrinterProfile {
   updatedAt: number
 }
 
-export interface PrintRequest { color?: 'color' | 'grayscale'; size?: PaperSize; duplex?: boolean; copies?: number; document?: 'card' | 'journal' }
+export interface PrintRequest { color?: 'color' | 'grayscale'; size?: PaperSize; duplex?: boolean; copies?: number; document?: 'card' | 'journal' | 'flights' | 'hotels' | 'packing' | 'all' }
 export interface PrintChoices { fourBySix?: 'layout-on-plain'; duplex?: 'single' | 'try'; copies?: 'repeat-pages' | 'single' }
 
 export interface PlanLine { setting: string; requested: string; how: 'pdf' | 'address' | 'printer' | 'not_possible'; result: string }
@@ -65,7 +68,11 @@ export function parsePrintRequest(text: string): PrintRequest {
   const copies = /\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+(copies|copy|prints|times)\b/.exec(q)
   if (copies) out.copies = WORDS[copies[1]] ?? Number(copies[1])
   else if (/\btwice\b/.test(q)) out.copies = 2
-  if (/journal|memories/.test(q)) out.document = 'journal'
+  if (/\b(print\s+)?(all|everything|whole trip)\b/.test(q)) out.document = 'all'
+  else if (/packing|pack list|clothes list/.test(q)) out.document = 'packing'
+  else if (/journal|memories/.test(q)) out.document = 'journal'
+  else if (/\bflights?\b/.test(q) && !/\bhotels?\b|\bstays?\b/.test(q)) out.document = 'flights'
+  else if (/\bhotels?\b|\bstays?\b|accommodation/.test(q) && !/\bflights?\b/.test(q)) out.document = 'hotels'
   else if (/trip card|card|itinerary|plan/.test(q)) out.document = 'card'
   return out
 }
@@ -134,4 +141,12 @@ export function planPrint(req: PrintRequest, printer: Pick<PrinterProfile, 'plai
   limitations.push('An accepted email isn\'t proof of a printed page. Epson can email a completion notice to the sender if the printer owner turned that on.')
 
   return { pageSize: plain, layout, grayscale, repeat, suffix: flags.length ? `=+${flags.join('+')}` : '', lines, questions, limitations }
+}
+
+/** Explicit mail-setting requests are preferences, never mailbox authorization. */
+export function parsePrintMail(text:string):{from?:string;to?:string}{
+ const email='([A-Z0-9.!#$%&\'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\\.[A-Z]{2,})'
+ const from=new RegExp(`\\b(?:from|sender(?: email)?(?: is| to)?)\\s*[:=]?\\s*${email}`,'i').exec(text)?.[1]
+ const to=new RegExp(`\\b(?:to|printer(?: email)?(?: is| to)?)\\s*[:=]?\\s*${email}`,'i').exec(text)?.[1]
+ return {...(from?{from}:{}),...(to?{to}:{})}
 }

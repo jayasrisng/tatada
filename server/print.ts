@@ -26,7 +26,7 @@ import { EPSON_EMAIL, planPrint, printerAddress, type Answer, type PrintChoices,
  */
 
 export type PrintStatus = 'awaiting_approval' | 'sending' | 'submitted' | 'send_uncertain' | 'blocked' | 'failed' | 'cancelled'
-export interface Sender { kind: 'mock' | 'fo'; verified: boolean; label: string }
+export interface Sender { kind: 'mock' | 'fo' | 'gmail'; verified: boolean; label: string }
 export interface SenderCheck extends Sender { ok: boolean; reason?: string }
 
 export interface PrintJob {
@@ -34,7 +34,7 @@ export interface PrintJob {
   ownerId: string
   createdAt: number
   updatedAt: number
-  document: { kind: 'card' | 'journal'; title: string; tripId?: string }
+  document: { kind: 'card' | 'journal' | 'flights' | 'hotels' | 'packing' | 'all'; title: string; tripId?: string }
   pdf?: string
   pdfHash: string
   bytes: number
@@ -67,7 +67,7 @@ export class PrintError extends Error {
 export class PrintUncertain extends Error {}
 
 export interface PrintDelivery {
-  readonly mode: 'mock' | 'fo'
+  readonly mode: 'mock' | 'fo' | 'gmail'
   sender(userId: string): Promise<SenderCheck>
   /** Definite failures return ok:false; anything that might have sent throws PrintUncertain. */
   send(userId: string, job: PrintJob, pdf: Buffer): Promise<{ ok: true; ref: string } | { ok: false; reason: string; blocked?: boolean }>
@@ -95,9 +95,11 @@ export class PrintService {
     const email = typeof input.email === 'string' ? input.email.trim() : ''
     if (!EPSON_EMAIL.test(email)) throw new PrintError(400, 'Enter the printer\'s Epson Connect address, like name@print.epsonconnect.com.')
     if (/=\+/.test(email)) throw new PrintError(400, 'Enter the plain printer address; Tatada adds Epson\'s options itself.')
+    const senderEmail=typeof input.senderEmail==='string'?input.senderEmail.trim():undefined
+    if(senderEmail&&(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderEmail)||senderEmail.length>254))throw new PrintError(400,'Use a valid sending email.')
     const plain = input.plainPaper === 'letter' || input.plainPaper === 'a4' ? input.plainPaper : 'unknown'
     const at = email.lastIndexOf('@')
-    const profile: PrinterProfile = { email: `${email.slice(0, at)}@${email.slice(at + 1).toLowerCase()}`, plainPaper: plain, colorInk: answer(input.colorInk), autoDuplex: answer(input.autoDuplex), bodyPrintingOff: answer(input.bodyPrintingOff), senderApproved: answer(input.senderApproved), updatedAt: this.now() }
+    const profile: PrinterProfile = { ...(senderEmail?{senderEmail}:{}), directPrint: input.directPrint === true, email: `${email.slice(0, at)}@${email.slice(at + 1).toLowerCase()}`, plainPaper: plain, colorInk: answer(input.colorInk), autoDuplex: answer(input.autoDuplex), bodyPrintingOff: answer(input.bodyPrintingOff), senderApproved: answer(input.senderApproved), updatedAt: this.now() }
     this.store.update((d) => { ((d.printers ??= {}) as Record<string, PrinterProfile>)[userId] = profile })
     return profile
   }
@@ -123,7 +125,7 @@ export class PrintService {
     const printer = this.printer(userId)
     if (!printer) throw new PrintError(409, 'Add your Epson printer\'s email address first.', 'no_printer')
     const doc = (body.document ?? {}) as Record<string, unknown>
-    if (doc.kind !== 'card' && doc.kind !== 'journal') throw new PrintError(400, 'Unknown document')
+    if (doc.kind !== 'card' && doc.kind !== 'journal' && doc.kind !== 'flights' && doc.kind !== 'hotels' && doc.kind !== 'packing' && doc.kind !== 'all') throw new PrintError(400, 'Unknown document')
     if (typeof doc.title !== 'string' || !DOC_TITLE.test(doc.title)) throw new PrintError(400, 'Invalid document title')
     const b64 = typeof body.pdf === 'string' ? body.pdf : ''
     if (!b64 || b64.length > Math.ceil(MAX_PDF_BYTES / 3) * 4 + 8 || !/^[A-Za-z0-9+/]+={0,2}$/.test(b64)) throw new PrintError(400, 'The PDF is missing or larger than 4 MB.')
@@ -155,7 +157,7 @@ export class PrintService {
       id: randomToken(12), ownerId: userId, createdAt: t, updatedAt: t,
       document: { kind: doc.kind, title: doc.title, tripId: typeof doc.tripId === 'string' ? doc.tripId.slice(0, 100) : undefined },
       pdf: b64, pdfHash, bytes: bytes.length, pageCount, request, choices, plan, printer: printer.email, address, sender,
-      blocker: check.ok ? undefined : check.reason ?? 'Sending isn\'t available.',
+      blocker: check.ok ? (printer.senderEmail&&check.kind==='gmail'&&printer.senderEmail.toLowerCase()!==check.label.toLowerCase()?`Connect ${printer.senderEmail} in print settings.`:undefined) : check.reason ?? 'Sending isn\'t available.',
       contentHash, dedupeKey: sha256(`${pdfHash}|${address}`), ref: randomToken(5), status: 'awaiting_approval', attempts: 0,
       events: [{ at: t, text: 'Prepared. Waiting for your approval.' }],
     }
@@ -190,6 +192,7 @@ export class PrintService {
     const printer = this.printer(userId)
     if (!printer || printerAddress(printer.email, job.plan.suffix) !== job.address) throw new PrintError(409, 'Your printer settings changed since this preview. Prepare it again.', 'changed')
     const sender = await this.delivery.sender(userId)
+    if(printer.senderEmail&&sender.kind==='gmail'&&printer.senderEmail.toLowerCase()!==sender.label.toLowerCase())throw new PrintError(409,'The preferred sending account changed. Prepare the print again.','changed')
     if (!sender.ok || sender.kind !== job.sender.kind || sender.label !== job.sender.label) throw new PrintError(409, sender.ok ? 'The sending account changed since this preview. Prepare it again.' : sender.reason ?? 'Sending isn\'t available.', 'changed')
     const t = this.now()
     const twin = Object.values(this.jobs).find((j) => j.id !== job.id && j.ownerId === userId && j.dedupeKey === job.dedupeKey && (j.status === 'sending' || j.status === 'send_uncertain' || (j.status === 'submitted' && t - j.updatedAt < DUPLICATE_WINDOW)))
@@ -249,7 +252,7 @@ function cleanRequest(v: unknown): PrintRequest {
   if (r.size === 'letter' || r.size === 'a4' || r.size === '4x6') out.size = r.size
   if (typeof r.duplex === 'boolean') out.duplex = r.duplex
   if (typeof r.copies === 'number' && Number.isInteger(r.copies)) { if (r.copies < 1 || r.copies > 10) throw new PrintError(400, 'Copies must be 1–10.'); out.copies = r.copies }
-  if (r.document === 'card' || r.document === 'journal') out.document = r.document
+  if (r.document === 'card' || r.document === 'journal' || r.document === 'flights' || r.document === 'hotels' || r.document === 'packing' || r.document === 'all') out.document = r.document
   return out
 }
 function cleanChoices(v: unknown): PrintChoices {

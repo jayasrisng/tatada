@@ -19,7 +19,7 @@ try{
  const star=p.locator('.task-star').first()
  assert.equal((await star.innerText()).trim(),'','task shortcut is icon-only')
  await star.click()
- assert.ok((await p.getByRole('textbox',{name:'Ask Magic'}).inputValue()).length>0)
+ await p.getByText('Fo needs the live Tatada backend. Your request has not been sent.',{exact:true}).waitFor()
  assert.equal(await p.locator('[data-server-action]').count(),0,'task shortcut asks before executing')
  await p.getByRole('tab',{name:'nearby & events'}).click()
  await p.getByLabel('What are you looking for?',{exact:true}).fill('coffee with parking and a nice view')

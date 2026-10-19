@@ -1,12 +1,19 @@
+import {humanWhen} from '../travel/display'
+import { lazy, Suspense, useEffect, useRef } from 'react'
+import { FlightTicket } from '../components/FlightTicket'
 import { useState } from 'react'
 import type { Category, ResearchOption, Trip } from '../types'
 import { useStore } from '../state/store'
-import { go, useUI } from '../state/ui'
+import { go, hashQuery, useUI } from '../state/ui'
 import { AddStay } from '../components/AddStay'
 import { DecisionPanel } from '../components/DecisionPanel'
 import { AddRow } from '../components/Checklist'
 import { Doodle } from '../components/Doodle'
 import { Btn, Chip, Paper, SampleNote } from '../components/ui'
+
+const TravelArrangements=lazy(()=>import('../components/TravelArrangements').then(m=>({default:m.TravelArrangements})))
+
+const PrintView = lazy(() => import('./PrintView').then(m => ({default:m.PrintView})))
 
 const CATS: { id: Category; label: string; icon: string }[] = [
   { id: 'flight', label: 'Flights', icon: 'plane' },
@@ -16,15 +23,20 @@ const CATS: { id: Category; label: string; icon: string }[] = [
 ]
 
 export function Notebook({ trip }: { trip: Trip }) {
-  const [cat, setCat] = useState<Category>('flight')
+  const {state} = useStore()
+  const [printOpen,setPrintOpen] = useState<'flights'|'hotels'|null>(null)
+  const [cat, setCat] = useState<Category>(() => CATS.find(c => c.id === hashQuery().get('category'))?.id ?? 'flight')
   const [compare, setCompare] = useState(false)
+  const [showResearch,setShowResearch] = useState(false)
   const opts = trip.options.filter((o) => o.category === cat)
   const live = opts.filter((o) => o.status !== 'rejected')
   const rejected = opts.filter((o) => o.status === 'rejected')
   const summary = trip.summary[cat]
+  const records=trip.bookings.filter(b=>b.kind===(cat==='flight'?'flight':cat==='stay'?'stay':cat==='move'?'transfer':'dinner'))
 
   return (
     <div className="notebook">
+      {printOpen && <NotebookPrintDialog id={trip.id} kind={printOpen} onClose={()=>setPrintOpen(null)}/>}
       <div className="cat-row" role="tablist">
         {CATS.map((c) => (
           <button key={c.id} role="tab" aria-selected={cat === c.id} className={`cat ${cat === c.id ? 'on' : ''}`} onClick={() => setCat(c.id)}>
@@ -34,22 +46,30 @@ export function Notebook({ trip }: { trip: Trip }) {
         ))}
       </div>
 
+      {(cat === 'flight' || cat === 'stay') && <Btn kind="ghost" icon="printer" onClick={() => setPrintOpen(cat === 'flight' ? 'flights' : 'hotels')}>print {cat === 'flight' ? 'flights' : 'stay'}</Btn>}
+
+      <details key={cat} className="manage-arrangements"><summary>Add or edit {cat==='flight'?'flights':cat==='stay'?'your stay':cat==='move'?'transport':'meals'}</summary><Suspense fallback={<p>Opening travel details…</p>}><TravelArrangements key={`${trip.id}:${cat}`} trip={trip} kind={cat==='flight'?'flight':cat==='stay'?'stay':cat==='move'?'transfer':'dinner'}/></Suspense></details>
+
       {cat === 'stay' && trip.status !== 'past' && trip.bookings.some((b) => b.kind === 'stay') && <DecisionPanel trip={trip} />}
 
-      {summary && (
+      {cat === 'flight' && trip.bookings.some(b => b.kind === 'flight') && <div className="flight-keepsakes">{trip.bookings.filter(b => b.kind === 'flight').map(booking => <FlightTicket key={booking.id} booking={booking} trip={trip} profile={state.profile}/>)}</div>}
+
+      {cat!=='flight'&&records.length>0&&<section className="saved-arrangement-list" aria-label="Saved arrangements">{records.map(b=><article className="journey-record" key={b.id}><div><strong>{b.title}</strong><p>{humanWhen(b.when)}</p>{b.detail&&<p>{b.detail}</p>}{b.address&&<p>{b.address}</p>}{b.ref&&<code>{b.ref}</code>}</div></article>)}</section>}
+      {records.length>0&&opts.length>0&&<button className="linkbtn small" onClick={()=>setShowResearch(v=>!v)}>{showResearch?'hide':'show'} research options</button>}
+      {summary && !records.length && cat !== 'flight' && (
         <Paper className="take" tilt={-0.8}>
-          <span className="paper-label">tatada's take</span>
+          <span className="paper-label">{trip.status === 'past' ? 'what worked' : "tatada's take"}</span>
           <p>{summary}</p>
         </Paper>
       )}
 
-      {opts.length === 0 ? (
+      {records.length>0&&!showResearch ? null : opts.length === 0 ? (
         <NextSteps trip={trip} cat={cat} />
       ) : (
         <>
           <div className="nb-toolbar">
             <span className="dim small">
-              {live.length} in the running · {rejected.length} ruled out
+              {trip.status === 'past' ? `${live.length} ${live.length === 1 ? 'record' : 'records'}` : `${live.length} in the running · ${rejected.length} ruled out`}
             </span>
             {live.length > 1 && (
               <Chip on={compare} onClick={() => setCompare(!compare)} icon="eye">
@@ -58,7 +78,7 @@ export function Notebook({ trip }: { trip: Trip }) {
             )}
           </div>
 
-          {compare ? <Compare options={live} /> : live.map((o) => <OptionCard key={o.id} o={o} tripId={trip.id} />)}
+          {compare ? <Compare options={live} /> : live.map((o) => <OptionCard key={o.id} o={o} tripId={trip.id} completed={trip.status === 'past'} />)}
 
           {rejected.length > 0 && (
             <section className="rejected">
@@ -80,19 +100,19 @@ export function Notebook({ trip }: { trip: Trip }) {
           )}
         </>
       )}
-      {opts.length > 0 && <SampleNote>sample research · prices & ratings are illustrative, not live</SampleNote>}
+      {opts.length > 0 && !trip.presentation && <SampleNote>sample research · prices & ratings are illustrative, not live</SampleNote>}
     </div>
   )
 }
 
-function OptionCard({ o, tripId }: { o: ResearchOption; tripId: string }) {
+function OptionCard({ o, tripId, completed = false }: { o: ResearchOption; tripId: string; completed?: boolean }) {
   const { dispatch } = useStore()
   const [src, setSrc] = useState<string | null>(null)
   return (
     <article className={`option ${o.status}`}>
       {o.status === 'chosen' && (
         <span className="option-badge">
-          <Doodle name="star" size={16} stroke={2.4} /> pick
+          <Doodle name="star" size={16} stroke={2.4} /> {completed ? 'completed' : 'pick'}
         </span>
       )}
       <div className="option-top">
@@ -197,4 +217,13 @@ function NextSteps({ trip, cat }: { trip: Trip; cat: Category }) {
       {cat !== 'stay' && <AddRow tripId={trip.id} phase={cat === 'flight' ? 'plan' : 'discover'} placeholder={cat === 'eat' ? 'a place you want to try…' : cat === 'move' ? 'how you might get around…' : 'a flight to look at…'} />}
     </div>
   )
+}
+
+function NotebookPrintDialog({id,kind,onClose}:{id:string;kind:'flights'|'hotels';onClose:()=>void}) {
+  const ref=useRef<HTMLDialogElement>(null)
+  useEffect(()=>{const dialog=ref.current;dialog?.showModal();return()=>{dialog?.close()}},[])
+  return <dialog ref={ref} className="notebook-print-panel" aria-label="Print from notebook" onCancel={onClose}>
+    <button className="iconbtn" aria-label="Close print panel" autoFocus onClick={onClose}><Doodle name="x" size={22}/></button>
+    <Suspense fallback={<p>Opening your print…</p>}><PrintView key={kind} id={id} doc={kind} inline/></Suspense>
+  </dialog>
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 /*
- * Theme: 'dark' (chalkboard) or 'light' (whiteboard). Follows the system on
+ * Theme: 'dark' (chalkboard) or 'light' (whiteboard). Defaults to blackboard on
  * first load; once the traveler picks one, that choice sticks. index.html
  * applies the same rule before first paint so there's no flash.
  */
@@ -16,11 +16,11 @@ const stored = (): Theme | null => {
     return null
   }
 }
-const system = (): Theme => (window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+const system = (): Theme => 'dark'
 
 function apply(t: Theme) {
   document.documentElement.dataset.theme = t
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t === 'light' ? '#f7f5ef' : '#1d2723')
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t === 'light' ? '#f7f5ef' : '#191a1d')
 }
 
 export function useTheme() {
@@ -29,15 +29,6 @@ export function useTheme() {
   useEffect(() => {
     apply(theme)
   }, [theme])
-
-  // Until the traveler chooses, keep following the system setting.
-  useEffect(() => {
-    const mq = window.matchMedia?.('(prefers-color-scheme: light)')
-    if (!mq) return
-    const on = () => !stored() && setTheme(system())
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
 
   const toggle = () => {
     const next: Theme = theme === 'dark' ? 'light' : 'dark'

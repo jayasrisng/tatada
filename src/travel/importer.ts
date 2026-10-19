@@ -92,7 +92,7 @@ export function toTravelPhoto(d: ImportDraft): TravelPhoto {
     id: d.id, fingerprint: d.fingerprint, filename: d.fileName, capturedAt: d.capturedAt, dateSource: d.dateSource,
     city: d.fields.city.trim(), country: d.fields.country.trim(), ...(d.fields.place.trim() ? { place: d.fields.place.trim() } : {}),
     labelSource: sources.includes('you') ? 'you' : sources.includes('geocoded') ? 'geocoded' : sources.length ? 'metadata' : 'you',
-    image: d.image, ...(d.lat !== undefined && d.lon !== undefined ? { lat: d.lat, lon: d.lon } : {}),
+    image: '', ...(d.lat !== undefined && d.lon !== undefined ? { lat: d.lat, lon: d.lon } : {}),
   }
 }
 

@@ -1,3 +1,4 @@
+import {ContextPicker} from './ContextPicker'
 import { useEffect, useRef, useState } from 'react'
 import { useStore, type ViaServer } from '../state/store'
 import { useUI } from '../state/ui'
@@ -8,9 +9,10 @@ import type { ChatMessage, DetailsForm, StayDetails } from '../types'
 import { ActionCard } from './ActionCard'
 import { ServerActionCard } from './ServerActionCard'
 import { Doodle } from './Doodle'
-import { Btn, Chip } from './ui'
+import { Btn } from './ui'
 import { FoChatPanel } from './FoChatPanel'
 import { DiscoverPanel } from './DiscoverPanel'
+import { printRoute } from '../print/intent'
 import { isPrintRequest, parsePrintRequest } from '../print/plan'
 import { go } from '../state/ui'
 import { uid } from '../state/id'
@@ -18,7 +20,7 @@ import { uid } from '../state/id'
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
 export function MagicSheet() {
-  const { magic, closeMagic } = useUI()
+  const { magic, closeMagic, focusTripId } = useUI()
   const { state, ask, dispatch, workspace } = useStore()
   const server = useServer()
   const isPreview = workspace.storageKey.endsWith(':preview')
@@ -49,7 +51,7 @@ export function MagicSheet() {
     const t = magic.tripId
     setTripId(t)
     // Task shortcuts open the scripted drafting helper; the Fo button opens the real Fo chat.
-    setView(magic.prefill ? 'scripted' : 'discover')
+    setView(magic.assistant || magic.prefill ? 'fo' : 'discover')
     if (magic.autoSend && magic.prefill) {
       void ask(magic.prefill, t, magic.itemId, undefined, true, viaServer)
       setText('')
@@ -99,7 +101,7 @@ export function MagicSheet() {
       const target = state.trips.find((t) => t.id === tripId) ?? state.trips.find((t) => p.toLowerCase().includes(t.destination.toLowerCase()))
       if (target) {
         closeMagic()
-        go(`/trip/${target.id}/print${parsePrintRequest(p).document === 'journal' ? '/journal' : ''}?ask=${encodeURIComponent(p.trim())}`)
+        go(printRoute(target.id, parsePrintRequest(p).document ?? 'card', p.trim()))
         return
       }
       dispatch({ type: 'chat', messages: [{ id: uid(), from: 'me', text: p.trim() }, { id: uid(), from: 'tatada', text: 'Which trip should I print? Pick one above, or open the trip and tap print.' }] })
@@ -110,7 +112,7 @@ export function MagicSheet() {
     setText('')
     setItemId(undefined)
   }
-  const contexts = state.trips.filter((t) => t.status !== 'past')
+  const contexts = state.trips.filter((t) => t.status !== 'past' && (!focusTripId || t.id === focusTripId))
   const mode = !canUseServer
     ? 'interactive preview · scripted replies · actions are simulated in this browser'
     : server.info.provider === 'mock'
@@ -141,25 +143,17 @@ export function MagicSheet() {
       </div>
 
       <div className="magic-context" role="group" aria-label="Trip context">
-        <span className="dim">for</span>
-        <Chip on={!tripId} onClick={() => (setTripId(undefined), setItemId(undefined))}>
-          today
-        </Chip>
-        {contexts.map((t) => (
-          <Chip key={t.id} on={tripId === t.id} tint={t.tint} onClick={() => (setTripId(t.id), setItemId(undefined))}>
-            {t.destination}
-          </Chip>
-        ))}
+        <ContextPicker label="Magic for" trips={contexts} value={tripId} onChange={id=>{setTripId(id);setItemId(undefined)}} locked={!!focusTripId}/>
       </div>
 
       <div className="seg magic-seg" role="tablist" aria-label="Magic modes">
         <button role="tab" aria-selected={view === 'discover'} className={view === 'discover' ? 'on' : ''} onClick={() => setView('discover')}>nearby & events</button>
-        <button role="tab" aria-selected={view === 'scripted'} className={view === 'scripted' ? 'on' : ''} onClick={() => setView('scripted')}>scripted helper</button>
+        {server.info.provider === 'mock' && <button role="tab" aria-selected={view === 'scripted'} className={view === 'scripted' ? 'on' : ''} onClick={() => setView('scripted')}>development helper</button>}
         {canUseServer && <button role="tab" aria-selected={view === 'fo'} className={view === 'fo' ? 'on' : ''} onClick={() => setView('fo')}>Fo chat</button>}
       </div>
 
-      {view === 'discover' ? <DiscoverPanel key={trip?.id ?? 'nearby'} trip={trip} /> : view === 'fo' && canUseServer ? (
-        <FoChatPanel trip={trip} onSimulated={() => setView('scripted')} />
+      {view === 'fo' && !canUseServer ? <div className="fo-auth"><h3>Let’s reconnect your assistant</h3><p>Fo needs the live Tatada backend. Your request has not been sent.</p><Btn onClick={() => { closeMagic(); go('/welcome') }}>connection settings</Btn></div> : view === 'discover' ? <DiscoverPanel key={trip?.id ?? 'nearby'} trip={trip} /> : view === 'fo' && canUseServer ? (
+        <FoChatPanel key={`${trip?.id ?? 'today'}:${magic.prefill ?? ''}`} trip={trip} initialText={magic.prefill} onSimulated={() => setView('scripted')} />
       ) : (
       <>
       <div className="magic-thread" aria-live="polite">

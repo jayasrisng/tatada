@@ -60,7 +60,10 @@ export interface TraceEntry {
   error?: string
 }
 
+export interface VoiceJoin {signalUrl:string;participantToken:string;iceTransportPolicy: 'relay'|'all'}
 export interface FoAdapter {
+  joinVoice?(userId:string):Promise<VoiceJoin>
+  startVoice?(userId: string): Promise<{ links: string[]; message: string }>
   readonly mode: 'live' | 'mock'
   /** Read-only: tools/list. */
   tools(userId: string): Promise<ToolInfo[]>
@@ -98,7 +101,7 @@ export function normalizeReply(r: ToolResult): FoReply {
   const o = (p && !Array.isArray(p) ? p : {}) as Record<string, unknown>
   const text = textOf(r)
   const rawStatus = (str(o.status) ?? str(o.state) ?? '').toLowerCase()
-  const reply = str(o.reply) ?? str(o.message) ?? str(o.text) ?? (p ? undefined : str(text))
+  const reply = str(o.reply) ?? str(o.response) ?? str(o.message) ?? str(o.text) ?? (p ? undefined : str(text))
   const progress = str(o.progress) ?? str(o.progressLine)
   const conversationId = str(o.conversationId) ?? str(o.conversation_id) ?? str((text.match(/conversationId["']?\s*[:=]\s*["']?([\w-]+)/) ?? [])[1])
   const waiting =
@@ -171,16 +174,46 @@ export class LiveFoAdapter implements FoAdapter {
   private oauth: FoCredentials
   private mcp: McpClient
   private store?: Store
+  private voiceFetch:typeof fetch
 
-  constructor(oauth: FoCredentials, mcp: McpClient, store?: Store) {
+  constructor(oauth: FoCredentials, mcp: McpClient, store?: Store, voiceFetch:typeof fetch=fetch) {
     this.oauth = oauth
     this.mcp = mcp
     this.store = store
+    this.voiceFetch=voiceFetch
   }
 
   async tools(userId: string) {
     const list = await this.withToken(userId, (t) => this.mcp.listTools(t))
     return (list.tools ?? []).map(toolInfo)
+  }
+
+  async startVoice(userId: string) {
+    // Voice session creation is only called on an explicit user tap. Never log its token-bearing URLs.
+    const result = await this.withToken(userId, (token) => this.mcp.callTool(token, 'start_fo_call', {}))
+    if (result.isError) throw new Error('Wajo could not start the voice session.')
+    // The published Wajo call widget consumes structuredContent.joinUrl. Accept only that contract,
+    // not arbitrary links in prose or HTML, and never embed provider scripts in Tatada's origin.
+    const data = result.structuredContent as { joinUrl?: unknown } | undefined
+    const links: string[] = []
+    if (typeof data?.joinUrl === 'string') {
+      try { const url = new URL(data.joinUrl); if (url.protocol === 'https:' && !url.username && !url.password && !url.port && url.hostname === 'wajo.ai' && /^\/call\/[A-Za-z0-9_-]+$/.test(url.pathname)) links.push(url.href) } catch { /* No trusted call link. */ }
+    }
+    return { links, message: links.length ? 'Your voice session is ready in Wajo. Opening it may request microphone access.' : 'Wajo did not return a supported call link. You can still use live Fo chat below.' }
+  }
+
+  async joinVoice(userId:string):Promise<VoiceJoin>{
+    const session=await this.startVoice(userId)
+    if(!session.links[0])throw Error('No voice session available.')
+    const ticket=new URL(session.links[0]).pathname.split('/').pop()!
+    // Published MCP call resource redeems this one-use ticket. No API key goes to the browser.
+    const response=await this.voiceFetch(`https://mcp.api.wajo.ai/v1/fo-calls/${encodeURIComponent(ticket)}:join`,{method:'POST',redirect:'error',signal:AbortSignal.timeout(20000)})
+    if(!response.ok)throw Error('The call could not connect. Try a new call.')
+    const data=await response.json() as Record<string,unknown>
+    if(typeof data.signalUrl!=='string'||typeof data.participantToken!=='string'||!data.participantToken||data.participantToken.length>20000)throw Error('Invalid call connection.')
+    const signal=new URL(data.signalUrl)
+    if(signal.protocol!=='wss:'||signal.hostname!=='livekit.api.wajo.ai'||signal.username||signal.password||signal.port)throw Error('Unsupported voice endpoint.')
+    return {signalUrl:signal.href,participantToken:data.participantToken,iceTransportPolicy:data.iceTransportPolicy==='relay'?'relay':'all'}
   }
 
   async probeConversations(userId: string) {

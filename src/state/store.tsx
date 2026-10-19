@@ -21,6 +21,9 @@ interface Store {
 export interface Workspace {
   kind: 'local-demo' | 'demo' | 'wajo' | 'owner' | 'connected'
   storageKey: string
+  deleteTrip?: (tripId: string) => Promise<AppState>
+  suspendSync?: () => Promise<() => void>
+  lastSyncedAt?: number
   /** Called after each change is saved locally (e.g. to sync to the server). */
   onChange?: (state: AppState) => void
 }
@@ -57,7 +60,6 @@ export function StoreProvider({ children, workspace, initialState, initialWarnin
     const trip = state.trips.find((t) => t.id === tripId)
     const decision = state.decisions?.find((d) => d.tripId === tripId && d.topic === 'early_checkin')
     const reply = think(prompt, trip, checklistItemId, { profile: state.profile, details, items: state.items, decision })
-    let fallbackNote = ''
     if (reply.action?.email && trip && viaServer) {
       const mine = echo ? [{ id: uid(), from: 'me' as const, text: prompt }] : []
       dispatch({ type: 'chat', messages: mine })
@@ -67,7 +69,8 @@ export function StoreProvider({ children, workspace, initialState, initialWarnin
         dispatch({ type: 'chat', messages: [{ id: uid(), from: 'tatada', text: reply.text, serverActionId }] })
         return
       } catch (e) {
-        fallbackNote = ` The Tatada server couldn't take this (${(e as Error).message}), so this is only a simulated preview.`
+        dispatch({type:'chat',messages:[{id:uid(),from:'tatada',text:`This request was not prepared: ${(e as Error).message}. Retry after checking the connection. No simulated action was substituted.`}]})
+        return
       }
     }
     const action: FoAction | undefined = reply.action && {
@@ -85,7 +88,7 @@ export function StoreProvider({ children, workspace, initialState, initialWarnin
       type: 'chat',
       messages: [
         ...(echo ? [{ id: uid(), from: 'me' as const, text: prompt }] : []),
-        { id: uid(), from: 'tatada', text: reply.text + fallbackNote, bullets: reply.bullets, actionId: action?.id, addedItems: items?.length ? items.map((i) => i.text) : undefined, form: reply.form },
+        { id: uid(), from: 'tatada', text: reply.text, bullets: reply.bullets, actionId: action?.id, addedItems: items?.length ? items.map((i) => i.text) : undefined, form: reply.form },
       ],
       action,
       items,

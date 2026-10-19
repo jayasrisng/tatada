@@ -120,7 +120,7 @@ test('the same Wajo user on another device gets the same workspace; another Wajo
     const phone = t.browser()
     const laptop = t.browser()
     await phone.login()
-    const ws = { profile: { name: 'Mei' }, trips: [{ id: 'kyoto' }], items: [] }
+    const ws = {onboarded:true,profile:{name:'Mei',homeAirport:'',style:[],diet:[],memberships:[]},trips:[],items:[],actions:[],chat:[],canvas:{}}
     assert.equal((await phone.call('/api/workspace', { method: 'PUT', json: { baseVersion: 0, state: ws } })).status, 200)
     await laptop.login()
     assert.deepEqual((await laptop.call('/api/workspace')).body.state, ws)

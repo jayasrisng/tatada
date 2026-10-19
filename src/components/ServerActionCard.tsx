@@ -97,12 +97,12 @@ export function ServerActionCard({ action }: { action: ServerAction }) {
             {editing ? (
               <div className="ac-edit">
                 <label>
-                  to <input value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} aria-label="Recipient email" />
+                  to <input value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} aria-label="Recipient email" placeholder="Recipient email" />
                 </label>
                 <label>
-                  subject <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} aria-label="Subject" />
+                  subject <input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} aria-label="Subject" placeholder="Write a subject…" />
                 </label>
-                <textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} rows={8} aria-label="Email body" />
+                <textarea value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} rows={8} aria-label="Email body" placeholder="Write your message…" />
               </div>
             ) : (
               <>

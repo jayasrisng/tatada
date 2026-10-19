@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useStore } from './state/store'
 import { go, useRoute, useUI } from './state/ui'
 import { useServer } from './state/server'
@@ -13,17 +13,23 @@ import { Tasks } from './screens/Tasks'
 import { Style } from './screens/Style'
 import { Welcome } from './screens/Welcome'
 
+import { fmtRange } from './components/ui'
+import { Arrival } from './components/Arrival'
 const PrintView = lazy(() => import('./screens/PrintView').then((m) => ({ default: m.PrintView })))
+
+const Policies = lazy(() => import('./screens/Policies').then(m => ({ default: m.Policies })))
 
 export function App() {
   const route = useRoute()
+  const [arriving, setArriving] = useState(() => route.length === 0)
+  const finishArrival = useCallback(() => setArriving(false), [])
   const { state, storageWarning } = useStore()
-  const { magic } = useUI()
+  const { magic, focusTripId, setFocusTrip } = useUI()
   const [root, id, tab, sub] = route
   useServerSync()
 
   useEffect(() => {
-    if (!state.onboarded && root !== 'welcome') go('/welcome')
+    if (!state.onboarded && root !== 'welcome' && root !== 'policies') go('/welcome')
   }, [state.onboarded, root])
 
   let screen
@@ -46,6 +52,9 @@ export function App() {
     case 'style':
       screen = <Style />
       break
+    case 'policies':
+      screen = <Suspense fallback={<p>Opening policies…</p>}><Policies section={id} /></Suspense>
+      break
     case 'welcome':
       screen = <Welcome />
       break
@@ -53,17 +62,19 @@ export function App() {
       screen = <Home />
   }
 
-  const chromeless = root === 'welcome' || root === 'new' || tab === 'print'
+  const chromeless = root === 'policies' || root === 'welcome' || root === 'new' || tab === 'print'
   const current = root === 'trip' ? 'trips' : (root ?? '')
 
   return (
-    <div className="frame">
+    <div className={`frame ${focusTripId ? 'trip-shell' : ''}`}>
       <ChalkDefs />
+      {focusTripId && <header className="trip-shell-bar" inert={!!magic || arriving}><span>{state.trips.find(t=>t.id===focusTripId)?.destination}<small>{(() => {const t=state.trips.find(t=>t.id===focusTripId);return t ? fmtRange(t.start,t.end) : ''})()}</small></span><button className="linkbtn" onClick={()=>{setFocusTrip(undefined); go('/')}}>my world</button></header>}
+      {arriving && <Arrival name={state.profile.name} onDone={finishArrival} />}
       {storageWarning && <p className="storage-warning" role="status">{storageWarning}</p>}
       {/* While Magic is open, the rest of the app is inert: no focus, no clicks, hidden from screen readers. */}
-      <main className={`app ${chromeless ? 'chromeless' : ''}`} inert={!!magic}>{screen}</main>
+      <main className={`app ${chromeless ? 'chromeless' : ''}`} inert={!!magic || arriving}>{screen}</main>
       {!chromeless && (
-        <div inert={!!magic}>
+        <div inert={!!magic || arriving}>
           <TabBar current={current} tripId={root === 'trip' ? id : undefined} />
         </div>
       )}

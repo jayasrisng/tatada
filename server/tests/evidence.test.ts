@@ -95,3 +95,10 @@ test('the latest reply replaces an earlier confirmation', () => {
   assert.equal(result.outcome, 'checkin_declined')
   assert.equal(result.itemDone, false)
 })
+
+test('Wajo structured response field is the actual reply, including follow-up questions', () => {
+  const complete=normalizeReply({structuredContent:{status:'completed',conversationId:'real-shape',response:'Here is your LA plan.'}})
+  assert.equal(complete.reply,'Here is your LA plan.');assert.equal(complete.status,'complete')
+  const question=normalizeReply({structuredContent:{status:'needs_input',conversationId:'real-shape',response:'Which airport are you leaving from?',progress:'Waiting for your answer'}})
+  assert.equal(question.reply,'Which airport are you leaving from?');assert.equal(question.status,'needs_user')
+})

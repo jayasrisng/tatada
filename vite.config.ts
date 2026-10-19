@@ -1,3 +1,4 @@
+import { offlineShell } from './scripts/offline-plugin'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { nodeEventsMiddleware } from './server/events/node.ts'
@@ -14,11 +15,11 @@ function eventsService(): Plugin {
 
 export default defineConfig({
   base: process.env.VITE_BASE_PATH ?? '/',
-  plugins: [react(), eventsService()],
+  plugins: [react(), eventsService(), offlineShell()],
   worker: { format: 'es' },
   server: {
     port: 5173,
     // The Tatada server (npm run server). Same-origin for cookies and CSRF.
-    proxy: { '/api': { target: 'http://localhost:8787', changeOrigin: false } },
+    proxy: { '/api': { target: `http://127.0.0.1:${process.env.TATADA_BACKEND_PORT ?? '8787'}`, changeOrigin: false } },
   },
 })

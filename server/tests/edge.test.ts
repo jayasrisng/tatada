@@ -33,7 +33,7 @@ test('edge API persists isolated bearer workspaces without third-party cookies',
   const session = await first.json() as { sessionToken: string }
   assert.ok(session.sessionToken)
   await settle()
-  const state = { trips: [], items: [], profile: { name: 'Test' } }
+  const state = {onboarded:true,trips:[],items:[],profile:{name:'Test',homeAirport:'',style:[],diet:[],memberships:[]},actions:[],chat:[],canvas:{}}
   const saved = await request('/api/workspace', { method: 'PUT', token: session.sessionToken, body: { baseVersion: 0, state } })
   assert.equal(saved.status, 200)
   await settle()

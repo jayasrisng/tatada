@@ -20,6 +20,7 @@ import type { Store } from './store.ts'
  */
 
 export interface ChatTurn {
+  displayText?: string
   id: string
   role: 'me' | 'fo'
   kind?: 'reply' | 'question' | 'error'
@@ -49,6 +50,7 @@ export interface FoChat {
   deadline?: number
   nextRunAt?: number
   pollErrors: number
+  replyMissing?: boolean
 }
 
 const BUSY: ChatStatus[] = ['sending', 'send_uncertain', 'working']
@@ -128,12 +130,13 @@ export class FoChatService {
     const missing = p.risk.filter((r) => !confirmed.has(r))
     if (missing.length) throw new ActionError(403, `Confirm separately before sending: ${missing.join(', ')}`)
     if (!this.fo.connected(ownerId)) throw new ActionError(409, 'Fo isn\'t authorized yet.')
-    const turn: ChatTurn = { id: randomToken(8), role: 'me', text: p.message, at: this.now(), risk: p.risk, delivery: 'sending' }
+    const turn: ChatTurn = { id: randomToken(8), role: 'me', displayText: p.text, text: p.message, at: this.now(), risk: p.risk, delivery: 'sending' }
     c.turns.push(turn)
     c.keys = [...c.keys, key].slice(-50)
     c.inflight = { turnId: turn.id, message: p.message, attempts: 0 }
     c.pending = undefined
     c.status = 'sending'
+    c.replyMissing = false
     c.error = undefined
     c.progress = undefined
     c.deadline = this.now() + this.timeoutMs
@@ -156,6 +159,11 @@ export class FoChatService {
   recover() {
     this.store.update(() => {
       for (const c of Object.values(this.chats)) {
+        if (c.status === 'idle' && c.conversationId && c.turns.at(-1)?.text === '(Fo finished without a message.)') {
+          c.turns.pop()
+          c.status = 'working'; c.replyMissing = true; c.deadline = this.now() + this.timeoutMs
+          c.progress = 'Retrieving Fo’s reply…'
+        }
         if (c.status === 'sending') c.status = 'send_uncertain'
         if (BUSY.includes(c.status)) c.nextRunAt = this.now()
       }
@@ -231,7 +239,7 @@ export class FoChatService {
   private async poll(c: FoChat) {
     if (c.deadline && this.now() > c.deadline) {
       c.status = 'timeout'
-      c.error = 'Fo is still working. Tatada stopped waiting; check again later.'
+      c.error = c.replyMissing ? 'Fo completed, but its reply could not be retrieved. Check again to fetch it without resending your message.' : 'Fo is still working. Tatada stopped waiting; check again later.'
       return this.touch(c)
     }
     try {
@@ -260,13 +268,19 @@ export class FoChatService {
         c.nextRunAt = this.now() + 1000
         break
       case 'needs_user':
-        c.turns.push({ id: randomToken(8), role: 'fo', kind: 'question', text: r.progress ?? r.reply ?? 'Fo has a question.', at: this.now() })
+        c.turns.push({ id: randomToken(8), role: 'fo', kind: 'question', text: r.reply ?? r.progress ?? 'Fo has a question.', at: this.now() })
         c.status = 'needs_input'
         c.progress = undefined
         c.inflight = undefined
         break
       case 'complete':
-        c.turns.push({ id: randomToken(8), role: 'fo', kind: 'reply', text: r.reply ?? '(Fo finished without a message.)', at: this.now() })
+        if (!r.reply?.trim()) {
+          c.replyMissing = true; c.status = 'working'; c.progress = 'Retrieving Fo’s reply…'; c.nextRunAt = this.now() + 2000
+          break
+        }
+        c.replyMissing = false
+        c.error = undefined
+        c.turns.push({ id: randomToken(8), role: 'fo', kind: 'reply', text: r.reply, at: this.now() })
         c.status = 'idle'
         c.progress = undefined
         c.inflight = undefined

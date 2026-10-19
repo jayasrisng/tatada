@@ -15,7 +15,7 @@ export function TravelHistory() {
   const marks = state.countryMarks ?? {}
   const visited = visitedCountries(photos, marks), planned = plannedCountries(state.trips)
   const fromPhotos = new Set(photos.map((p) => countryCode(p.country)).filter((c): c is string => !!c))
-  const stats = travelStats(photos)
+  const stats = travelStats(photos.filter((p) => { const code = countryCode(p.country); return !!code && visited.has(code) }))
   const tree = placeTree(photos, visited)
   const [importing, setImporting] = useState(false), [editing, setEditing] = useState(false), [filter, setFilter] = useState('')
   const stops = useMemo(() => {
@@ -51,7 +51,7 @@ export function TravelHistory() {
     {planned.size > 0 && <p className="small dim">Planned: {state.trips.filter((t) => t.status !== 'past').map((t) => t.destination).join(', ')}</p>}
 
     {photos.length > 0 && <details className="photo-manage">
-      <summary>imported photos ({photos.length})</summary>
+      <summary>places & imports ({photos.length})</summary>
       <ul>{[...photos].sort((a, b) => b.capturedAt.localeCompare(a.capturedAt)).map((p) => (
         <li key={p.id}><span>{[p.place, p.city, p.country].filter(Boolean).join(', ') || 'no location'} · {p.capturedAt ? photoDay(p) : 'no date'}</span>
           {p.tripId && <button className="link-btn" onClick={() => go(`/trip/${p.tripId}/journal`)}>trip</button>}

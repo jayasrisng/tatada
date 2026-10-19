@@ -1,4 +1,4 @@
-import type { AppState, ChecklistItem, Garment, ItineraryItem, Trip } from '../types'
+import type { AppState, ChecklistItem, Garment, ItineraryItem, Trip } from '../types.js'
 
 /*
  * Seeded demo data. Everything here is SAMPLE content: fares, ratings, and

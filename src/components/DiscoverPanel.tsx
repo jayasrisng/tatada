@@ -1,11 +1,14 @@
 import { useRef, useState } from 'react'
 import type { Trip } from '../types'
 import { useStore } from '../state/store'
+import { useUI } from '../state/ui'
 import { uid } from '../state/id'
 import { describePoint, findCity, searchNearby, type Place } from '../discovery/search'
 import { EventsUnavailable, searchEvents } from '../discovery/events'
 import { checkedLine, eventPlaceLine, eventSaveText, formatEventTime, formatPrice, sourceSummary, type EventItem, type EventSearch } from '../discovery/eventFormat'
 import { NO_PREFERENCES, discoveryIntent, eventLinks, formatDistance, safeWebsite, type DiscoverKind, type EventWhen, type NearbyPlace, type PlacePreferences } from '../discovery/places'
+import { TodayStyleChat } from './TodayStyleChat'
+import { ResearchPanel } from './ResearchPanel'
 import { Btn, Chip } from './ui'
 
 const KINDS: [DiscoverKind, string][] = [['coffee', 'coffee'], ['restaurants', 'food'], ['events', 'events']]
@@ -25,6 +28,7 @@ const locate = () => new Promise<Place>((resolve, reject) => {
 
 export function DiscoverPanel({ trip }: { trip?: Trip }) {
   const { state, dispatch } = useStore()
+  const { closeMagic } = useUI()
   const defaults: PlacePreferences = { ...NO_PREFERENCES, vegetarian: state.profile.diet.includes('vegetarian'), vegan: state.profile.diet.includes('vegan') }
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState<DiscoverKind>('coffee')
@@ -95,6 +99,8 @@ export function DiscoverPanel({ trip }: { trip?: Trip }) {
   const total = places?.length ?? events?.events.length ?? 0
 
   return <section className="discover-panel" aria-label="Discover nearby">
+    <h3 className="wizard-q">Make a little room for today.</h3>
+    <p className="small dim">Find food, a local event, or somewhere to spend a little time. Choose your location below.</p>
     <form className="discover-ask" onSubmit={(e) => { e.preventDefault(); void find() }}>
       <input className="chalk-input discover-query" value={query} onChange={(e) => onQuery(e.target.value)} aria-label="What are you looking for?"
         placeholder={kind === 'events' ? 'live music this weekend' : kind === 'restaurants' ? 'vegetarian dinner, walkable' : 'coffee with parking and a view'} enterKeyHint="search" />
@@ -144,7 +150,7 @@ export function DiscoverPanel({ trip }: { trip?: Trip }) {
     </div>}
 
     {events && <div className="discover-results" aria-live="polite">
-      <p className="small dim">{[sourceSummary(events.sources), checkedLine(events.sources)].filter(Boolean).join(' · ')}{events.sources.some((s) => s.note) && <details className="coverage"><summary>why?</summary><ul>{events.sources.filter((s) => s.note).map((s) => <li key={s.source}>{s.label}: {s.note}</li>)}</ul></details>}</p>
+      <div className="small dim">{[sourceSummary(events.sources), checkedLine(events.sources)].filter(Boolean).join(' · ')}{events.sources.some((s) => s.note) && <details className="coverage"><summary>why?</summary><ul>{events.sources.filter((s) => s.note).map((s) => <li key={s.source}>{s.label}: {s.note}</li>)}</ul></details>}</div>
       {events.relaxed && <p className="small">Nothing mentioned “{events.interests.join(', ')}”; here is what else is on.</p>}
       {!events.events.length && <p role="status">No upcoming public listings found{when !== 'any' ? ' for that time' : ''}{freeOnly ? ' marked free' : ''}. Try another time or interest.</p>}
       <ol className="results">{shownEvents!.map((e: EventItem) => {
@@ -172,6 +178,8 @@ export function DiscoverPanel({ trip }: { trip?: Trip }) {
       <div className="chips wrap">{eventLinks(where || trip?.destination || '', query).map((l) => <a className="btn btn-ghost" key={l.label} href={l.url} target="_blank" rel="noreferrer">{l.label} ↗</a>)}</div>
     </div>}
 
-    <p className="small dim discover-foot">Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors (<a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noreferrer">fix the map</a>) · walking routes by <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noreferrer">FOSSGIS</a> · events from public Luma, Eventbrite and Partiful pages. Nothing is booked or sent.</p>
+    {!trip && <details className="research-card"><summary>What should I wear today?</summary><TodayStyleChat /></details>}
+    <details className="research-card"><summary>Something else in mind?</summary><p>F1 at a sports bar, a client lunch, a city festival, or a quiet afternoon. Start with your own words.</p><ResearchPanel key={`${location?.name ?? cityText}:${trip?.id ?? 'today'}`} title="Make today yours" context={[location ? `Selected location: ${location.name}` : cityText ? `Location entered by the star: ${cityText}` : 'Location not supplied. Ask before making nearby recommendations.', trip ? `Trip: ${trip.destination}, ${trip.start}–${trip.end}` : 'Context: Today; no trip selected.'].join('\n')} prompt={query} /></details>
+    <p className="small dim discover-foot">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a> · <a href="#/policies/sources" onClick={closeMagic}>Sources</a></p>
   </section>
 }

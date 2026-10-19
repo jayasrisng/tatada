@@ -1,3 +1,10 @@
+import {withoutTrip} from '../src/travel/delete.ts'
+import type {AppState} from '../src/types.ts'
+import type {AmadeusTravel} from './travel.ts'
+import {ShareService} from './sharing.ts'
+import {validateWorkspace} from '../shared/workspace.ts'
+import type { GmailConnection } from './gmail.ts'
+import type { IntelligenceService } from './intelligence.ts'
 import { Buffer } from 'node:buffer'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomToken, sha256 } from './crypto.ts'
@@ -27,6 +34,9 @@ import type { TokenSet } from './types.ts'
 export type ResolveIdentity = (a: { tokens: TokenSet; body: Json; issuer: string }) => Promise<{ identity: WajoIdentity | null; foShape?: unknown }>
 
 interface Deps {
+  travel?:AmadeusTravel
+  gmail?: GmailConnection
+  intelligence?: IntelligenceService
   store: Store
   actions: ActionService
   fo?: FoAdapter
@@ -90,6 +100,7 @@ class Limiter {
 export function createApp(deps: Deps) {
   const { store, actions, oauth, appUrl } = deps
   const now = deps.now ?? Date.now
+  const shares = new ShareService(store,now)
   const live = actions.provider === 'live'
   const authLimit = new Limiter(10, 10 * 60_000, now)
   const writeLimit = new Limiter(120, 60_000, now)
@@ -347,8 +358,49 @@ export function createApp(deps: Deps) {
         return send(res, 200, status(), { 'set-cookie': clear(COOKIE) })
       }
 
+      if(deps.bearerSessions&&path==='/api/gmail/callback'&&method==='GET'){
+        try{if(!deps.gmail||url.searchParams.get('error'))throw new Error('Gmail declined');const staged=deps.gmail.stage(url.searchParams.get('state')??'',url.searchParams.get('code')??'');return redirect(res,`${appUrl}/#${staged.returnTo}?gmail_exchange=${staged.exchange}`)}catch{return redirect(res,`${appUrl}/#/welcome?gmail=error`)}
+      }
+      const publicShare=path.match(/^\/api\/shared\/([\w-]{40,60})$/)
+      if(publicShare&&method==='GET')return send(res,200,{trip:shares.view(publicShare[1])},{'referrer-policy':'no-referrer'})
+
       if (!userId) return send(res, 401, { error: live ? 'Sign in with Wajo' : 'No session' })
       if (method !== 'GET' && !writeLimit.allow(`w:${userId}`)) return send(res, 429, { error: 'Too many requests. Slow down a little.' })
+
+      if(path==='/api/gmail/prepare'&&method==='POST'){
+        const body=await readBody(req)
+        if(!deps.gmail)return send(res,503,{error:'Gmail needs server configuration.'})
+        if(typeof body.binding!=='string'||!/^[a-f0-9]{64}$/.test(body.binding))return send(res,400,{error:'Missing browser binding.'})
+        if(!authLimit.allow(`gmail:${userId}`))return send(res,429,{error:'Try connecting Gmail again later.'})
+        return send(res,200,{url:deps.gmail.begin(userId,body.binding,typeof body.returnTo==='string'?body.returnTo:'/welcome',typeof body.email==='string'?body.email:undefined)})
+      }
+      if(path==='/api/gmail/complete'&&method==='POST'){
+        const body=await readBody(req)
+        if(!deps.gmail||typeof body.exchange!=='string'||typeof body.binding!=='string'||body.binding.length>200)return send(res,400,{error:'Missing Gmail browser confirmation.'})
+        await deps.gmail.complete(userId,body.exchange,sha256(body.binding))
+        return send(res,200,deps.gmail.status(userId))
+      }
+      if (path === '/api/gmail/status' && method === 'GET') return send(res, 200, deps.gmail?.status(userId) ?? {configured:false,connected:false,reason:'Gmail is not enabled on this server.'})
+      if (path === '/api/gmail/connect' && method === 'GET') {
+        if (!deps.gmail) return send(res,503,{error:'Gmail is not enabled on this server.'})
+        if (!authLimit.allow(`gmail:${userId}`)) return send(res,429,{error:'Too many email connection attempts. Try later.'})
+        const binding=randomToken()
+        const destination=deps.gmail.begin(userId,sha256(binding),url.searchParams.get('returnTo') ?? '/welcome',url.searchParams.get('email')??undefined)
+        return redirect(res,destination,[`tatada_gmail=${binding}; HttpOnly; SameSite=Lax; Path=${deps.loginCookiePath ?? '/api/'}; Max-Age=600${secure}`])
+      }
+      if (path === '/api/gmail/callback' && method === 'GET') {
+        let destination='/welcome', result='error'
+        try {
+          if (!deps.gmail || url.searchParams.get('error')) throw new Error('Authorization declined')
+          destination=await deps.gmail.finish(userId,url.searchParams.get('state') ?? '',url.searchParams.get('code') ?? '',sha256(cookie(req,'tatada_gmail') ?? ''))
+          result='connected'
+        } catch { /* Never expose authorization codes, tokens or provider errors. */ }
+        return redirect(res,`${appUrl}/#${destination}?gmail=${result}`,[clear('tatada_gmail',deps.loginCookiePath ?? '/api/')])
+      }
+      if (path === '/api/gmail/disconnect' && method === 'POST') {
+        if (deps.gmail) await deps.gmail.disconnect(userId)
+        return send(res,200,{connected:false})
+      }
 
       if (path === '/api/status' && method === 'GET') return send(res, 200, status(userId))
 
@@ -389,6 +441,89 @@ export function createApp(deps: Deps) {
         }
       }
 
+      if (path === '/api/intelligence' && method === 'POST') {
+        if (!deps.intelligence) return send(res, 503, { error: 'Claude research is not configured on this server.' })
+        return send(res, 200, await deps.intelligence.research(userId, await readBody(req)))
+      }
+
+      if(path==='/api/fo/voice/join'&&method==='POST'){
+        if(!deps.fo?.joinVoice||deps.fo.mode!=='live'||!deps.fo.connected(userId))return send(res,409,{error:'Connect Wajo Fo first.'})
+        if(!authLimit.allow(`voice:${userId}`))return send(res,429,{error:'Too many call attempts. Try later.'})
+        try{return send(res,200,await deps.fo.joinVoice(userId))}catch{return send(res,503,{error:'Fo could not connect. Try a new call.'})}
+      }
+
+      if (path === '/api/fo/voice' && method === 'POST') {
+        if (!deps.fo?.startVoice || deps.fo.mode !== 'live' || !deps.fo.connected(userId)) return send(res, 409, { error: 'Connect live Wajo Fo first.' })
+        try { return send(res, 200, await deps.fo.startVoice(userId)) } catch { return send(res, 503, { error: 'Wajo could not open a voice session. Try live chat instead.' }) }
+      }
+
+      if(path==='/api/shares'&&method==='GET')return send(res,200,{links:shares.list(userId,url.searchParams.get('tripId')??undefined)})
+      if(path==='/api/shares'&&method==='POST'){
+        const body=await readBody(req,MAX_WORKSPACE)
+        if(typeof body.tripId!=='string')return send(res,400,{error:'Choose a saved trip.'})
+        return send(res,201,shares.create(userId,body.tripId,body.snapshot,body.includeNotes===true))
+      }
+      const revokeShare=path.match(/^\/api\/shares\/([\w-]{8,40})\/revoke$/)
+      if(revokeShare&&method==='POST'){shares.revoke(userId,revokeShare[1]);return send(res,200,{revoked:true})}
+
+      if(path==='/api/trips/delete'&&method==='POST'){
+        const body=await readBody(req),cur=store.data.workspaces[userId]
+        if(body.confirm!=='DELETE'||typeof body.tripId!=='string'||!Number.isSafeInteger(body.baseVersion))return send(res,400,{error:'Confirm permanent trip deletion.'})
+        if(!cur||cur.version!==body.baseVersion)return send(res,409,{error:'Workspace changed. Reload and review before deleting.'})
+        if(!validateWorkspace(cur.state))return send(res,409,{error:'Workspace needs recovery before deletion.'})
+        const state=cur.state as unknown as AppState
+        if(!state.trips.some(t=>t.id===body.tripId))return send(res,404,{error:'Trip not found.'})
+        const activeAction=Object.values(store.data.actions).some(a=>a.ownerId===userId&&a.draft.tripId===body.tripId&&['approved','sending','send_uncertain','waiting','answering','verifying'].includes(a.status))
+        const activeChat=(deps.chats?.list(userId)??[]).some(c=>c.tripId===body.tripId&&['sending','send_uncertain','working'].includes(c.status))
+        const tripPrints=Object.values(store.data.printJobs??{}).filter(v=>{const j=v as {ownerId?:string;document?:{tripId?:string}};return j.ownerId===userId&&j.document?.tripId===body.tripId})
+        if(activeAction||activeChat||tripPrints.some(v=>['sending','send_uncertain'].includes((v as {status:string}).status)))return send(res,409,{error:'Resolve this trip’s active or uncertain provider requests before deleting.'})
+        const next={version:cur.version+1,updatedAt:now(),state:withoutTrip(state,body.tripId,Object.values(store.data.actions).filter(a=>a.ownerId===userId&&a.draft.tripId===body.tripId).map(a=>a.id))}
+        store.update(d=>{
+          d.workspaces[userId]=next
+          for(const [key,value] of Object.entries(d.actions))if(value.ownerId===userId&&value.draft.tripId===body.tripId)delete d.actions[key]
+          for(const table of [d.foChats,d.shares])if(table)for(const [key,value] of Object.entries(table)){const v=value as {ownerId?:string;owner?:string;tripId?:string};if((v.ownerId===userId||v.owner===userId)&&v.tripId===body.tripId)delete table[key]}
+          for(const job of tripPrints)delete d.printJobs![(job as {id:string}).id]
+        })
+        await store.flush();return send(res,200,next)
+      }
+
+      if(path==='/api/account/export'&&method==='GET')return send(res,200,{format:'tatada-account-data',version:1,exportedAt:new Date(now()).toISOString(),workspace:store.data.workspaces[userId]?.state??null,chats:deps.chats?.list(userId)??[],actions:actions.list(userId),shares:shares.list(userId),printer:store.data.printers?.[userId]??null,printJobs:Object.values(store.data.printJobs??{}).filter(value=>(value as {ownerId?:string}).ownerId===userId).map(value=>{const j=value as {id?:string;status?:string;pdf?:string;createdAt?:number;updatedAt?:number};return {id:j.id,status:j.status,pdf:j.pdf,createdAt:j.createdAt,updatedAt:j.updatedAt}})})
+      if(path==='/api/account/delete'&&method==='POST'){
+        const body=await readBody(req)
+        if(body.confirm!=='DELETE')return send(res,400,{error:'Type DELETE to confirm account data deletion.'})
+        const activeActions=Object.values(store.data.actions).some(a=>a.ownerId===userId&&['approved','sending','send_uncertain','waiting','answering','verifying'].includes(a.status))
+        const activeChats=(deps.chats?.list(userId)??[]).some(c=>['sending','send_uncertain','working'].includes(c.status))
+        const activePrint=Object.values(store.data.printJobs??{}).some(value=>{const j=value as {ownerId?:string;status?:string};return j.ownerId===userId&&['sending','send_uncertain'].includes(j.status??'')})
+        if(activeActions||activeChats||activePrint)return send(res,409,{error:'A provider request is still active or uncertain. Resolve it before deleting so it cannot recreate data or hide an external action.'})
+        store.update(d=>{
+          for(const table of [d.actions,d.foChats,d.printJobs,d.shares])if(table)for(const [k,v] of Object.entries(table))if((v as {ownerId?:string;owner?:string}).ownerId===userId||(v as {owner?:string}).owner===userId)delete table[k]
+          for(const table of [d.sessions,d.sessionExchanges])if(table)for(const [k,v] of Object.entries(table))if(v.userId===userId)delete table[k]
+          if(d.gmailExchanges)for(const [k,v] of Object.entries(d.gmailExchanges))if(v.owner===userId)delete d.gmailExchanges[k]
+          if(d.gmailPending)for(const [k,v] of Object.entries(d.gmailPending))if(v.owner===userId)delete d.gmailPending[k]
+          for(const [k,v] of Object.entries(d.subjects))if(v===userId)delete d.subjects[k]
+          for(const table of [d.workspaces,d.tokens,d.gmailTokens,d.gmailEpochs,d.printers,d.foTrace,d.users,d.accounts])if(table)delete table[userId]
+        })
+        await store.flush()
+        return send(res,200,{deleted:true,retention:'Active Tatada records and stored authorization removed. Device copies and owner-managed backups require separate removal. Provider histories and already downloaded copies remain outside Tatada.'},{'set-cookie':clear(COOKIE)})
+      }
+
+      if(path==='/api/travel/capabilities'&&method==='GET')return send(res,200,deps.travel?.capabilities()??{configured:false,flightStatus:false,inventory:false,booking:false,checkIn:false,loyalty:false})
+      if(path==='/api/travel/offers'&&method==='POST'){
+        const body=await readBody(req)
+        if(!deps.travel)return send(res,503,{error:'Fare inventory is not connected yet. Compare airline and seller sites, or use sourced fare research.'})
+        if(typeof body.from!=='string'||typeof body.to!=='string'||typeof body.date!=='string'||typeof body.adults!=='number')return send(res,400,{error:'Choose airports, departure date and traveler count.'})
+        return send(res,200,await deps.travel.searchOffers(body.from,body.to,body.date,body.adults))
+      }
+      if(path==='/api/travel/flight-status'&&method==='POST'){
+        const body=await readBody(req)
+        if(!deps.travel)return send(res,503,{error:'Live travel data needs a configured provider account. Saved details remain available.'})
+        const state=store.data.workspaces[userId]?.state as {trips?:{id:string;bookings:{id:string;flight?:{number:string};at?:string}[]}[]}|undefined
+        const booking=state?.trips?.find(t=>t.id===body.tripId)?.bookings.find(b=>b.id===body.bookingId)
+        const match=booking?.flight?.number.replace(/\s/g,'').match(/^([A-Z0-9]{2,3}?)(\d{1,4})$/i)
+        if(!match||!booking?.at)return send(res,400,{error:'Save the airline code, flight number and departure-local date first.'})
+        return send(res,200,await deps.travel.flightStatus(match[1].toUpperCase(),match[2],booking.at.slice(0,10)))
+      }
+
       /* ── per-account workspace ── */
 
       if (path === '/api/workspace' && method === 'GET') {
@@ -398,7 +533,7 @@ export function createApp(deps: Deps) {
       if (path === '/api/workspace' && method === 'PUT') {
         const body = await readBody(req, MAX_WORKSPACE)
         const st = body.state as Record<string, unknown> | undefined
-        if (!st || typeof st !== 'object' || !Array.isArray(st.trips) || !Array.isArray(st.items) || !st.profile || typeof st.profile !== 'object') {
+        if (!Number.isSafeInteger(body.baseVersion) || Number(body.baseVersion)<0 || !validateWorkspace(st)) {
           return send(res, 400, { error: 'Invalid workspace' })
         }
         const cur = store.data.workspaces[userId]
@@ -493,7 +628,7 @@ export function createApp(deps: Deps) {
       if (e instanceof ActionError) return send(res, e.status, { error: e.message })
       if (e instanceof PrintError) return send(res, e.status, { error: e.message, code: e.code })
       // Log the class and message only; never request headers (cookies) or bodies.
-      console.error('[tatada]', (e as Error)?.name, (e as Error)?.message)
+      console.error('[tatada] request failed')
       return send(res, 500, { error: 'Something went wrong on the Tatada server' })
     }
   }

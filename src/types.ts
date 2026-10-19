@@ -19,6 +19,7 @@ export interface ChecklistItem {
   kind: ItemKind
   note?: string
   /** A Magic prompt that would let Fo handle this item. */
+  priority?: boolean
   magicPrompt?: string
   actionId?: string
 }
@@ -46,6 +47,15 @@ export interface ResearchOption {
 }
 
 export interface Booking {
+  paidPrice?: {amount:string;currency:string}
+
+  importHash?: string
+  originalId?: string
+  departureZone?: string
+  arrivalZone?: string
+  address?: string
+  arrivesAt?: string
+  flight?: { airline: string; number: string; from: string; to: string }
   id: string
   kind: 'flight' | 'stay' | 'dinner' | 'transfer' | 'activity'
   title: string
@@ -63,6 +73,10 @@ export interface Booking {
 }
 
 export interface Memory {
+  /** Bundled illustration, restricted to known assets rather than remote image URLs. */
+  illustration?: 'sydney-harbour' | 'sydney-lunch'
+  /** Compact JPEG, saved with this account and included in private exports. */
+  image?: string
   id: string
   day: string
   text: string
@@ -71,7 +85,23 @@ export interface Memory {
   tint?: 'yellow' | 'pink' | 'blue' | 'green' | 'orange'
 }
 
+export interface SavedResearch {
+  id: string
+  checkedAt: string
+  model: string
+  searched: boolean
+  sections: { text: string; sources: { url: string; title: string }[] }[]
+}
+
+export type JourneyStep = 'flight' | 'arrival' | 'stay' | 'days' | 'onward'
+
 export interface Trip {
+  timeZone?: string
+  journeyDone?: Partial<Record<JourneyStep, boolean>>
+  mapPlaces?: {name: string; lat: number; lon: number}[]
+  presentation?: boolean
+  destinationPoint?: { lat: number; lon: number }
+  research?: SavedResearch[]
   id: string
   destination: string
   country: string
@@ -188,6 +218,8 @@ export interface ChatMessage {
 
 export interface Profile {
   name: string
+  homeBases?: string[]
+  personalNeeds?: string[]
   homeAirport: string
   style: string[]
   diet: string[]
@@ -258,7 +290,10 @@ export interface CanvasPos {
   r: number
 }
 
+export interface AppliedUpdate {id:string;tripId:string;kind:'task'|'itinerary'|'journal';recordId:string;snapshot:string;undone:boolean}
+
 export interface AppState {
+  assistantUpdates?: AppliedUpdate[]
   onboarded: boolean
   profile: Profile
   trips: Trip[]
@@ -311,6 +346,7 @@ export interface Look {
 }
 
 export interface ItineraryItem {
+  done?: boolean
   id: string
   day: string
   time?: string

@@ -1,19 +1,24 @@
 import { lazy, Suspense, useState } from 'react'
 import { useStore } from '../state/store'
-import { go } from '../state/ui'
+import { go, useUI } from '../state/ui'
+import { SharedTripImport } from '../components/TripSharing'
 import { Doodle } from '../components/Doodle'
-import { Box, Chip, Heading, TODAY, TopBar, daysUntil, fmtRange } from '../components/ui'
+import { Box, Chip, Heading, TopBar, daysUntil, fmtRange } from '../components/ui'
+import { useToday } from '../state/today'
 import type { Trip } from '../types'
 
 const TravelHistory = lazy(() => import('../components/TravelHistory').then((m) => ({ default: m.TravelHistory })))
 
 export function Trips({ initial = 'trips' }: { initial?: 'trips' | 'history' }) {
+  const today = useToday()
   const [view, setView] = useState<'trips' | 'history'>(initial)
   const { state } = useStore()
+  const { focusTripId, setFocusTrip } = useUI()
+  const visibleTrips = state.trips.filter(t => !focusTripId || t.id === focusTripId)
   const byStart = (a: Trip, b: Trip) => a.start.localeCompare(b.start)
-  const now = state.trips.filter((t) => t.start <= TODAY && t.end >= TODAY).sort(byStart)
-  const ahead = state.trips.filter((t) => t.start > TODAY && t.status !== 'past').sort(byStart)
-  const past = state.trips.filter((t) => !now.includes(t) && !ahead.includes(t)).sort((a, b) => b.start.localeCompare(a.start))
+  const now = visibleTrips.filter((t) => t.start <= today && t.end >= today).sort(byStart)
+  const ahead = visibleTrips.filter((t) => t.start > today && t.status !== 'past').sort(byStart)
+  const past = visibleTrips.filter((t) => !(t.id === 'kyoto' && t.bookings.some((b) => b.id === 'kb1' && b.simulated)) && !now.includes(t) && !ahead.includes(t)).sort((a, b) => b.start.localeCompare(a.start))
 
   const card = (t: Trip, i: number) => {
     const items = state.items.filter((x) => x.tripId === t.id)
@@ -41,15 +46,18 @@ export function Trips({ initial = 'trips' }: { initial?: 'trips' | 'history' }) 
     <div className="screen">
       <TopBar back="/" />
       <Heading>Trips</Heading>
-      <nav className="seg" aria-label="Trips views"><button className={view === 'trips' ? 'on' : ''} onClick={() => setView('trips')}>my trips</button><button className={view === 'history' ? 'on' : ''} onClick={() => setView('history')}>my maps & timeline</button></nav>
-      {view === 'history' ? <Suspense fallback={<p>Opening your map…</p>}><TravelHistory /></Suspense> : <div className="trip-list">
-        {now.length > 0 && <><h3 className="trip-group">happening now</h3>{now.map(card)}</>}
-        {ahead.length > 0 && <><h3 className="trip-group">coming up</h3>{ahead.map(card)}</>}
-        {!now.length && !ahead.length && <p className="empty">Where should we go next?</p>}
+      {location.hash.includes('cleanup=needed')&&<p role="alert">Trip deleted. Some device originals or recovery data could not be cleaned up. Open Profile → Your data to review original confirmations and recovery copies.</p>}
+      {focusTripId && <p className="small">Trip mode · <button className="linkbtn" onClick={() => setFocusTrip(undefined)}>show my whole world</button></p>}
+      <details className="trip-sharing-entry"><summary>Have a friend’s trip?</summary><SharedTripImport /></details>
+      {!focusTripId && <nav className="seg" aria-label="Trips views"><button className={view === 'trips' ? 'on' : ''} onClick={() => setView('trips')}>my trips</button><button className={view === 'history' && !focusTripId ? 'on' : ''} onClick={() => setView('history')}>my maps & timeline</button></nav>}
+      {view === 'history' && !focusTripId ? <Suspense fallback={<p>Opening your map…</p>}><TravelHistory /></Suspense> : <div className="trip-list">
         <Box dashed className="trip-card new" onClick={() => go('/new')}>
           <Doodle name="plus" size={30} />
           <span>new trip</span>
         </Box>
+        {now.length > 0 && <><h3 className="trip-group">happening now</h3>{now.map(card)}</>}
+        {ahead.length > 0 && <><h3 className="trip-group">coming up</h3>{ahead.map(card)}</>}
+        {!now.length && !ahead.length && <p className="empty">Where should we go next?</p>}
         {past.length > 0 && <details className="past-trips"><summary>past trips ({past.length})</summary>{past.map(card)}</details>}
       </div>}
     </div>

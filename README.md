@@ -4,32 +4,38 @@ A travel companion with trips, tasks, a research notebook, memories, printable t
 
 Requires Node 22.18+.
 
-## Present locally
+## Current continuation — October 19, 2026
 
-Sign-in and Wajo Fo are paused. The default app runs without a backend:
+Read [the continuation verification report](docs/verification/continuation-2026-10-19.md) and [release preparation / retention / exact owner actions](docs/production-readiness-2026-10-19.md) first. Older sections below retain historical setup and may describe superseded behavior.
+
+Reviewed PDF/text confirmations now join existing travel records, with on-device extraction, duplicate checks and separate encrypted original storage. Explicit offline trip packs include a production service-worker shell, itinerary, reservations, addresses, saved guidance and original tickets; no tokens or passport-vault data. Destination-local next steps use saved IANA zones. Fo replies can become reviewed, editable, reversible local records. Synced trips support reviewed view-only snapshot links with ownership checks, expiry and revocation. Account exports/deletion, nested validation and conflict-choice controls are available.
+
+Run `TATADA_DEV_PORT=5180 npm run dev:offline` for a built local preview with a live backend and explicit offline downloads. Stop the previous launcher on that port first. New server routes require restarting that backend. No public release is implied. Run `npm test`, then a connected `/tatada/` production build and `npm run check:continuation` for the isolated fixture story; see the report for commands and honest counts.
+
+## Run the live local app
 
 ```bash
 npm install
-npm run dev        # open http://localhost:5173
+npm run dev                 # http://127.0.0.1:5173
+# If that port is occupied:
+TATADA_DEV_PORT=5180 npm run dev
 ```
 
-Trips, closet photos, kept outfits and itinerary edits save in localStorage in this browser. They do not sync across browsers/devices. Use **profile → export/import** for backups; clearing site data removes local saves. Seeded trips are samples, and Magic actions are simulated.
+Keep `WAJO_FO_ENDPOINT`, `WAJO_FO_API_KEY`, and `CLAUDE_API_KEY` (or `ANTHROPIC_API_KEY`) in the ignored `.env`. The launcher starts a live, localhost-only personal backend and points the frontend at it. It never silently starts mock Fo. Existing servers are not stopped. API keys belong to the one local owner; this mode is refused in public production. `npm run dev:frontend` remains for isolated frontend development, and mock providers remain only for contract tests and explicit rehearsals.
 
-Home is Tatada's own chalk world map: countries you've been to are filled, planned ones are dashed, and a star marks the trip happening now or next, with its dates and countdown. With no trip ahead it simply asks “Where should we go next?”. The Tasks tab shows a compact pending count. Magic, discovery and Style start with **today**; they use a trip only when you pick it.
+The world map is zoomable, uses bundled Natural Earth vectors, and has no inferred location star. Blackboard is the first-use default; a chosen light theme persists. `#/brand` previews the palette; [brand kit](docs/brand-kit.md) documents colors, lettering, marks and icons. New trips begin with a dream, then only the planning categories the star selects. Today remains independent of trip context.
 
-Style includes an “add from photos” button, individual transparent garment images reconstructed from the reference photos, a 2D outfit figure, mix-and-match, itinerary-based suggestions and a packing moodboard. These are visual outfit previews, not accurate body/size or fabric-fit simulations. New outfit uploads are automatically segmented into visible individual pieces by a browser-local detector, then reviewed before adding to the closet. Detection can miss edges or merge layers; it does not reconstruct hidden fabric.
+Magic task controls open live Fo chat. The separate small star toggles priority without contacting a provider. Browser microphone dictation is optional and always produces editable text. “Call Fo” requests a Wajo call link only on a tap; the provider's call page handles microphone permission and audio. No outbound calls, messages or print jobs are started by opening a screen.
 
-For backend development only, explicitly opt in with `VITE_ENABLE_BACKEND=true npm run dev` plus `npm run server`. `npm run predemo` opts in against an isolated mock backend. Keep this flag off for the browser-only presentation. Existing backend code is retained for later integration; Wajo authorization has not been validated end-to-end and must not be presented as ready.
+Claude research uses the real Messages API with bounded web search, actual citations and checked times. A saved trip briefing is included in workspace exports. Neither research nor Fo receives the document vault automatically. Research can consider worldwide sources and requests beyond coffee or three event sites. No connected airline inventory, mileage account or payment processor is implied by a text recommendation.
 
-Presentation flow:
+Workspace saves and the local server's `.data/` survive reloads. Export/import provides portable backups including journals. Friends can share reviewed read-only itinerary files and keep independent copies; downloaded copies cannot be revoked. Sensitive profile information, bookings, private itinerary notes and documents are excluded from shared trip files.
 
-1. Show the world map, switch themes, and open the Lisbon sample trip.
-2. Open its notebook and compare the sample research options.
-3. Ask for early check-in from the task shortcut; inspect the simulated draft and clearly label it as a demonstration.
-4. Open Style: show the individual clothes, mix an outfit, swipe to keep it, and add its pieces to the packing checklist.
-5. Add a memory, open print for the trip card (PDF preview; emailing needs the backend), then export your workspace from the profile.
+Private documents live separately in AES-GCM-encrypted IndexedDB, unlocked by a PBKDF2-derived non-extractable key. The key and passphrase are never persisted. Ordinary exports and server workspace sync exclude them. Use a separate encrypted backup; forgetting the passphrase or clearing site data without a backup loses access. Vault fields are manually reviewed and only checked text fields enter a Fo draft after an explicit choice. There is no automatic OCR or document upload to an AI service.
 
-Reset sample data from the profile. Export real work before resetting or importing another workspace.
+Clothing detection is browser-local visible-garment segmentation, not physical fit simulation. The shared import reviews each photo's metadata/location independently. New map records retain metadata only after confirmation; existing photos and memories are preserved.
+
+Epson PDF preparation and approval remain implemented, but **real Fo attachment delivery is blocked by Wajo's current text-only tool schema**. No print is reported as sent without provider evidence. Multi-user hosted sign-in, Claude configuration on the hosted backend, and the updated public frontend require separate release work. See [architecture and integration boundaries](docs/architecture.md).
 
 ## Discover and remember
 

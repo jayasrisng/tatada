@@ -10,3 +10,4 @@ scripts/out
 .data
 outfits/
 supabase/.temp
+docs/verification/google-*.png

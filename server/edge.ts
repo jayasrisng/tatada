@@ -1,3 +1,6 @@
+import {IntelligenceService} from './intelligence.ts'
+import {GmailConnection,GmailPrintDelivery} from './gmail.ts'
+import {AmadeusTravel} from './travel.ts'
 import { createApp } from './app.ts'
 import { Store, type Data } from './store.ts'
 import { ActionService } from './actions.ts'
@@ -24,6 +27,9 @@ export interface EdgeOptions {
   resource?: string
   liveRecipients?: string[]
   mode?: 'live' | 'mock'
+  research?: {key:string;model?:string}
+  gmail?: {clientId:string;clientSecret:string;redirectUri?:string}
+  travel?: {clientId:string;clientSecret:string;environment:'test'|'production'}
   waitUntil?: (promise: Promise<unknown>) => void
 }
 
@@ -40,6 +46,8 @@ export function createEdgeHandler(options: EdgeOptions) {
   const resource = options.resource ?? 'https://mcp.api.wajo.ai/fo'
   const cors = { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true', 'access-control-allow-headers': 'Content-Type, X-Tatada, Authorization', 'access-control-allow-methods': 'GET, POST, PATCH, PUT, OPTIONS', vary: 'Origin' }
   const error = (text: string, status = 503) => Response.json({ error: text }, { status, headers: { ...cors, 'cache-control': 'no-store', 'retry-after': '2' } })
+  const intelligence=options.research?new IntelligenceService(options.research):undefined
+  const travel=options.travel?new AmadeusTravel(options.travel):undefined
   const configure = (store: Store) => {
     const mcp = new McpClient(resource, { timeoutMs: 15000 })
     const oauth = new FoOAuth({ store, sealer: new Sealer(options.secret), resource, redirectUri: `${publicUrl}/api/fo/callback`, fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(15000) }) })
@@ -54,8 +62,9 @@ export function createEdgeHandler(options: EdgeOptions) {
     }) as FoAdapter
     const actions = new ActionService({ store, fo, pollWaitSeconds: 1, liveRecipients: options.liveRecipients })
     const chats = new FoChatService({ store, fo, pollWaitSeconds: 1 })
-    const print = new PrintService({ store, delivery: options.mode === 'mock' ? new MockPrintDelivery(store) : new FoPrintDelivery(fo) })
-    const handle = createApp({ store, fo, actions, chats, print, oauth: options.mode === 'mock' ? undefined : oauth, appUrl, secureCookies: true, allowedOrigin: origin, bearerSessions: true, browserAccounts: true, loginCookiePath: `${prefix}/`,
+    const gmail=options.gmail?new GmailConnection({store,sealer:new Sealer(options.secret),...options.gmail,redirectUri:options.gmail.redirectUri??`${publicUrl}/api/gmail/callback`}):undefined
+    const print = new PrintService({ store, delivery: options.mode === 'mock' ? new MockPrintDelivery(store) : gmail?new GmailPrintDelivery(gmail):new FoPrintDelivery(fo) })
+    const handle = createApp({ store, fo, actions, chats, print, gmail, intelligence, travel, oauth: options.mode === 'mock' ? undefined : oauth, appUrl, secureCookies: true, allowedOrigin: origin, bearerSessions: true, browserAccounts: true, loginCookiePath: `${prefix}/`,
       resolveIdentity: async ({ body, tokens, issuer }) => {
         const identity = fromTokenResponse(body, issuer) ?? fromAccessToken(tokens.accessToken, issuer, Date.now())
         return identity ? { identity } : fromFoApi(mcp, tokens.accessToken, issuer)
@@ -97,7 +106,7 @@ export function createEdgeHandler(options: EdgeOptions) {
     if (request.method !== 'GET' && from !== origin) return error('Request origin not allowed', 403)
     if (path === '/api/health') return Response.json({ ok: true, provider: options.mode ?? 'live', storage: 'supabase' }, { headers: cors })
     // These routes only expose an authenticated committed snapshot; no provider I/O.
-    const snapshot = request.method === 'GET' && (/^\/api\/(status|workspace|actions(?:\/[\w-]+)?|fo\/chats(?:\/[\w-]+)?)$/.test(path))
+    const snapshot = (path==='/api/intelligence'&&request.method==='POST') || request.method === 'GET' && (/^\/api\/(status|workspace|actions(?:\/[\w-]+)?|fo\/chats(?:\/[\w-]+)?)$/.test(path))
     let token: string | undefined
     let committed = false
     try {
@@ -121,8 +130,8 @@ export function createEdgeHandler(options: EdgeOptions) {
       if (token) { await repository.release(token); token = undefined }
       if (snapshot || response.ok) kick()
       return response
-    } catch (e) {
-      console.error('[tatada edge]', e instanceof Error ? e.message : 'request failed')
+    } catch {
+      console.error('[tatada edge] request failed')
       return error('Tatada could not complete this request. Try again in a moment.')
     } finally {
       if (token && committed) await repository.release(token)

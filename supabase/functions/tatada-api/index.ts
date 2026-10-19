@@ -14,5 +14,8 @@ Deno.serve(createEdgeHandler({
   resource: Deno.env.get('FO_RESOURCE'),
   liveRecipients: (Deno.env.get('TATADA_LIVE_RECIPIENTS') ?? '').split(',').filter(Boolean),
   mode: 'live',
+  research: Deno.env.get('CLAUDE_API_KEY')||Deno.env.get('ANTHROPIC_API_KEY') ? {key:(Deno.env.get('CLAUDE_API_KEY')||Deno.env.get('ANTHROPIC_API_KEY'))!,model:Deno.env.get('CLAUDE_MODEL')} : undefined,
+  gmail: Deno.env.get('GOOGLE_CLIENT_ID')&&Deno.env.get('GOOGLE_CLIENT_SECRET') ? {clientId:Deno.env.get('GOOGLE_CLIENT_ID')!,clientSecret:Deno.env.get('GOOGLE_CLIENT_SECRET')!,redirectUri:Deno.env.get('GOOGLE_REDIRECT_URI')} : undefined,
+  travel: Deno.env.get('AMADEUS_CLIENT_ID')&&Deno.env.get('AMADEUS_CLIENT_SECRET') ? {clientId:Deno.env.get('AMADEUS_CLIENT_ID')!,clientSecret:Deno.env.get('AMADEUS_CLIENT_SECRET')!,environment:Deno.env.get('AMADEUS_ENV')==='production'?'production':'test'} : undefined,
   waitUntil: (task) => EdgeRuntime.waitUntil(task),
 }))

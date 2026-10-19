@@ -1,7 +1,10 @@
+import {SharedTripView} from './SharedTripView'
+import {useRoute} from '../state/ui'
+import {OfflineTrip,loadSelectedPack} from './OfflineTrip'
 import { beginSignIn, apiUrl, hasHostedApi, browserOnly } from '../config'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppState } from '../types'
-import { useServer } from '../state/server'
+import { api, useServer } from '../state/server'
 import { StoreProvider, type Workspace } from '../state/store'
 import { UIProvider, hashQuery } from '../state/ui'
 import { accountKey, isAppState, loadState, saveState, STORAGE_KEY } from '../state/persistence'
@@ -18,78 +21,100 @@ import { Doodle, MagicBuddy } from './Doodle'
  *   - no server                          → a labeled simulated workspace in this browser
  */
 export function AuthGate() {
+  const route=useRoute()
   const [preview, setPreview] = useState(false)
   const server = useServer()
   const { info } = server
   const [loaded, setLoaded] = useState<{ accountId: string; version: number; state?: AppState; gen: number } | null>(null)
+  const [lastSyncAt,setLastSyncAt]=useState<number|undefined>()
   const [syncNote, setSyncNote] = useState<string | null>(null)
   const version = useRef(0)
   const lastSynced = useRef<string | null>(null)
   const timer = useRef<number | undefined>(undefined)
+  const needsLoad=useRef(false),syncEpoch=useRef(0)
+  const [loadRevision,setLoadRevision]=useState(0)
+  const latest = useRef<AppState | null>(null), inFlight = useRef(false), blocked = useRef(false)
+  const [conflict,setConflict] = useState<{version:number;state:AppState}|null>(null)
+  const [retry,setRetry] = useState(0)
   const accountId = info.authenticated ? info.account?.id : undefined
 
   useEffect(() => {
     if (!accountId) return setLoaded(null)
+    syncEpoch.current++;needsLoad.current=false;blocked.current=true;inFlight.current=false;latest.current=null;setConflict(null)
     let live = true
     server
       .loadWorkspace()
       .then((w) => {
         if (!live) return
+        needsLoad.current=false;blocked.current=false;setSyncNote(null)
         version.current = w.version
         // Unsynced local edits win if the server hasn't moved on since they were made.
         const meta = readMeta(accountId)
         const local = loadState(() => window.localStorage, accountKey(accountId), emptyState)
-        const keepLocal = meta?.dirty && meta.base === w.version && !local.warning
+        const keepLocal = meta?.dirty && !local.warning
+        if(keepLocal&&meta.base!==w.version&&isAppState(w.state)){blocked.current=true;setConflict({version:w.version,state:w.state});setSyncNote('Both copies changed. Choose which copy to keep; your local edits are retained.')}
+        if(keepLocal)latest.current=local.state
+        const syncedAt=keepLocal?meta?.syncedAt:isAppState(w.state)?Date.now():undefined
+        setLastSyncAt(syncedAt)
+        if(!keepLocal&&isAppState(w.state))writeMeta(accountId,{base:w.version,dirty:false,syncedAt})
         let state = keepLocal ? local.state : isAppState(w.state) ? w.state : undefined
         // Single-owner local mode: open straight into Jayasri's canvas, keeping any progress on this browser.
-        if (info.account?.kind === 'owner') state = personalize(state ?? bestLocalCopy() ?? seed())
+        if (info.account?.kind === 'owner') state = state ?? (localStorage.getItem(accountKey(accountId)+':deleted')?emptyState():bestLocalCopy()) ?? emptyState()
         lastSynced.current = keepLocal ? null : state ? JSON.stringify(state) : null
-        setLoaded({ accountId, version: w.version, state, gen: 0 })
+        setLoaded(l=>({ accountId, version: w.version, state, gen: l?.accountId===accountId?l.gen+1:0 }))
       })
-      .catch(() => live && setLoaded({ accountId, version: 0, gen: 0 }))
+      .catch(() => {if(live){needsLoad.current=true;version.current=readMeta(accountId)?.base??0;const local=loadState(()=>localStorage,accountKey(accountId),emptyState);blocked.current=true;setSyncNote('Could not load the server copy. Local edits are retained. Reconnect before syncing.');setLoaded({accountId,version:readMeta(accountId)?.base??0,state:local.state,gen:0})}})
     return () => {
-      live = false
+      live = false;syncEpoch.current++;clearTimeout(timer.current)
     }
-  }, [accountId])
+  }, [accountId,loadRevision])
 
-  // Debounced push to the server; a newer copy elsewhere wins and is loaded here.
+  useEffect(()=>{const retrySync=()=>setRetry(n=>n+1);window.addEventListener('online',retrySync);const t=setInterval(retrySync,15000);return()=>{window.removeEventListener('online',retrySync);clearInterval(t);clearTimeout(timer.current)}},[])
+
+  // Debounced, serialized push. Conflicting copies require an explicit choice.
   const onChange = useCallback(
     (state: AppState) => {
       if (!accountId) return
+      latest.current=state
       const json = JSON.stringify(state)
       if (json === lastSynced.current) return
       writeMeta(accountId, { base: version.current, dirty: true })
+      if(blocked.current)return
+      const epoch=syncEpoch.current
       clearTimeout(timer.current)
       timer.current = window.setTimeout(async () => {
+        if(epoch!==syncEpoch.current||inFlight.current||blocked.current)return
+        inFlight.current=true
         try {
           const r = await server.saveWorkspace(version.current, state)
+          if(epoch!==syncEpoch.current)return
           if (r.ok) {
             version.current = r.version
             lastSynced.current = json
-            writeMeta(accountId, { base: r.version, dirty: false })
-            setSyncNote(null)
+            const dirty=JSON.stringify(latest.current)!==json
+            const syncedAt=Date.now();setLastSyncAt(syncedAt)
+            writeMeta(accountId, { base: r.version, dirty, syncedAt })
+            setSyncNote(dirty?'New edits saved on device; waiting to sync.':null)
           } else if (isAppState(r.state)) {
-            version.current = r.version
-            lastSynced.current = JSON.stringify(r.state)
-            writeMeta(accountId, { base: r.version, dirty: false })
-            // Keep the local edits that lost, so nothing silently disappears.
-            try {
-              localStorage.setItem(`${accountKey(accountId)}:recovery`, json)
-            } catch {
-              /* best effort */
-            }
-            saveState(r.state, () => window.localStorage, accountKey(accountId))
-            setSyncNote('This workspace changed on another device, so the newer copy is loaded. Your edits from here are saved as a recovery copy in your profile.')
-            setLoaded((l) => l && { ...l, state: r.state as AppState, gen: l.gen + 1 })
-          }
+            blocked.current=true
+            try {localStorage.setItem(`${accountKey(accountId)}:recovery`,JSON.stringify(latest.current??state))} catch { /* existing cache retained */ }
+            setConflict({version:r.version,state:r.state})
+            setSyncNote('This workspace changed elsewhere. Your edits are kept here. Review both copies before choosing.')
+          } else {blocked.current=true;setSyncNote('The server copy is invalid. Your on-device edits are retained; export them before recovering the server.')}
         } catch {
+          if(epoch!==syncEpoch.current)return
           setSyncNote('Saved on this device. It will sync when the Tatada server is reachable.')
-        }
+        } finally {if(epoch===syncEpoch.current)inFlight.current=false}
       }, 800)
     },
     [accountId],
   )
 
+  useEffect(()=>{if(needsLoad.current&&accountId)setLoadRevision(n=>n+1);else if(latest.current&&!blocked.current)onChange(latest.current)},[retry,onChange])
+
+  if(route[0]==='shared'&&route[1])return <SharedTripView token={route[1]}/>
+  const offlinePack = loadSelectedPack()
+  if (offlinePack && (!loaded||!accountId) && (!navigator.onLine || (!browserOnly && info.checked && !info.available))) return <OfflineTrip pack={offlinePack}/>
   if (browserOnly) return <BrowserWorkspace />
 
   if (preview) return (
@@ -117,19 +142,35 @@ export function AuthGate() {
   if (!info.authenticated || !accountId) return <SignIn onDemo={() => setPreview(true)} />
   if (!loaded || loaded.accountId !== accountId) return <Splash />
 
-  const workspace: Workspace = { kind: info.account?.kind ?? 'demo', storageKey: accountKey(accountId), onChange }
+  const workspace: Workspace = { kind: info.account?.kind ?? 'demo', storageKey: accountKey(accountId), lastSyncedAt:lastSyncAt, onChange, suspendSync:async()=>{const previous=blocked.current;blocked.current=true;clearTimeout(timer.current);const end=Date.now()+20000;while(inFlight.current){if(Date.now()>end){blocked.current=previous;throw new Error('A workspace save is still finishing. Try deletion again.')}await new Promise(r=>setTimeout(r,100))}return()=>{blocked.current=previous;setRetry(n=>n+1)}} }
+  workspace.deleteTrip=async(tripId)=>{
+    if(blocked.current||conflict)throw new Error('Resolve workspace sync or conflicts before deleting a trip.')
+    const epoch=syncEpoch.current,resume=await workspace.suspendSync!()
+    try{
+      const current=latest.current??loaded.state
+      if(!current)throw new Error('Reload the saved workspace first.')
+      if(JSON.stringify(current)!==lastSynced.current){const saved=await server.saveWorkspace(version.current,current);if(!saved.ok)throw new Error('Workspace changed elsewhere. Reload and review before deleting.');version.current=saved.version}
+      if(epoch!==syncEpoch.current)throw new Error('Account changed. Reload before deleting.')
+      const result=await api<{state:AppState;version:number}>('/api/trips/delete',{method:'POST',json:{tripId,confirm:'DELETE',baseVersion:version.current}})
+      if(epoch!==syncEpoch.current)throw new Error('Account changed while deletion completed. Reload to see its result.')
+      version.current=result.version;lastSynced.current=JSON.stringify(result.state);latest.current=result.state
+      saveState(result.state,()=>localStorage,accountKey(accountId));writeMeta(accountId,{base:result.version,dirty:false,syncedAt:Date.now()})
+      setLoaded(l=>l?.accountId===accountId?{...l,state:result.state,gen:l.gen+1}:l)
+      return result.state
+    }finally{if(epoch===syncEpoch.current)resume()}
+  }
   return (
-    <Mount
+    <>{conflict&&<section className="mode-banner" role="alertdialog" aria-label="Resolve workspace conflict"><p>Your device and server have different saved copies. Neither will be overwritten until you choose.</p><div className="ac-buttons"><button className="linkbtn" onClick={()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(conflict.state)],{type:'application/json'}));a.download='tatada-server-copy.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}}>download server copy</button><button className="linkbtn" onClick={()=>{version.current=conflict.version;blocked.current=false;setConflict(null);if(latest.current)onChange(latest.current)}}>keep this device’s copy</button><button className="linkbtn" onClick={()=>{if(latest.current)try{localStorage.setItem(`${accountKey(accountId)}:recovery`,JSON.stringify(latest.current))}catch{return setSyncNote('Could not preserve local recovery. Export it before choosing the server copy.')};version.current=conflict.version;lastSynced.current=JSON.stringify(conflict.state);latest.current=conflict.state;saveState(conflict.state,()=>localStorage,accountKey(accountId));writeMeta(accountId,{base:conflict.version,dirty:false,syncedAt:Date.now()});setLastSyncAt(Date.now());blocked.current=false;setLoaded(l=>l&&{...l,state:conflict.state,gen:l.gen+1});setConflict(null);setSyncNote('Server copy loaded. Your previous edits are in profile recovery.') }}>use server copy</button></div></section>}<Mount
       key={`${accountId}:${loaded.gen}`}
       workspace={workspace}
       initialState={loaded.state}
-      banner={info.account?.kind === 'demo' ? 'Demo mode · mock Fo · not a real account' : syncNote ?? undefined}
-    />
+      banner={syncNote??(info.account?.kind === 'demo' ? 'Demo mode · mock Fo · not a real account' : undefined)}
+    /></>
   )
 }
 
 function BrowserWorkspace() {
-  const [initial] = useState(() => loadState(() => window.localStorage, `${STORAGE_KEY}:preview`, () => bestLocalCopy() ?? seed()))
+  const [initial] = useState(() => loadState(() => window.localStorage, `${STORAGE_KEY}:preview`, () => localStorage.getItem(`${STORAGE_KEY}:preview:deleted`)?emptyState():bestLocalCopy() ?? seed()))
   return <Mount workspace={{ kind: 'local-demo', storageKey: `${STORAGE_KEY}:preview` }} initialState={personalize(initial.state)} initialWarning={initial.warning} banner="Saved in this browser · sample trips · Fo and sign-in paused" />
 }
 
@@ -210,7 +251,7 @@ function SignIn({ onDemo }: { onDemo: () => void }) {
 
 /** Sync bookkeeping per account: the server version local edits are based on, and whether they're unsynced. */
 const metaKey = (id: string) => `${accountKey(id)}:sync`
-function readMeta(id: string): { base: number; dirty: boolean } | null {
+function readMeta(id: string): { base: number; dirty: boolean; syncedAt?: number } | null {
   try {
     const v = JSON.parse(localStorage.getItem(metaKey(id)) ?? 'null')
     return v && typeof v.base === 'number' && typeof v.dirty === 'boolean' ? v : null
@@ -218,9 +259,9 @@ function readMeta(id: string): { base: number; dirty: boolean } | null {
     return null
   }
 }
-function writeMeta(id: string, m: { base: number; dirty: boolean }) {
+function writeMeta(id: string, m: { base: number; dirty: boolean; syncedAt?:number }) {
   try {
-    localStorage.setItem(metaKey(id), JSON.stringify(m))
+    localStorage.setItem(metaKey(id), JSON.stringify({...m,syncedAt:m.syncedAt??readMeta(id)?.syncedAt}))
   } catch {
     /* storage unavailable: server sync still works while the page is open */
   }
@@ -242,7 +283,7 @@ function bestLocalCopy(): AppState | undefined {
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i) ?? ''
-      if (!k.startsWith(STORAGE_KEY) || /:(recovery|sync)$/.test(k)) continue
+      if (![STORAGE_KEY,`${STORAGE_KEY}:preview`].includes(k)) continue
       const v = JSON.parse(localStorage.getItem(k) ?? 'null')
       if (!isAppState(v)) continue
       const n = v.items.length + v.trips.length * 5 + v.chat.length + v.trips.reduce((m, t) => m + t.memories.length, 0)

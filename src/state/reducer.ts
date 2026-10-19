@@ -1,15 +1,25 @@
-import type { AppState, Booking, CanvasPos, ChatMessage, ChecklistItem, DecisionRecord, FoAction, Garment, ItineraryItem, Look, Memory, Profile, StayDetails, TravelPhoto, Trip } from '../types'
+import {withoutTrip} from '../travel/delete'
+import {applyProposal,undoProposal,type Proposal} from '../assistant/proposals'
+import type { AppState, JourneyStep, Booking, CanvasPos, ChatMessage, ChecklistItem, DecisionRecord, FoAction, Garment, ItineraryItem, Look, Memory, Profile, StayDetails, TravelPhoto, Trip } from '../types'
 import { outcome } from '../magic/engine'
 import { uid } from './id'
 
 export type Act =
+  | {type:'deleteTrip';tripId:string}
+  | {type: 'applyProposal';id:string;proposal:Proposal}
+  | {type: 'undoProposal';id:string}
   | { type: 'importTravelPhotos'; photos: TravelPhoto[]; trips: Trip[] }
   | { type: 'deleteTravelPhoto'; id: string }
   | { type: 'markCountry'; code: string; mark: 'visited' | 'not_visited' | null }
+  | { type: 'setTripTimeZone'; tripId: string; zone: string }
   | { type: 'reset'; state: AppState }
   | { type: 'onboard'; profile: Profile }
   | { type: 'addTrip'; trip: Trip; items: ChecklistItem[] }
+  | { type: 'saveResearch'; tripId: string; note: NonNullable<Trip['research']>[number] }
   | { type: 'toggleItem'; id: string }
+  | { type: 'toggleJourneyStep'; tripId: string; step: JourneyStep }
+  | { type: 'toggleStop'; tripId: string; id: string }
+  | { type: 'prioritizeItem'; id: string }
   | { type: 'editItem'; id: string; text: string }
   | { type: 'addItem'; item: ChecklistItem }
   | { type: 'deleteItem'; id: string }
@@ -23,6 +33,11 @@ export type Act =
   | { type: 'answer'; id: string; answer: string }
   | { type: 'tick'; id: string }
   | { type: 'saveStayDetails'; tripId: string; details: StayDetails; messageId?: string }
+  | { type: 'saveBooking'; tripId: string; booking: Booking }
+  | { type: 'deleteBooking'; tripId: string; id: string }
+  | { type: 'editMemory'; tripId: string; id: string; changes: Pick<Memory,'text'|'day'|'place'> }
+  | { type: 'deleteMemory'; tripId: string; id: string }
+  | { type: 'restoreMemory'; tripId: string; memory: Memory; index: number }
   | { type: 'addBooking'; tripId: string; booking: Booking }
   | { type: 'applyServerOutcome'; tripId: string; itemId: string; actionId: string; done: boolean; note: string }
   | { type: 'setDecisionInput'; tripId: string; key: 'standardCheckIn' | 'policy'; value?: string; at: number }
@@ -43,12 +58,23 @@ const patchAction = (s: AppState, id: string, fn: (a: FoAction) => FoAction): Ap
 
 export function reducer(s: AppState, a: Act): AppState {
   switch (a.type) {
+    case 'deleteTrip': return withoutTrip(s,a.tripId)
+    case 'setTripTimeZone':
+      return {...s,trips:s.trips.map(t=>t.id===a.tripId?{...t,timeZone:a.zone||undefined}:t)}
+    case 'applyProposal':
+      try {return applyProposal(s,a.id,a.proposal)} catch {return s}
+    case 'undoProposal':
+      try {return undoProposal(s,a.id)} catch {return s}
     case 'reset':
       return a.state
     case 'onboard':
       return { ...s, onboarded: true, profile: a.profile }
+    case 'saveResearch':
+      return { ...s, trips: s.trips.map((t) => t.id === a.tripId ? { ...t, research: [a.note, ...(t.research ?? []).filter((n) => n.id !== a.note.id)].slice(0, 5) } : t) }
     case 'addTrip':
       return { ...s, trips: [a.trip, ...s.trips], items: [...s.items, ...a.items] }
+    case 'prioritizeItem':
+      return { ...s, items: s.items.map((i) => i.id === a.id ? { ...i, priority: !i.priority } : i) }
     case 'toggleItem':
       return { ...s, items: s.items.map((i) => (i.id === a.id ? { ...i, done: !i.done } : i)) }
     case 'editItem':
@@ -76,6 +102,10 @@ export function reducer(s: AppState, a: Act): AppState {
           }
         }),
       }
+    case 'toggleJourneyStep':
+      return {...s,trips:s.trips.map(t=>t.id===a.tripId?{...t,journeyDone:{...t.journeyDone,[a.step]:!t.journeyDone?.[a.step]}}:t)}
+    case 'toggleStop':
+      return {...s, trips:s.trips.map(t=>t.id===a.tripId?{...t,itinerary:(t.itinerary??[]).map(i=>i.id===a.id?{...i,done:!i.done}:i)}:t)}
     case 'addMemory':
       return { ...s, trips: s.trips.map((t) => (t.id === a.tripId ? { ...t, memories: [...t.memories, a.memory] } : t)) }
     case 'moveCard':
@@ -89,6 +119,17 @@ export function reducer(s: AppState, a: Act): AppState {
       }
     case 'saveStayDetails':
       return saveStayDetails(s, a.tripId, a.details, a.messageId)
+    case 'saveBooking':
+      if (a.booking.importHash && s.trips.find(t=>t.id===a.tripId)?.bookings.some(b=>b.importHash===a.booking.importHash && b.id!==a.booking.id)) return s
+      return {...s,trips:s.trips.map(t=>t.id===a.tripId?{...t,...(a.booking.kind==='stay'&&a.booking.address!==undefined&&(!t.bookings.some(b=>b.kind==='stay')||t.bookings.find(b=>b.kind==='stay')?.id===a.booking.id)?{localAddress:a.booking.address||undefined}:{}),...(a.booking.kind==='flight'&&a.booking.arrivesAt!==undefined&&(!t.bookings.some(b=>b.kind==='flight')||t.bookings.find(b=>b.kind==='flight')?.id===a.booking.id)?{arrival:a.booking.arrivesAt||undefined}:{}),bookings:t.bookings.some(b=>b.id===a.booking.id)?t.bookings.map(b=>b.id===a.booking.id?a.booking:b):[...t.bookings,a.booking]}:t)}
+    case 'deleteBooking':
+      return {...s,trips:s.trips.map(t=>t.id===a.tripId?{...t,bookings:t.bookings.filter(b=>b.id!==a.id)}:t)}
+    case 'editMemory':
+      return {...s,trips:s.trips.map(t=>t.id===a.tripId?{...t,memories:t.memories.map(m=>m.id===a.id?{...m,...a.changes}:m)}:t)}
+    case 'deleteMemory':
+      return {...s,trips:s.trips.map(t=>t.id===a.tripId?{...t,memories:t.memories.filter(m=>m.id!==a.id)}:t)}
+    case 'restoreMemory':
+      return {...s,trips:s.trips.map(t=>{if(t.id!==a.tripId||t.memories.some(m=>m.id===a.memory.id))return t;const memories=[...t.memories];memories.splice(Math.max(0,Math.min(a.index,memories.length)),0,a.memory);return {...t,memories}})}
     case 'addBooking':
       return { ...s, trips: s.trips.map((t) => (t.id === a.tripId ? { ...t, bookings: [...t.bookings, a.booking] } : t)) }
     case 'importTravelPhotos': {

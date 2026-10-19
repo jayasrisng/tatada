@@ -39,7 +39,7 @@ export function AddStay({ trip, onDone }: { trip: Trip; onDone?: () => void }) {
   const field = (key: keyof typeof v, label: string, type = 'text', extra: Record<string, string> = {}) => (
     <label>
       <span>{label}</span>
-      <input className="chalk-input" type={type} value={v[key]} onChange={(e) => setV({ ...v, [key]: e.target.value })} {...extra} />
+      <input placeholder={type==='text'?label:undefined} className="chalk-input" type={type} value={v[key]} onChange={(e) => setV({ ...v, [key]: e.target.value })} {...extra} />
     </label>
   )
 

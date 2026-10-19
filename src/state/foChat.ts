@@ -12,6 +12,7 @@ export const RISK_LABELS: Record<RiskCategory, string> = {
 }
 
 export interface ChatTurn {
+  displayText?: string
   id: string
   role: 'me' | 'fo'
   kind?: 'reply' | 'question' | 'error'
