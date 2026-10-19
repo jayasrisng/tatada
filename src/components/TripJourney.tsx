@@ -1,3 +1,4 @@
+import {TripCalendar} from './TripCalendar'
 import {DeleteTrip} from './DeleteTrip'
 import {FlightSearch} from './FlightSearch'
 import {nextTravelStep} from '../travel/next'
@@ -58,6 +59,6 @@ export function TripJourney({trip}:{trip:Trip}) {
     <TripResearch trip={trip}/>
     <section className="journey-conversation" aria-label={`Fo for ${trip.destination}`}><h2 className="journey-heading">Fo</h2><div className="journey-chat"><FoChatPanel key={trip.id} trip={trip} onSimulated={()=>{}}/></div></section>
     <details className="journey-photo"><summary>A photo and a few words</summary><MomentComposer trip={trip}/></details>
-    <DeleteTrip trip={trip}/>
+    <TripCalendar trip={trip}/><DeleteTrip trip={trip}/>
   </div>
 }

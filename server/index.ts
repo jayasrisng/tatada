@@ -1,3 +1,4 @@
+import {CalendarConnection,CalendarService} from './calendar.ts'
 import {AmadeusTravel} from './travel.ts'
 import { GmailConnection, GmailPrintDelivery } from './gmail.ts'
 import { IntelligenceService } from './intelligence.ts'
@@ -102,6 +103,7 @@ const chats = new FoChatService({ store, fo, pollWaitSeconds: mode === 'live' ? 
 chats.recover()
 // Printing uses an independently authorized Gmail sender, not Fo's text-only API.
 const gmail = new GmailConnection({store,sealer:new Sealer(secret()),clientId:env.GOOGLE_CLIENT_ID,clientSecret:env.GOOGLE_CLIENT_SECRET,redirectUri:env.GOOGLE_REDIRECT_URI ?? `${appUrl}/api/gmail/callback`})
+const calendar=new CalendarService(store,new CalendarConnection({store,sealer:new Sealer(secret()),clientId:env.GOOGLE_CLIENT_ID,clientSecret:env.GOOGLE_CLIENT_SECRET,redirectUri:env.GOOGLE_REDIRECT_URI??`${appUrl}/api/gmail/callback`}))
 const print = new PrintService({ store, delivery: mode === 'live' ? new GmailPrintDelivery(gmail) : new MockPrintDelivery(store) })
 print.recover()
 const travel=env.AMADEUS_CLIENT_ID&&env.AMADEUS_CLIENT_SECRET?new AmadeusTravel({clientId:env.AMADEUS_CLIENT_ID,clientSecret:env.AMADEUS_CLIENT_SECRET,environment:env.AMADEUS_ENV==='production'?'production':'test'}):undefined
@@ -114,7 +116,7 @@ const owner = singleOwner
   : undefined
 const intelligenceKey = env.CLAUDE_API_KEY ?? env.ANTHROPIC_API_KEY
 const intelligence = intelligenceKey ? new IntelligenceService({ key: intelligenceKey, model: env.CLAUDE_MODEL }) : undefined
-const handle = createApp({travel, gmail, intelligence, store, actions, fo, print, oauth: foAuth === 'api_key' ? undefined : oauth, foAuth, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, allowedOrigin: singleOwner ? undefined : appOrigin, secureCookies: publicUrl.startsWith('https://') })
+const handle = createApp({calendar,travel, gmail, intelligence, store, actions, fo, print, oauth: foAuth === 'api_key' ? undefined : oauth, foAuth, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, allowedOrigin: singleOwner ? undefined : appOrigin, secureCookies: publicUrl.startsWith('https://') })
 // Single-owner mode listens on the loopback interface only.
 createServer((req, res) => void handle(req, res)).listen(port, singleOwner ? '127.0.0.1' : undefined, () => {
   console.log(`[tatada] server on ${publicUrl}${singleOwner ? ' · single-owner, localhost only' : ''} · Fo ${mode}${mode === 'live' ? ` (${foAuth})` : ''} · config set: ${configured.join(', ') || 'none'}${mode === 'live' ? ` · live recipients: ${actions.liveAllowlist.join(', ') || 'none (sends blocked)'}` : ''}`)

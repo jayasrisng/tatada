@@ -13,7 +13,7 @@ export function AccountLifecycle({exportOnly=false,deleteOnly=false}:{exportOnly
   const { workspace } = useStore(), [confirm,setConfirm]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[includeVault,setIncludeVault]=useState(true),[serverDeleted,setServerDeleted]=useState(false)
   const connected=['owner','wajo','connected','demo'].includes(workspace.kind)
   const deletion=<>
-    <p className="small">Export your data and originals from Your data before continuing. Existing downloads and provider histories remain outside Tatada. On this local installation, operator API keys remain in the private server configuration.</p><p>This action is permanent. Please confirm you want to delete your Tatada account and its trips, photos, conversations, share links and stored connections.</p>
+    <p className="small">Export your data and originals from Your data before continuing. Existing downloads, copied calendar events and provider histories remain outside Tatada. On this local installation, operator API keys remain in the private server configuration.</p><p>This action is permanent. Please confirm you want to delete your Tatada account and its trips, photos, conversations, share links and stored connections.</p>
 
     <label className="small"><input type="checkbox" checked={includeVault} onChange={e=>setIncludeVault(e.target.checked)}/> Also delete this workspace’s encrypted passport / visa vault on this device</label>
     <label>Type DELETE to remove {connected?'active account data and this device’s copies':'this browser workspace and its confirmations'}<input className="chalk-input" aria-label="Confirm account deletion" value={confirm} onChange={e=>setConfirm(e.target.value)}/></label>

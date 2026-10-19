@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process'
 const output = mkdtempSync(join(tmpdir(), 'tatada-tests-'))
 try {
   const compiled = spawnSync(process.execPath, [resolve('node_modules/typescript/bin/tsc'),
-    'src/state/reducer.ts', 'src/state/persistence.ts', 'src/state/portability.ts', 'src/style/looks.ts', 'src/discovery/places.ts', 'src/discovery/eventFormat.ts', 'src/discovery/zone.ts', 'src/travel/arrangements.ts', 'src/travel/next.ts', 'src/travel/display.ts', 'src/travel/history.ts', 'src/travel/importer.ts', 'src/print/plan.ts', 'src/print/pdf.ts', 'src/sharing/trip.ts', 'src/privacy/vault.ts', '--outDir', output,
+    'src/state/reducer.ts', 'src/state/persistence.ts', 'src/state/portability.ts', 'src/style/looks.ts', 'src/discovery/places.ts', 'src/discovery/eventFormat.ts', 'src/discovery/zone.ts', 'src/travel/arrangements.ts', 'src/travel/calendar.ts', 'src/travel/next.ts', 'src/travel/display.ts', 'src/travel/history.ts', 'src/travel/importer.ts', 'src/print/plan.ts', 'src/print/pdf.ts', 'src/sharing/trip.ts', 'src/privacy/vault.ts', '--outDir', output,
     '--module', 'commonjs', '--target', 'ES2022', '--strict', '--skipLibCheck', '--esModuleInterop'], { stdio: 'inherit' })
   if (compiled.status !== 0) process.exitCode = compiled.status ?? 1
   else {

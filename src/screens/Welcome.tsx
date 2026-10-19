@@ -1,3 +1,4 @@
+import {CalendarConnection} from '../components/CalendarConnection'
 import {AccountLifecycle} from '../components/AccountLifecycle'
 import {ProfileWeather} from '../components/ProfileWeather'
 import { lazy, Suspense, useState } from 'react'
@@ -32,7 +33,7 @@ export function Welcome() {
   return (
     <div className="screen welcome">
       {state.onboarded && <button className="iconbtn profile-close" aria-label="Close profile" onClick={() => go('/')}><Doodle name="x" size={24} /></button>}
-      {step === 0 && state.onboarded && <div className="profile-overview"><h1 className="wizard-q">Your space, {state.profile.name || 'star'}.</h1><ProfileWeather/><Btn kind="solid" onClick={()=>setStep(1)}>edit my details</Btn><details className="profile-section"><summary>Your data</summary><AccountPanel/></details><details className="profile-section"><summary>Connections · Fo &amp; Gmail</summary><FoConnection/><GmailConnection/></details><details className="profile-section"><summary>Travel documents</summary><Suspense fallback={<p>Opening private documents…</p>}><DocumentVault/></Suspense></details><AccountLifecycle deleteOnly/><nav className="profile-policies" aria-label="Policies"><a href="#/policies/terms">Terms &amp; conditions</a><a href="#/policies/privacy">Privacy</a><a href="#/policies/sources">Sources &amp; credits</a></nav>{(workspace.kind === 'demo' || workspace.kind === 'local-demo') && <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>}</div>}
+      {step === 0 && state.onboarded && <div className="profile-overview"><h1 className="wizard-q">Your space, {state.profile.name || 'star'}.</h1><ProfileWeather/><Btn kind="solid" onClick={()=>setStep(1)}>edit my details</Btn><details className="profile-section"><summary>Your data</summary><AccountPanel/></details><details className="profile-section"><summary>Connections · Fo, Gmail &amp; Calendar</summary><FoConnection/><GmailConnection/><CalendarConnection/></details><details className="profile-section"><summary>Travel documents</summary><Suspense fallback={<p>Opening private documents…</p>}><DocumentVault/></Suspense></details><AccountLifecycle deleteOnly/><nav className="profile-policies" aria-label="Policies"><a href="#/policies/terms">Terms &amp; conditions</a><a href="#/policies/privacy">Privacy</a><a href="#/policies/sources">Sources &amp; credits</a></nav>{(workspace.kind === 'demo' || workspace.kind === 'local-demo') && <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>}</div>}
       {step === 0 && !state.onboarded && (
         <div className="welcome-hero">
           <Doodle name="sparkle" size={64} className="spin-slow hero-star" />

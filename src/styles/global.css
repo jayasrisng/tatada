@@ -943,3 +943,12 @@ input[type='range'] { width: 100%; accent-color: var(--yellow); height: 30px; }
 .flight-paid-price { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:16px 20px; border-top:1px dashed #aaa6; flex-wrap:wrap; }
 .flight-paid-price strong { font-size:24px; }
 .flight-paid-price span { font-size:13px; opacity:.75; }
+
+.trip-calendar {margin:28px 0;padding:20px;border:1px solid #aaa6;border-radius:16px;}
+.trip-calendar>.btn {margin:12px 8px 12px 0;}
+.calendar-preview {list-style:none;padding:0;max-height:420px;overflow:auto;}
+.calendar-preview li {padding:12px 0;border-bottom:1px solid #aaa4;}
+.calendar-preview label {display:flex;align-items:flex-start;gap:10px;}
+.calendar-preview label>span {display:block;min-width:0;}
+.calendar-preview span>span {display:block;font-size:13px;}
+.calendar-preview p {white-space:pre-wrap;overflow-wrap:anywhere;}

@@ -1,3 +1,4 @@
+import type {CalendarService} from './calendar.ts'
 import {withoutTrip} from '../src/travel/delete.ts'
 import type {AppState} from '../src/types.ts'
 import type {AmadeusTravel} from './travel.ts'
@@ -35,6 +36,7 @@ export type ResolveIdentity = (a: { tokens: TokenSet; body: Json; issuer: string
 
 interface Deps {
   travel?:AmadeusTravel
+  calendar?: CalendarService
   gmail?: GmailConnection
   intelligence?: IntelligenceService
   store: Store
@@ -358,6 +360,8 @@ export function createApp(deps: Deps) {
         return send(res, 200, status(), { 'set-cookie': clear(COOKIE) })
       }
 
+      const calendarCallback=path==='/api/gmail/callback'&&deps.calendar?.connection.pending(url.searchParams.get('state')??'')
+      if(deps.bearerSessions&&calendarCallback&&method==='GET'){try{if(url.searchParams.get('error'))throw new Error('Declined');const staged=deps.calendar!.connection.stage(url.searchParams.get('state')??'',url.searchParams.get('code')??'');return redirect(res,`${appUrl}/#${staged.returnTo}?calendar_exchange=${staged.exchange}`)}catch{return redirect(res,`${appUrl}/#/welcome?calendar=error`)}}
       if(deps.bearerSessions&&path==='/api/gmail/callback'&&method==='GET'){
         try{if(!deps.gmail||url.searchParams.get('error'))throw new Error('Gmail declined');const staged=deps.gmail.stage(url.searchParams.get('state')??'',url.searchParams.get('code')??'');return redirect(res,`${appUrl}/#${staged.returnTo}?gmail_exchange=${staged.exchange}`)}catch{return redirect(res,`${appUrl}/#/welcome?gmail=error`)}
       }
@@ -367,6 +371,31 @@ export function createApp(deps: Deps) {
       if (!userId) return send(res, 401, { error: live ? 'Sign in with Wajo' : 'No session' })
       if (method !== 'GET' && !writeLimit.allow(`w:${userId}`)) return send(res, 429, { error: 'Too many requests. Slow down a little.' })
 
+      if(path==='/api/calendar/status'&&method==='GET')return send(res,200,deps.calendar?.connection.status(userId)??{configured:false,connected:false})
+      if(path==='/api/calendar/prepare'&&method==='POST'){
+        const b=await readBody(req);if(!deps.calendar||typeof b.binding!=='string'||!/^[a-f0-9]{64}$/.test(b.binding))return send(res,400,{error:'Calendar setup or browser binding is missing.'})
+        if(!authLimit.allow(`calendar:${userId}`))return send(res,429,{error:'Try connecting Calendar later.'})
+        return send(res,200,{url:deps.calendar.connection.begin(userId,b.binding,typeof b.returnTo==='string'?b.returnTo:'/welcome')})
+      }
+      if(path==='/api/calendar/complete'&&method==='POST'){
+        const b=await readBody(req);if(!deps.calendar||typeof b.exchange!=='string'||typeof b.binding!=='string'||b.binding.length>200)return send(res,400,{error:'Calendar browser confirmation missing.'})
+        await deps.calendar.connection.complete(userId,b.exchange,sha256(b.binding));return send(res,200,deps.calendar.connection.status(userId))
+      }
+      if(path==='/api/calendar/connect'&&method==='GET'){
+        if(!deps.calendar)return send(res,503,{error:'Google Calendar needs server configuration.'})
+        if(!authLimit.allow(`calendar:${userId}`))return send(res,429,{error:'Try connecting Calendar later.'})
+        const binding=randomToken();return redirect(res,deps.calendar.connection.begin(userId,sha256(binding),url.searchParams.get('returnTo')??'/welcome'),[`tatada_calendar=${binding}; HttpOnly; SameSite=Lax; Path=${deps.loginCookiePath??'/api/'}; Max-Age=600${secure}`])
+      }
+      if(calendarCallback&&method==='GET'){
+        let destination='/welcome',result='connected';try{if(url.searchParams.get('error'))throw new Error('Declined');destination=await deps.calendar!.connection.finish(userId,url.searchParams.get('state')??'',url.searchParams.get('code')??'',sha256(cookie(req,'tatada_calendar')??''))}catch{result='error'}
+        return redirect(res,`${appUrl}/#${destination}?calendar=${result}`,[clear('tatada_calendar',deps.loginCookiePath??'/api/')])
+      }
+      if(path==='/api/calendar/disconnect'&&method==='POST'){await deps.calendar?.connection.disconnect(userId);return send(res,200,{disconnected:true})}
+      if(path==='/api/calendar/preview'&&method==='POST'){const b=await readBody(req);if(!deps.calendar||typeof b.tripId!=='string')return send(res,400,{error:'Choose a saved trip.'});return send(res,200,deps.calendar.preview(userId,b.tripId))}
+      if(path==='/api/calendar/add'&&method==='POST'){
+        const b=await readBody(req);if(!deps.calendar||b.confirm!=='ADD'||typeof b.tripId!=='string'||typeof b.previewHash!=='string'||!Array.isArray(b.keys)||!b.keys.every(k=>typeof k==='string'))return send(res,400,{error:'Review and confirm the selected trip events.'})
+        return send(res,200,await deps.calendar.add(userId,b.tripId,b.previewHash,b.keys as string[]))
+      }
       if(path==='/api/gmail/prepare'&&method==='POST'){
         const body=await readBody(req)
         if(!deps.gmail)return send(res,503,{error:'Gmail needs server configuration.'})
@@ -476,7 +505,7 @@ export function createApp(deps: Deps) {
         const activeAction=Object.values(store.data.actions).some(a=>a.ownerId===userId&&a.draft.tripId===body.tripId&&['approved','sending','send_uncertain','waiting','answering','verifying'].includes(a.status))
         const activeChat=(deps.chats?.list(userId)??[]).some(c=>c.tripId===body.tripId&&['sending','send_uncertain','working'].includes(c.status))
         const tripPrints=Object.values(store.data.printJobs??{}).filter(v=>{const j=v as {ownerId?:string;document?:{tripId?:string}};return j.ownerId===userId&&j.document?.tripId===body.tripId})
-        if(activeAction||activeChat||tripPrints.some(v=>['sending','send_uncertain'].includes((v as {status:string}).status)))return send(res,409,{error:'Resolve this trip’s active or uncertain provider requests before deleting.'})
+        if(store.data.calendarWrites?.[userId]?.tripId===body.tripId||activeAction||activeChat||tripPrints.some(v=>['sending','send_uncertain'].includes((v as {status:string}).status)))return send(res,409,{error:'Resolve this trip’s active or uncertain provider requests before deleting.'})
         const next={version:cur.version+1,updatedAt:now(),state:withoutTrip(state,body.tripId,Object.values(store.data.actions).filter(a=>a.ownerId===userId&&a.draft.tripId===body.tripId).map(a=>a.id))}
         store.update(d=>{
           d.workspaces[userId]=next
@@ -494,14 +523,15 @@ export function createApp(deps: Deps) {
         const activeActions=Object.values(store.data.actions).some(a=>a.ownerId===userId&&['approved','sending','send_uncertain','waiting','answering','verifying'].includes(a.status))
         const activeChats=(deps.chats?.list(userId)??[]).some(c=>['sending','send_uncertain','working'].includes(c.status))
         const activePrint=Object.values(store.data.printJobs??{}).some(value=>{const j=value as {ownerId?:string;status?:string};return j.ownerId===userId&&['sending','send_uncertain'].includes(j.status??'')})
-        if(activeActions||activeChats||activePrint)return send(res,409,{error:'A provider request is still active or uncertain. Resolve it before deleting so it cannot recreate data or hide an external action.'})
+        if(store.data.calendarWrites?.[userId]||activeActions||activeChats||activePrint)return send(res,409,{error:'A provider request is still active or uncertain. Resolve it before deleting so it cannot recreate data or hide an external action.'})
         store.update(d=>{
           for(const table of [d.actions,d.foChats,d.printJobs,d.shares])if(table)for(const [k,v] of Object.entries(table))if((v as {ownerId?:string;owner?:string}).ownerId===userId||(v as {owner?:string}).owner===userId)delete table[k]
           for(const table of [d.sessions,d.sessionExchanges])if(table)for(const [k,v] of Object.entries(table))if(v.userId===userId)delete table[k]
+          for(const table of [d.calendarExchanges,d.calendarPending])if(table)for(const [k,v] of Object.entries(table))if(v.owner===userId)delete table[k]
           if(d.gmailExchanges)for(const [k,v] of Object.entries(d.gmailExchanges))if(v.owner===userId)delete d.gmailExchanges[k]
           if(d.gmailPending)for(const [k,v] of Object.entries(d.gmailPending))if(v.owner===userId)delete d.gmailPending[k]
           for(const [k,v] of Object.entries(d.subjects))if(v===userId)delete d.subjects[k]
-          for(const table of [d.workspaces,d.tokens,d.gmailTokens,d.gmailEpochs,d.printers,d.foTrace,d.users,d.accounts])if(table)delete table[userId]
+          for(const table of [d.workspaces,d.tokens,d.calendarWrites,d.calendarLinks,d.calendarTokens,d.calendarEpochs,d.gmailTokens,d.gmailEpochs,d.printers,d.foTrace,d.users,d.accounts])if(table)delete table[userId]
         })
         await store.flush()
         return send(res,200,{deleted:true,retention:'Active Tatada records and stored authorization removed. Device copies and owner-managed backups require separate removal. Provider histories and already downloaded copies remain outside Tatada.'},{'set-cookie':clear(COOKIE)})

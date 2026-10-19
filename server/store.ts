@@ -33,6 +33,13 @@ export interface Session {
 }
 
 export interface Data {
+  calendarWrites?: Record<string,{tripId:string;state:'running'|'uncertain'}>
+  calendarLinks?: Record<string,{subject:string;state:'creating'|'ready'|'uncertain';id?:string}>
+  calendarExchanges?: Record<string,{owner:string;stateHash:string;payload:string;expiresAt:number}>
+  calendarEpochs?: Record<string,number>
+  calendarTokens?: Record<string,string>
+  calendarPending?: Record<string,{owner:string;binding:string;verifier:string;createdAt:number;returnTo:string;epoch:number}>
+
   shares?: Record<string,import('./sharing.ts').ShareLink>
   gmailExchanges?: Record<string,{owner:string;stateHash:string;payload:string;expiresAt:number}>
   gmailEpochs?: Record<string, number>

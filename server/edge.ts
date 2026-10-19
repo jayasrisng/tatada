@@ -1,3 +1,4 @@
+import {CalendarConnection,CalendarService} from './calendar.ts'
 import {IntelligenceService} from './intelligence.ts'
 import {GmailConnection,GmailPrintDelivery} from './gmail.ts'
 import {AmadeusTravel} from './travel.ts'
@@ -63,8 +64,9 @@ export function createEdgeHandler(options: EdgeOptions) {
     const actions = new ActionService({ store, fo, pollWaitSeconds: 1, liveRecipients: options.liveRecipients })
     const chats = new FoChatService({ store, fo, pollWaitSeconds: 1 })
     const gmail=options.gmail?new GmailConnection({store,sealer:new Sealer(options.secret),...options.gmail,redirectUri:options.gmail.redirectUri??`${publicUrl}/api/gmail/callback`}):undefined
+    const calendar=options.gmail?new CalendarService(store,new CalendarConnection({store,sealer:new Sealer(options.secret),...options.gmail,redirectUri:options.gmail.redirectUri??`${publicUrl}/api/gmail/callback`})):undefined
     const print = new PrintService({ store, delivery: options.mode === 'mock' ? new MockPrintDelivery(store) : gmail?new GmailPrintDelivery(gmail):new FoPrintDelivery(fo) })
-    const handle = createApp({ store, fo, actions, chats, print, gmail, intelligence, travel, oauth: options.mode === 'mock' ? undefined : oauth, appUrl, secureCookies: true, allowedOrigin: origin, bearerSessions: true, browserAccounts: true, loginCookiePath: `${prefix}/`,
+    const handle = createApp({ store, fo, actions, chats, print, calendar, gmail, intelligence, travel, oauth: options.mode === 'mock' ? undefined : oauth, appUrl, secureCookies: true, allowedOrigin: origin, bearerSessions: true, browserAccounts: true, loginCookiePath: `${prefix}/`,
       resolveIdentity: async ({ body, tokens, issuer }) => {
         const identity = fromTokenResponse(body, issuer) ?? fromAccessToken(tokens.accessToken, issuer, Date.now())
         return identity ? { identity } : fromFoApi(mcp, tokens.accessToken, issuer)

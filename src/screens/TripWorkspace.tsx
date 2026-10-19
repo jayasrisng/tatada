@@ -1,3 +1,4 @@
+import {TripCalendar} from '../components/TripCalendar'
 import {FlightTicket} from '../components/FlightTicket'
 import {DeleteTrip} from '../components/DeleteTrip'
 import {FlightSearch} from '../components/FlightSearch'
@@ -76,7 +77,7 @@ export function TripWorkspace({ id, tab = 'plan' }: { id: string; tab?: string }
       {tab === 'plan' && <><TripResearch trip={trip} /><Plan trip={trip} /><TripSharing trip={trip} /></>}
       {tab === 'notebook' && <Notebook key={hashQuery().get('category') ?? 'flight'} trip={trip} />}
       {tab === 'journal' && <Journal key={trip.id} trip={trip} />}
-      <DeleteTrip key={trip.id} trip={trip}/>
+      <TripCalendar key={trip.id+'-calendar'} trip={trip}/><DeleteTrip key={trip.id} trip={trip}/>
 
     </div>
   )
