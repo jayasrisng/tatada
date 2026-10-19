@@ -14,7 +14,7 @@ try {
   await page.goto(`${BASE}/`)
   await page.getByText('The live connection is unavailable right now.').waitFor()
   await page.getByRole('button', { name: 'explore a sample trip', exact: true }).click()
-  await page.locator('.cc-trips').waitFor()
+  await page.locator('.home-trip').waitFor()
   const initialWrites = writes.length
   await page.goto(`${BASE}/#/trip/lisbon`)
   await page.reload()

@@ -22,6 +22,7 @@ export function TabBar({ current, tripId }: { current: string; tripId?: string }
         t.id === 'magic' ? (
           <button key={t.id} className="tab-magic" onClick={() => openMagic({ tripId })} aria-label="Ask Magic">
             <MagicBuddy size={50} />
+            <span className="tab-magic-label" aria-hidden="true">Magic</span>
           </button>
         ) : (
           <button key={t.id} className={`tab ${current === t.id ? 'on' : ''}`} onClick={() => go(`/${t.id}`)} aria-current={current === t.id ? 'page' : undefined}>

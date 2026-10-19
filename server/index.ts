@@ -10,6 +10,10 @@ import { ActionService } from './actions.ts'
 import { createApp, type ResolveIdentity } from './app.ts'
 import { FoChatService } from './chat.ts'
 import { fromAccessToken, fromFoApi, fromTokenResponse } from './identity.ts'
+import { loadLocalEnv } from './env.ts'
+import { ApiKeyCredentials } from './apikey.ts'
+import { OWNER_ID } from './app.ts'
+import { FoPrintDelivery, MockPrintDelivery, PrintService } from './print.ts'
 
 /*
  * Tatada server.
@@ -19,8 +23,12 @@ import { fromAccessToken, fromFoApi, fromTokenResponse } from './identity.ts'
  *   TATADA_LIVE_RECIPIENTS=you@example.com,friend@example.com   (live sends go nowhere else)
  *   TATADA_SECRET=<32+ chars> seals provider tokens at rest
  *   TATADA_DATA_DIR=.data
+ *   WAJO_FO_ENDPOINT=https://mcp.api.wajo.ai/fo   (alias of FO_RESOURCE)
+ *   WAJO_FO_API_KEY=wak_…   single-owner mode only: Fo acts as the key's Wajo account
+ * A local .env is loaded first; variables already set in the shell win.
  */
 
+const configured = loadLocalEnv('.env', ['WAJO_FO_ENDPOINT', 'WAJO_FO_API_KEY', 'TATADA_SECRET'])
 const env = process.env
 const port = Number(env.PORT ?? 8787)
 const appUrl = (env.APP_URL ?? 'http://localhost:5173').replace(/\/$/, '')
@@ -58,11 +66,16 @@ const store = new Store(join(dataDir, `server-${mode}.json`))
 let fo: FoAdapter
 let oauth: FoOAuth | undefined
 let resolveIdentity: ResolveIdentity | undefined
+let foAuth = 'mock'
 if (mode === 'live') {
-  const resource = env.FO_RESOURCE ?? 'https://mcp.api.wajo.ai/fo'
+  const resource = env.WAJO_FO_ENDPOINT ?? env.FO_RESOURCE ?? 'https://mcp.api.wajo.ai/fo'
   oauth = new FoOAuth({ store, sealer: new Sealer(secret()), resource, redirectUri: `${publicUrl}/api/fo/callback` })
   const mcp = new McpClient(resource)
-  fo = new LiveFoAdapter(oauth, mcp, store)
+  // The API key stands in for one Wajo account, so it only ever serves the local owner.
+  const apiKey = singleOwner && env.WAJO_FO_API_KEY ? new ApiKeyCredentials(env.WAJO_FO_API_KEY, OWNER_ID) : undefined
+  if (env.WAJO_FO_API_KEY && !singleOwner) console.warn('[tatada] WAJO_FO_API_KEY ignored: a shared key cannot identify individual users; sign-in uses per-user OAuth')
+  foAuth = apiKey ? 'api_key' : 'oauth'
+  fo = new LiveFoAdapter(apiKey ?? oauth, mcp, store)
   // Verified Wajo identity, from Wajo's own responses only (see identity.ts).
   resolveIdentity = async ({ tokens, body, issuer }) => {
     const direct = fromTokenResponse(body, issuer) ?? fromAccessToken(tokens.accessToken, issuer, Date.now())
@@ -84,6 +97,9 @@ actions.recover()
 
 const chats = new FoChatService({ store, fo, pollWaitSeconds: mode === 'live' ? 20 : 0 })
 chats.recover()
+// Development uses the mock sender; live mode only sends if Fo can really attach the PDF.
+const print = new PrintService({ store, delivery: mode === 'live' ? new FoPrintDelivery(fo) : new MockPrintDelivery(store) })
+print.recover()
 const appPort = new URL(appUrl).port
 const owner = singleOwner
   ? {
@@ -91,10 +107,10 @@ const owner = singleOwner
       allowedOrigins: [`http://localhost:${appPort}`, `http://127.0.0.1:${appPort}`],
     }
   : undefined
-const handle = createApp({ store, actions, fo, oauth, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, allowedOrigin: singleOwner ? undefined : appOrigin, secureCookies: publicUrl.startsWith('https://') })
+const handle = createApp({ store, actions, fo, print, oauth: foAuth === 'api_key' ? undefined : oauth, foAuth, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, allowedOrigin: singleOwner ? undefined : appOrigin, secureCookies: publicUrl.startsWith('https://') })
 // Single-owner mode listens on the loopback interface only.
 createServer((req, res) => void handle(req, res)).listen(port, singleOwner ? '127.0.0.1' : undefined, () => {
-  console.log(`[tatada] server on ${publicUrl}${singleOwner ? ' · single-owner, localhost only' : ''} · Fo ${mode}${mode === 'live' ? ` · live recipients: ${actions.liveAllowlist.join(', ') || 'none (sends blocked)'}` : ''}`)
+  console.log(`[tatada] server on ${publicUrl}${singleOwner ? ' · single-owner, localhost only' : ''} · Fo ${mode}${mode === 'live' ? ` (${foAuth})` : ''} · config set: ${configured.join(', ') || 'none'}${mode === 'live' ? ` · live recipients: ${actions.liveAllowlist.join(', ') || 'none (sends blocked)'}` : ''}`)
 })
 
 let busy = false

@@ -44,13 +44,12 @@ export function Home() {
       <div className="home-map">
         <WorldMap visited={visited} planned={planned} star={trip ? countryCode(trip.country) : undefined} onSelect={() => go('/trips/map')} label="Your world" />
         <p className="home-legend small dim"><i className="lg visited" /> been <i className="lg planned" /> planned</p>
+        <nav className="home-links" aria-label="Shortcuts">
+          <button onClick={() => go('/tasks')}>{open ? `${open} to do` : 'nothing to do'}</button>
+          <button onClick={() => go('/trips')}>trips</button>
+          <button onClick={() => go('/style')}>style</button>
+        </nav>
       </div>
-
-      <nav className="home-links" aria-label="Shortcuts">
-        <button onClick={() => go('/tasks')}>{open ? `${open} to do` : 'nothing to do'}</button>
-        <button onClick={() => go('/trips')}>trips</button>
-        <button onClick={() => go('/style')}>style</button>
-      </nav>
     </div>
   )
 }

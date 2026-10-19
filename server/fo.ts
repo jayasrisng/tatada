@@ -1,5 +1,5 @@
 import { McpClient, McpHttpError, McpUncertainError, type ToolResult } from './mcp.ts'
-import { OAuthError, type FoOAuth } from './oauth.ts'
+import { OAuthError } from './oauth.ts'
 import { randomToken } from './crypto.ts'
 import type { Store } from './store.ts'
 
@@ -35,6 +35,16 @@ export interface ToolInfo {
   readOnly?: boolean
   destructive?: boolean
   openWorld?: boolean
+  /** Argument names from the tool's input schema (what the server actually accepts). */
+  inputs?: string[]
+  /** Whether the schema refuses arguments it doesn't list. */
+  closedInputs?: boolean
+}
+
+/** Where a live adapter gets its bearer token: a user's OAuth tokens, or the local owner's API key. */
+export interface FoCredentials {
+  accessToken(userId: string, forceRefresh?: boolean): Promise<string>
+  connected(userId: string): boolean
 }
 
 /** What a live Fo response looked like: structure and a short preview, never tokens. */
@@ -144,8 +154,10 @@ export function describeShape(v: unknown, depth = 3): unknown {
   return v === null ? 'null' : typeof v
 }
 
-const toolInfo = (t: { name: string; title?: string; annotations?: Record<string, unknown> }): ToolInfo => ({
+const toolInfo = (t: { name: string; title?: string; annotations?: Record<string, unknown>; inputSchema?: { properties?: Record<string, unknown>; additionalProperties?: unknown } }): ToolInfo => ({
   name: t.name,
+  inputs: t.inputSchema?.properties ? Object.keys(t.inputSchema.properties) : undefined,
+  closedInputs: t.inputSchema ? t.inputSchema.additionalProperties === false : undefined,
   title: t.title ?? (typeof t.annotations?.title === 'string' ? t.annotations.title : undefined),
   readOnly: t.annotations?.readOnlyHint as boolean | undefined,
   destructive: t.annotations?.destructiveHint as boolean | undefined,
@@ -156,11 +168,11 @@ const toolInfo = (t: { name: string; title?: string; annotations?: Record<string
 
 export class LiveFoAdapter implements FoAdapter {
   readonly mode = 'live' as const
-  private oauth: FoOAuth
+  private oauth: FoCredentials
   private mcp: McpClient
   private store?: Store
 
-  constructor(oauth: FoOAuth, mcp: McpClient, store?: Store) {
+  constructor(oauth: FoCredentials, mcp: McpClient, store?: Store) {
     this.oauth = oauth
     this.mcp = mcp
     this.store = store
@@ -303,7 +315,8 @@ export class MockFoAdapter implements FoAdapter {
 
   async tools() {
     return [
-      { name: 'ask_fo', title: 'Ask Fo', readOnly: false, destructive: true, openWorld: true },
+      // Mirrors the live schema checked on 2026-10-18: text only, no attachment argument.
+      { name: 'ask_fo', title: 'Ask Fo', readOnly: false, destructive: true, openWorld: true, inputs: ['message', 'conversationId', 'newConversation'], closedInputs: true },
       { name: 'get_fo_reply', title: "Get Fo's reply", readOnly: true, destructive: false, openWorld: false },
       { name: 'get_fo_conversation', title: 'Read a Fo conversation', readOnly: true, destructive: false, openWorld: false },
       { name: 'list_fo_conversations', title: 'List Fo conversations', readOnly: true, destructive: false, openWorld: false },

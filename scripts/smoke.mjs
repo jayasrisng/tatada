@@ -47,7 +47,8 @@ try {
   await page.evaluate(() => localStorage.clear())
   await visit('/')
   await shot('01-home')
-  check(await page.locator('.cc-note').first().waitFor({ timeout: 4000 }).then(() => true, () => false), 'home nudge is derived from the next trip\'s open task')
+  check(/Lisbon[\s\S]*in \d+ days/.test(await page.locator('.home-trip').innerText()), 'home shows the next trip with its countdown')
+  check(await page.locator('.world-map path').first().waitFor({ timeout: 6000 }).then(() => true, () => false), 'home canvas is the world map')
 
   /* ── trip creation with date validation ── */
   await visit('/new')
@@ -109,7 +110,7 @@ try {
   /* ── real Fo chat (mock provider): truthful status, exact preview, risk gate, history ── */
   await page.keyboard.press('Escape')
   await visit('/')
-  await page.locator('.magic-orb').click()
+  await page.locator('.tab-magic').click()
   check(await magic().getByRole('tab', { name: 'nearby & events', selected: true }).first().waitFor({ timeout: 4000 }).then(() => true, () => false), 'Magic opens discovery choices')
   await magic().getByRole('tab', { name: 'Fo chat', exact: true }).click()
   check(await magic().getByText('Connected to mock Fo').first().waitFor({ timeout: 4000 }).then(() => true, () => false), 'connection state shown truthfully (mock)')
@@ -131,7 +132,7 @@ try {
   await page.keyboard.press('Escape')
   await page.reload()
   await page.waitForTimeout(500)
-  await page.locator('.magic-orb').click()
+  await page.locator('.tab-magic').click()
   await magic().getByRole('tab', { name: 'Fo chat', exact: true }).click()
   check(await magic().getByText('What should I pack for the hills?').first().waitFor({ timeout: 4000 }).then(() => true, () => false), 'Fo conversation history survives a reload')
   await page.keyboard.press('Escape')
@@ -167,8 +168,8 @@ try {
 
   // Switch context to Big Sur with the Lisbon task still linked, then complete a request there.
   await page.keyboard.press('Escape')
-  await visit('/')
-  await page.locator('.cc-note').click()
+  await visit('/trip/lisbon')
+  await page.locator('.crow', { hasText: 'Early check-in + airport transfer' }).locator('.fo-pill').click()
   await magic().getByRole('button', { name: 'Big Sur' }).click()
   await magic().getByRole('textbox', { name: 'Ask Magic' }).fill('what should I pack?')
   await magic().getByRole('button', { name: 'Send' }).click()
@@ -180,21 +181,14 @@ try {
   await visit('/trip/lisbon')
   check(!(await lisbonItem.locator('.ccheck').getAttribute('aria-checked')).includes('true'), 'Lisbon task is untouched by another trip\'s request')
 
-  /* ── checklist + canvas persistence after reload ── */
+  /* ── checklist + pending count persistence after reload ── */
+  const pendingBefore = Number(await page.locator('.tabbar .dot').innerText())
   const toggle = page.locator('.crow', { hasText: 'Travel insurance' }).locator('.ccheck')
   await toggle.click()
   await visit('/')
-  const style = page.locator('.cc-style')
-  const before = await style.boundingBox()
-  await page.mouse.move(before.x + 20, before.y + 20)
-  await page.mouse.down()
-  await page.mouse.move(before.x + 140, before.y + 70, { steps: 8 })
-  await page.mouse.up()
-  await page.waitForTimeout(400)
   await page.reload()
   await page.waitForTimeout(500)
-  const after = await page.locator('.cc-style').boundingBox()
-  check(Math.abs(after.x - before.x) > 60, 'dragged canvas card position persists after reload')
+  check(Number(await page.locator('.tabbar .dot').innerText()) === pendingBefore - 1, 'compact pending count follows checked tasks after reload')
   await visit('/trip/lisbon')
   check((await page.locator('.crow', { hasText: 'Travel insurance' }).locator('.ccheck').getAttribute('aria-checked')) === 'true', 'checked task persists after reload')
 
@@ -203,6 +197,8 @@ try {
   await page.getByRole('button', { name: 'compare' }).click()
   await shot('05-compare')
   await visit('/style')
+  check((await page.getByRole('group', { name: 'Style for' }).getByRole('button', { name: 'today', exact: true }).getAttribute('aria-pressed')) === 'true', 'Style starts with today, not a trip')
+  await page.getByRole('group', { name: 'Style for' }).getByRole('button', { name: 'Lisbon', exact: true }).click()
   await page.getByRole('tab', { name: 'itinerary' }).click()
   check(await page.getByRole('heading', { name: /Sat, Nov 7/ }).first().waitFor({ timeout: 4000 }).then(() => true, () => false), 'itinerary day labels are computed from dates')
   await page.getByRole('button', { name: '+ add to Sun' }).click()
@@ -223,7 +219,7 @@ try {
   await shot('06-style')
   await shot('06-style')
   await visit('/trip/lisbon/print')
-  check(await page.locator('.sheet-qr img').first().waitFor({ timeout: 4000 }).then(() => true, () => false), 'print card renders a QR code')
+  check(await page.getByLabel('Epson printer email').waitFor({ timeout: 6000 }).then(() => true, () => false), 'first print asks for the Epson printer address')
   await shot('07-print')
   await visit('/trip/does-not-exist/print')
   check(await page.getByText('nothing to print here').first().waitFor({ timeout: 4000 }).then(() => true, () => false), 'unknown print route offers recovery')

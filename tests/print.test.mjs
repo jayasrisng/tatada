@@ -1,0 +1,76 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { createRequire } from 'node:module'
+import { join } from 'node:path'
+const require = createRequire(join(process.env.TATADA_TEST_BUILD, 'package.json'))
+const { parsePrintRequest, planPrint, printerAddress, isPrintRequest, EPSON_EMAIL } = require('./print/plan.js')
+const { buildPdf, printable } = require('./print/pdf.js')
+const { seed } = require('./data/seed.js')
+const { PDFDocument } = require('pdf-lib')
+
+const KNOWN = { plainPaper: 'letter', colorInk: 'yes', autoDuplex: 'yes', bodyPrintingOff: 'yes', senderApproved: 'yes' }
+const UNKNOWN = { plainPaper: 'unknown', colorInk: 'unknown', autoDuplex: 'unknown', bodyPrintingOff: 'unknown', senderApproved: 'unknown' }
+
+test('natural-language print requests become explicit settings', () => {
+  assert.deepEqual(parsePrintRequest('Print in color.'), { color: 'color' })
+  assert.deepEqual(parsePrintRequest('Make it 4×6.'), { size: '4x6' })
+  assert.deepEqual(parsePrintRequest('Print double-sided.'), { duplex: true })
+  assert.deepEqual(parsePrintRequest('Print two copies.'), { copies: 2 })
+  assert.deepEqual(parsePrintRequest('print my Lisbon journal in black and white, 3 copies'), { color: 'grayscale', copies: 3, document: 'journal' })
+  assert.equal(parsePrintRequest('print it twice on A4').copies, 2)
+  assert.equal(parsePrintRequest('single-sided please').duplex, false)
+  assert.equal(isPrintRequest('Print the Lisbon trip card'), true)
+  assert.equal(isPrintRequest('find a sprint coach'), false)
+  assert.ok(EPSON_EMAIL.test('tatada-desk@print.epsonconnect.com'))
+  assert.ok(!EPSON_EMAIL.test('me@gmail.com'))
+  assert.equal(printerAddress('desk@print.epsonconnect.com', '=+bk+dl'), 'desk=+bk+dl@print.epsonconnect.com')
+})
+
+test('documented options apply; unsupported ones are never silently substituted', () => {
+  const both = planPrint({ color: 'grayscale', duplex: true }, KNOWN)
+  assert.equal(both.suffix, '=+bk+dl'); assert.equal(both.grayscale, true); assert.equal(both.questions.length, 0)
+  const four = planPrint({ size: '4x6' }, KNOWN)
+  assert.equal(four.questions[0].key, 'fourBySix'); assert.equal(four.layout, 'full')
+  assert.equal(planPrint({ size: '4x6' }, KNOWN, { fourBySix: 'layout-on-plain' }).layout, '4x6-on-plain')
+  const copies = planPrint({ copies: 2 }, KNOWN)
+  assert.equal(copies.questions[0].key, 'copies'); assert.equal(copies.repeat, 1)
+  assert.equal(planPrint({ copies: 2 }, KNOWN, { copies: 'repeat-pages' }).repeat, 2)
+  assert.equal(planPrint({ copies: 2 }, KNOWN, { copies: 'single' }).repeat, 1)
+  assert.equal(planPrint({ duplex: true }, UNKNOWN).questions[0].key, 'duplex', 'unknown duplex hardware asks first')
+  assert.equal(planPrint({ duplex: true }, { ...KNOWN, autoDuplex: 'no' }, { duplex: 'single' }).suffix, '')
+  assert.equal(planPrint({ duplex: true }, KNOWN, {}, 1).suffix, '', 'one page: nothing to flip')
+  assert.equal(planPrint({ color: 'color' }, { ...KNOWN, colorInk: 'no' }).lines.find((l) => l.setting === 'color').how, 'not_possible')
+  assert.equal(planPrint({ size: 'a4' }, KNOWN).lines.find((l) => l.setting === 'size').how, 'not_possible')
+  assert.equal(planPrint({}, { ...KNOWN, plainPaper: 'a4' }).pageSize, 'a4')
+  const unknown = planPrint({}, UNKNOWN)
+  assert.ok(unknown.limitations.some((l) => /Print Email Body/.test(l)))
+  assert.ok(unknown.limitations.some((l) => /Approved Senders/.test(l)))
+  assert.ok(unknown.limitations.some((l) => /Assumed Letter/.test(l)))
+  assert.ok(planPrint({}, KNOWN).limitations.some((l) => /isn't proof of a printed page/.test(l)))
+})
+
+test('PDFs: white Letter/A4 pages, 4×6 cards on plain paper, disclosed page repetition, safe text', async () => {
+  const s = seed(), trip = s.trips.find((t) => t.destination === 'Lisbon')
+  const doc = { kind: 'card', trip, items: s.items, profile: s.profile, printedOn: '2026-10-18' }
+  const letter = await buildPdf(doc, planPrint({}, KNOWN))
+  const parsed = await PDFDocument.load(letter.bytes)
+  assert.deepEqual([parsed.getPage(0).getWidth(), parsed.getPage(0).getHeight()], [612, 792])
+  assert.equal(letter.pageCount, parsed.getPageCount())
+  assert.equal(String.fromCharCode(...letter.bytes.slice(0, 5)), '%PDF-')
+  assert.ok(Buffer.from(letter.bytes).toString('latin1').includes('/Subtype /Image'), 'the trip card keeps its QR summary')
+  const a4 = await PDFDocument.load((await buildPdf(doc, planPrint({}, { ...KNOWN, plainPaper: 'a4' }))).bytes)
+  assert.ok(Math.abs(a4.getPage(0).getWidth() - 595.28) < 1)
+  const card = await buildPdf(doc, planPrint({ size: '4x6' }, KNOWN, { fourBySix: 'layout-on-plain' }))
+  assert.equal((await PDFDocument.load(card.bytes)).getPage(0).getWidth(), 612, 'the card sits on the plain sheet Epson will use')
+  const three = await buildPdf(doc, planPrint({ copies: 3 }, KNOWN, { copies: 'repeat-pages' }))
+  assert.equal(three.pageCount, letter.pageCount * 3)
+  const again = await buildPdf(doc, planPrint({}, KNOWN))
+  assert.deepEqual(Buffer.from(again.bytes), Buffer.from(letter.bytes), 'same input, same bytes')
+  const journal = await buildPdf({ ...doc, kind: 'journal' }, planPrint({ color: 'grayscale' }, KNOWN))
+  assert.match(journal.title, /journal/)
+  assert.deepEqual(printable('São Paulo café'), { text: 'São Paulo café', lossy: false })
+  assert.deepEqual(printable('Kraków ✨'), { text: 'Kraków ', lossy: false }, 'Latin-1 kept, emoji dropped')
+  assert.deepEqual(printable('Łódź'), { text: '?ódz', lossy: true }, 'transliterate where possible, report the rest')
+  assert.deepEqual(printable('東京'), { text: '??', lossy: true })
+  assert.deepEqual(printable('SFO → LIS'), { text: 'SFO -> LIS', lossy: false })
+})

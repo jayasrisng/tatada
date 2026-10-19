@@ -8,6 +8,7 @@ import { McpClient } from './mcp.ts'
 import { LiveFoAdapter, MockFoAdapter, type FoAdapter } from './fo.ts'
 import { fromAccessToken, fromFoApi, fromTokenResponse } from './identity.ts'
 import { webRequest } from './web.ts'
+import { FoPrintDelivery, MockPrintDelivery, PrintService } from './print.ts'
 
 export interface EdgeRepository {
   read(): Promise<Partial<Data>>
@@ -53,13 +54,14 @@ export function createEdgeHandler(options: EdgeOptions) {
     }) as FoAdapter
     const actions = new ActionService({ store, fo, pollWaitSeconds: 1, liveRecipients: options.liveRecipients })
     const chats = new FoChatService({ store, fo, pollWaitSeconds: 1 })
-    const handle = createApp({ store, fo, actions, chats, oauth: options.mode === 'mock' ? undefined : oauth, appUrl, secureCookies: true, allowedOrigin: origin, bearerSessions: true, browserAccounts: true, loginCookiePath: `${prefix}/`,
+    const print = new PrintService({ store, delivery: options.mode === 'mock' ? new MockPrintDelivery(store) : new FoPrintDelivery(fo) })
+    const handle = createApp({ store, fo, actions, chats, print, oauth: options.mode === 'mock' ? undefined : oauth, appUrl, secureCookies: true, allowedOrigin: origin, bearerSessions: true, browserAccounts: true, loginCookiePath: `${prefix}/`,
       resolveIdentity: async ({ body, tokens, issuer }) => {
         const identity = fromTokenResponse(body, issuer) ?? fromAccessToken(tokens.accessToken, issuer, Date.now())
         return identity ? { identity } : fromFoApi(mcp, tokens.accessToken, issuer)
       },
     })
-    return { handle, actions, chats }
+    return { handle, actions, chats, print }
   }
   const worker = async () => {
     const token = crypto.randomUUID()
@@ -67,10 +69,10 @@ export function createEdgeHandler(options: EdgeOptions) {
     if (lease.busy) return
     const store = new Store(undefined, (state) => repository.save(token, state))
     store.data = { ...store.data, ...lease.state }
-    const { actions, chats } = configure(store)
+    const { actions, chats, print } = configure(store)
     let committed = false
     try {
-      if (lease.recovered) { actions.recover(); chats.recover() }
+      if (lease.recovered) { actions.recover(); chats.recover(); print.recover() }
       await actions.runDue(1)
       await chats.runDue(1)
       await store.flush()
@@ -112,7 +114,7 @@ export function createEdgeHandler(options: EdgeOptions) {
       const store = new Store(undefined, token ? (state) => repository.save(token!, state) : undefined)
       store.data = { ...store.data, ...data }
       const api = configure(store)
-      if (recovered) { api.actions.recover(); api.chats.recover() }
+      if (recovered) { api.actions.recover(); api.chats.recover(); api.print.recover() }
       const response = await webRequest(request, `${path}${url.search}`, api.handle)
       await store.flush()
       committed = true

@@ -48,15 +48,49 @@ Rules: times are converted using the listing's own IANA zone, and date filters a
 
 What would need credentials or paid access: Eventbrite's public search API is deprecated. Its API now only covers events you organize, and this flow doesn't use it. Luma's official API (Luma Plus) covers only calendars you manage. Partiful has no public API. City-wide prices and sold-out status for Eventbrite/Partiful would need partner feeds or per-event page reads. Ratings for places need a paid places API (e.g. Google Places, Foursquare) behind a backend key.
 
-## Photos → timeline / map
+## Photos → map and closet (one import)
 
-Users select up to 20 image files per batch from one city. EXIF dates and GPS are read locally; missing dates must be supplied and missing GPS stays unmapped. City/country labels are confirmed by the user, not guessed from scenery. Duplicate files are detected by SHA-256. Same-city photo groups split when dates are more than three days apart, create or attach to trips, appear in trip journals, and persist through backup/restoration.
+Up to 20 images per batch, any mix of places. Each photo is read on the device:
+- **Metadata:** EXIF date and GPS, plus IPTC/XMP City, Country/CountryCode and Sub-location/Location labels, prefill the fields and are marked "from photo".
+- **Geocoding:** for GPS without labels, a city/country suggestion comes from Photon only after consent. Coordinates are rounded to 3 decimals (~100 m), and the image is never sent. Photon's nearest feature is never used as a place name, because a café near the coordinates isn't where the photo was taken.
+- **Blank fields:** anything unresolved stays blank. Undated photos can still mark a country or city but create no trip. A photo joins the map only with at least a country.
+- **Landmark recognition:** not available. Nothing is guessed from image content, and no photo goes to an AI service.
 
-Countries/cities use normalized confirmed labels; aliases such as US/United States can still count separately. Photo stops cluster coordinates within 100 m, not distinct businesses. Sample/upcoming trips do not inflate counts. Map tiles load only after opening the map and reveal the viewed geographic area to the tile provider; photos are not uploaded there.
+The same photos enter the on-device clothing detector one at a time. A piece reaches the closet only after you name it, set its category and tick "I still own it". The two halves can fail separately: the location lookup and the clothing model show their own retryable errors. Duplicates are detected by SHA-256 against the map history, and against closet pieces through their source photo.
 
-Google Photos account linking is not implemented. Its Picker API requires Google OAuth and user selection; the Library API covers app-created content. A Fo connection must not be assumed to grant Tatada access to someone's Google Photos. Current imports use downloaded/original files; exports may lack original GPS/EXIF. There is no landmark recognition, whole-library background scan, or automatic inventory of clothes a user still owns.
+Counts: countries use ISO codes, matched by name, common alias or code, so US/United States count once. Unmatched labels stay as typed. Cities come from confirmed labels. Places are only named places you confirmed, never coordinates or photo counts. Photo spots cluster GPS within 100 m. Countries can be ticked or unticked by hand; these are stored as overrides, and saves from before still load. Visited and planned stay separate, and sample or upcoming trips never count as visited. The map is drawn locally from Natural Earth 1:110m shapes, with no map tiles or network. Small countries without a shape at that scale appear in the lists and checkboxes only.
 
-Wajo sign-in/live actions and Epson integration remain paused.
+Map history no longer shows a photo gallery. Existing photos stay in trip journals and can be removed from a compact list. Google Photos account linking is not implemented; its Picker API needs Google OAuth. A Fo connection is not assumed to grant photo access.
+
+## Today context
+
+Magic, discovery and Style start with "today". A trip becomes the context only when chosen explicitly: from a trip page, a task shortcut, or a chip. Style for today uses an unsaved stand-in with no itinerary or packing list.
+
+## Printing (Epson Connect Email Print)
+
+Facts from epsonconnect.com (FAQ, Guide and User Page help, checked 2026-10-18):
+- **Paper:** documents print on plain paper at the printer-wide Plain Paper Size.
+- **Copies and n-up:** not supported per email.
+- **Per-email options:** grayscale (`=+bk`) and two-sided long/short edge (`=+dl`/`=+ds`), as address suffixes. Two-sided needs automatic duplex and A3/A4/Letter/Postcard paper.
+- **Extra pages:** the email body and sender information print unless the owner turns them off in Print Settings.
+- **Approved Senders:** this list is off by default. If it's on, unapproved senders' jobs fail with a Print Log error.
+- **Attachments:** up to 10 and 20 MB in total. Password-protected or signed PDFs don't print.
+- **Confirmation:** completion notification emails go to a sender only if the owner enabled them. The Print Log is visible only to the owner.
+
+How Tatada applies these:
+- The printer profile records what you say your Epson Connect settings are. Tatada can't read them, so "not sure" is allowed and shows up as a limitation.
+- The PDF is generated in the browser (Helvetica, Latin-1). Arrows become ASCII, and characters it can't print are reported.
+- The server re-reads the PDF and checks page size and count before storing it.
+- The preview loads those stored bytes, and approval binds to their SHA-256 together with the printer address, sender, plan and copies.
+- Jobs are saved as "sending" before delivery. After a restart, "sending" becomes "uncertain" and is never resent; "check again" asks the provider, and a resend needs explicit confirmation.
+
+**Blocked:** live Fo delivery. `ask_fo` accepts only `message`, `conversationId` and `newConversation`, and rejects other arguments. No Fo tool exposes the connected sending account. So Fo delivery reports the blocker and sends nothing. Mock delivery exists for development only.
+
+**Not verified:** that any specific printer is registered with Epson Connect or accepts a particular sender, or that a page printed. Doing so needs the owner's Print Log, a completion notice, or the Epson Connect API with credentials, none of which Tatada has.
+
+**Hosting:** the print service also runs in the Supabase edge function (with a pdf-lib import map), so it doesn't need a laptop. That needs the paused Wajo sign-in for per-account storage, and it isn't deployed.
+
+Wajo multi-user sign-in remains paused.
 
 ## Sources
 
@@ -69,3 +103,6 @@ Wajo sign-in/live actions and Epson integration remain paused.
 - https://routing.openstreetmap.de/about.html (FOSSGIS OSRM routing)
 - https://wiki.openstreetmap.org/wiki/Key:opening_hours
 - https://wiki.openstreetmap.org/wiki/Key:diet
+- https://www.epsonconnect.com/faq/en/index.htm (Email Print settings, suffixes, limits)
+- https://epsonconnect.com/help/en/html/email_2.htm (Approved Senders) · email_4.htm (Print Settings) · email_5.htm (Print Log)
+- Wajo MCP `search_documentation` (API key auth, Fo profile tools), checked 2026-10-18

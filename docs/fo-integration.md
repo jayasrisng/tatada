@@ -43,6 +43,17 @@ The server advertises dynamic client registration and public clients with PKCE. 
 
 **Bonus: second server `wajo-agentmcp` at `/mcp`** (same OAuth issuer). It's an agent-builder platform: `build_agent`, `chat_agent`, `build_connector`, `update_agent` (including outbound-voice instructions), and **`register_webhook(url, name, eventKinds)`**. Webhooks could replace polling later. This is out of MVP scope.
 
+## API key check (Oct 18, 2026, read-only)
+
+`.env` holds `WAJO_FO_ENDPOINT` (`https://mcp.api.wajo.ai/fo`) and `WAJO_FO_API_KEY`. Only `initialize`, `tools/list`, `prompts/list`, `resources/list`, `search_documentation` and `list_connectors` were called. Nothing was sent.
+
+- **Authentication:** Wajo's docs say developer tools send a `wak_` key as `X-API-Key` or `Authorization: Bearer`, and that "every request is scoped to the authenticated user". The key worked as a Bearer token: `prompts/list` returned 401 without it and 200 with it.
+- **Identity:** a key acts as its one Wajo account. Tatada therefore uses it only in single-owner mode (`TATADA_SINGLE_OWNER=1`, localhost only) as the owner's credential, and ignores it in multi-user mode, which keeps per-user OAuth. It never identifies a Tatada user.
+- **What `ask_fo` accepts:** its schema is `{message, conversationId?, newConversation?}` with `additionalProperties: false`. There's no attachment or file argument, so Tatada can't give Fo a PDF.
+- **Sender account:** no Fo tool shows which email account Fo sends from. Wajo's docs say OAuth-backed services (such as email) are connected in the Wajo Integrations UI. `list_connectors` on `/mcp` lists custom HTTP connectors only, none for email.
+- **Runtime check:** `/api/fo/status` now reports `capabilities` (attachments, senderVisible) derived from the live schema. Printing uses the same check.
+- **Handling the key:** `server/env.ts` loads `.env` (shell variables win) and logs variable names only. The key isn't sent to the browser, logged, stored in server data, or committed (`.env` is gitignored).
+
 ## How the backend connects (implemented in `server/`)
 
 ```

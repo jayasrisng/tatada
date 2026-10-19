@@ -1,3 +1,12 @@
 {
-  "compilerOptions": { "lib": ["deno.window", "dom", "es2022"] }
+  "compilerOptions": {
+    "lib": [
+      "deno.window",
+      "dom",
+      "es2022"
+    ]
+  },
+  "imports": {
+    "pdf-lib": "npm:pdf-lib@1.17.1"
+  }
 }

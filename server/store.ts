@@ -66,6 +66,10 @@ export interface Data {
   oauthObservations: OAuthObservation[]
   /** Conversations with real (or mock) Fo; see chat.ts. */
   foChats?: Record<string, unknown>
+  /** account id → Epson Connect printer settings; see print.ts. Private to that account. */
+  printers?: Record<string, unknown>
+  /** Print jobs with their approved PDFs; see print.ts. */
+  printJobs?: Record<string, unknown>
 }
 
 export interface OAuthObservation {

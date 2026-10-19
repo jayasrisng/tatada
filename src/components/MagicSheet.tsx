@@ -11,6 +11,9 @@ import { Doodle } from './Doodle'
 import { Btn, Chip } from './ui'
 import { FoChatPanel } from './FoChatPanel'
 import { DiscoverPanel } from './DiscoverPanel'
+import { isPrintRequest, parsePrintRequest } from '../print/plan'
+import { go } from '../state/ui'
+import { uid } from '../state/id'
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
@@ -91,6 +94,18 @@ export function MagicSheet() {
   const trip = state.trips.find((t) => t.id === tripId)
   const send = (p: string) => {
     if (!p.trim()) return
+    // "Print …" uses the same print workflow as the print icon: preview, then approval.
+    if (isPrintRequest(p)) {
+      const target = state.trips.find((t) => t.id === tripId) ?? state.trips.find((t) => p.toLowerCase().includes(t.destination.toLowerCase()))
+      if (target) {
+        closeMagic()
+        go(`/trip/${target.id}/print${parsePrintRequest(p).document === 'journal' ? '/journal' : ''}?ask=${encodeURIComponent(p.trim())}`)
+        return
+      }
+      dispatch({ type: 'chat', messages: [{ id: uid(), from: 'me', text: p.trim() }, { id: uid(), from: 'tatada', text: 'Which trip should I print? Pick one above, or open the trip and tap print.' }] })
+      setText('')
+      return
+    }
     void ask(p.trim(), tripId, itemId, undefined, true, viaServer)
     setText('')
     setItemId(undefined)

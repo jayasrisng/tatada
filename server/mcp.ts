@@ -58,12 +58,12 @@ export class McpClient {
   }
 
   /** tools/list: names, schemas, and the server's own safety annotations. */
-  async listTools(token: string): Promise<{ tools?: { name: string; title?: string; annotations?: Record<string, unknown> }[] }> {
+  async listTools(token: string): Promise<{ tools?: { name: string; title?: string; annotations?: Record<string, unknown>; inputSchema?: { properties?: Record<string, unknown>; additionalProperties?: unknown } }[] }> {
     if (!this.initialized) {
       await this.rpc(token, 'initialize', { protocolVersion: PROTOCOL, capabilities: {}, clientInfo: { name: 'tatada', version: '0.2.0' } })
       this.initialized = true
     }
-    return (await this.rpc(token, 'tools/list', {})) as { tools?: { name: string; title?: string; annotations?: Record<string, unknown> }[] }
+    return (await this.rpc(token, 'tools/list', {})) as { tools?: { name: string; title?: string; annotations?: Record<string, unknown>; inputSchema?: { properties?: Record<string, unknown>; additionalProperties?: unknown } }[] }
   }
 
   private async rpc(token: string, method: string, params: unknown): Promise<unknown> {

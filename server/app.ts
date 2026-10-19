@@ -7,6 +7,8 @@ import type { Store, Session } from './store.ts'
 import type { FoAdapter } from './fo.ts'
 import { subjectKey, type WajoIdentity } from './identity.ts'
 import type { FoChatService } from './chat.ts'
+import { foCapabilities } from './capabilities.ts'
+import { PrintError, type PrintService } from './print.ts'
 import { isNotConnected } from './fo.ts'
 import type { TokenSet } from './types.ts'
 
@@ -47,6 +49,10 @@ interface Deps {
    * Host (and Origin, for writes) must be one of these.
    */
   owner?: { allowedHosts: string[]; allowedOrigins: string[] }
+  /** How live Fo is authorized: per-user OAuth, the local owner's API key, or mock. */
+  foAuth?: string
+  /** Epson Connect email printing (printer settings and print jobs per account). */
+  print?: PrintService
 }
 
 export const OWNER_ID = 'owner'
@@ -165,7 +171,8 @@ export function createApp(deps: Deps) {
       authenticated: !!account,
       owner: !!deps.owner,
       account: account ? { id: userId, kind: account.kind, identitySource: account.identitySource, since: account.createdAt } : undefined,
-      foConnected: !account ? false : live ? !!oauth?.connected(userId!) : true,
+      foConnected: !account ? false : live ? !!(deps.fo?.connected(userId!) ?? oauth?.connected(userId!)) : true,
+      foAuth: deps.foAuth ?? (live ? 'oauth' : 'mock'),
       liveRecipients: live && account ? actions.liveAllowlist : [],
     }
   }
@@ -352,7 +359,7 @@ export function createApp(deps: Deps) {
         if (!fo.connected(userId)) return send(res, 200, { state: 'disconnected', provider: fo.mode })
         try {
           const tools = await fo.tools(userId)
-          return send(res, 200, { state: 'connected', provider: fo.mode, tools: tools.map((t) => t.name), checkedAt: now() })
+          return send(res, 200, { state: 'connected', provider: fo.mode, auth: deps.foAuth, tools: tools.map((t) => t.name), capabilities: foCapabilities(tools), checkedAt: now() })
         } catch (e) {
           return send(res, 200, { state: isNotConnected(e) ? 'disconnected' : 'error', provider: fo.mode, error: (e as Error).message.slice(0, 200) })
         }
@@ -456,9 +463,35 @@ export function createApp(deps: Deps) {
           return send(res, 200, { action })
         }
       }
+      /* ── printing: everything is scoped to the signed-in account ── */
+      const print = deps.print
+      if (print && path === '/api/print/printer') {
+        if (method === 'GET') return send(res, 200, { printer: print.printer(userId) ?? null, storage: 'account' })
+        if (method === 'PUT') return send(res, 200, { printer: print.setPrinter(userId, await readBody(req)) })
+        if (method === 'DELETE') { print.removePrinter(userId); return send(res, 200, { printer: null }) }
+      }
+      if (print && path === '/api/print/sender' && method === 'GET') return send(res, 200, { delivery: print.mode, sender: await print.sender(userId) })
+      if (print && path === '/api/print/jobs' && method === 'GET') return send(res, 200, { jobs: print.list(userId) })
+      if (print && path === '/api/print/jobs' && method === 'POST') return send(res, 201, { job: await print.prepare(userId, await readBody(req, 6 * 1024 * 1024)) })
+      const pj = path.match(/^\/api\/print\/jobs\/([\w-]{6,40})(?:\/(pdf|approve|cancel|check))?$/)
+      if (print && pj) {
+        const [, id, verb] = pj
+        if (!verb && method === 'GET') return send(res, 200, { job: print.get(userId, id) })
+        if (verb === 'pdf' && method === 'GET') {
+          const bytes = print.pdf(userId, id)
+          res.writeHead(200, { 'content-type': 'application/pdf', 'content-length': bytes.length, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-disposition': 'inline; filename="tatada-print.pdf"' })
+          return void res.end(bytes)
+        }
+        if (verb && method === 'POST') {
+          const body = verb === 'approve' ? await readBody(req) : {}
+          const job = verb === 'approve' ? await print.approve(userId, id, body) : verb === 'cancel' ? print.cancel(userId, id) : await print.check(userId, id)
+          return send(res, 200, { job })
+        }
+      }
       return send(res, 404, { error: 'Not found' })
     } catch (e) {
       if (e instanceof ActionError) return send(res, e.status, { error: e.message })
+      if (e instanceof PrintError) return send(res, e.status, { error: e.message, code: e.code })
       // Log the class and message only; never request headers (cookies) or bodies.
       console.error('[tatada]', (e as Error)?.name, (e as Error)?.message)
       return send(res, 500, { error: 'Something went wrong on the Tatada server' })

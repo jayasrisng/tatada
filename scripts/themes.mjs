@@ -42,10 +42,10 @@ for (const theme of ['dark', 'light']) {
       await page.screenshot({ path: `${OUT}${theme}-${size}-${name}.png` })
     }
     await shot('home', '/')
-    check(await page.locator('.magic-orb .buddy').isVisible(), `${theme}/${size}: Magic buddy on the central button`)
+    check(await page.locator('.tab-magic .buddy').isVisible(), `${theme}/${size}: Magic buddy on the central button`)
     check((await page.locator('img[src*="wajo"]').count()) === 0, `${theme}/${size}: no Wajo logo in Tatada's UI`)
-    check((await page.locator('.magic-label').textContent()) === 'ask Magic', `${theme}/${size}: button labeled "ask Magic"`)
-    await page.locator('.magic-orb').click()
+    check((await page.locator('.tab-magic-label').textContent()) === 'Magic', `${theme}/${size}: central button labeled "Magic"`)
+    await page.locator('.tab-magic').click()
     check(await page.getByRole('dialog', { name: 'Magic' }).isVisible(), `${theme}/${size}: Magic button opens Magic`)
     check(await page.getByText('find a little adventure').isVisible(), `${theme}/${size}: discovery introduction shown`)
     await shot('magic')

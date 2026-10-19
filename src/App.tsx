@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { useStore } from './state/store'
 import { go, useRoute, useUI } from './state/ui'
 import { useServer } from './state/server'
@@ -11,8 +11,9 @@ import { TripWorkspace } from './screens/TripWorkspace'
 import { NewTrip } from './screens/NewTrip'
 import { Tasks } from './screens/Tasks'
 import { Style } from './screens/Style'
-import { PrintView } from './screens/PrintView'
 import { Welcome } from './screens/Welcome'
+
+const PrintView = lazy(() => import('./screens/PrintView').then((m) => ({ default: m.PrintView })))
 
 export function App() {
   const route = useRoute()
@@ -34,7 +35,7 @@ export function App() {
       screen = <Trips key={id ?? 'trips'} initial={id === 'map' ? 'history' : 'trips'} />
       break
     case 'trip':
-      screen = tab === 'print' ? <PrintView id={id} doc={sub} /> : <TripWorkspace id={id} tab={tab} />
+      screen = tab === 'print' ? <Suspense fallback={<p>Opening print…</p>}><PrintView id={id} doc={sub} /></Suspense> : <TripWorkspace id={id} tab={tab} />
       break
     case 'new':
       screen = <NewTrip />

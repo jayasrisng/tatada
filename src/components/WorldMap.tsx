@@ -7,7 +7,7 @@ import { countryCode } from '../travel/countries'
  * ones dashed. Small countries without a shape at this scale only appear in
  * the lists. Shapes load in a separate chunk the first time a map is shown.
  */
-const W = 1000, TOP = 84, BOTTOM = -57, H = Math.round((W * (TOP - BOTTOM)) / 360)
+const W = 1000, TOP = 80, BOTTOM = -56, H = Math.round((W * (TOP - BOTTOM)) / 360)
 const x = (lon: number) => ((lon + 180) / 360) * W
 const y = (lat: number) => ((TOP - lat) / (TOP - BOTTOM)) * H
 

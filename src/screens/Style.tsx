@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import type { DressCode, Garment, GarmentCategory, ItineraryItem, Trip } from '../types'
 import { uid, useStore } from '../state/store'
 import { Doodle } from '../components/Doodle'
@@ -7,7 +7,6 @@ import { Btn, Chip, Heading, TODAY, TopBar } from '../components/ui'
 import { fmtDay } from '../magic/dates'
 import { byCategory, dayCode, generateLooks, packingList, tripDays, type Suggestion } from '../style/looks'
 import { garmentImage } from '../style/images'
-import { PhotoImport } from '../components/PhotoImport'
 
 type Tab = 'itinerary' | 'closet' | 'mix' | 'swipe' | 'board'
 const TABS: { id: Tab; label: string }[] = [
@@ -26,6 +25,9 @@ const CATS: { id: GarmentCategory; label: string }[] = [
 ]
 const DRESS: DressCode[] = ['casual', 'active', 'dressy', 'cold']
 const MAX_CAMERA = 24
+
+// The importer (EXIF reader, detector glue) loads only when someone adds photos.
+const PhotoImport = lazy(() => import('../components/PhotoImport').then((m) => ({ default: m.PhotoImport })))
 
 /** A stand-in "trip" for styling today: never stored, no itinerary or packing list. */
 const todayTrip = (): Trip => ({ id: 'today', destination: 'today', country: '', start: TODAY, end: TODAY, travelers: 1, companions: '', budget: 0, vibe: [], constraints: [], discounts: [], status: 'upcoming', tint: 'pink', summary: {}, options: [], bookings: [], memories: [] })
@@ -53,7 +55,7 @@ export function Style() {
         </Btn>
         <p className="dim small">The same photos can add places to your map. Your closet saves in this browser.</p>
       </div>
-      {importing && <PhotoImport onClose={() => setImporting(false)} />}
+      {importing && <Suspense fallback={<p className="small dim">opening…</p>}><PhotoImport onClose={() => setImporting(false)} /></Suspense>}
 
       <div className="chips no-print" role="group" aria-label="Style for">
         <Chip on={!chosen} onClick={() => setTripId(undefined)}>today</Chip>
