@@ -1,3 +1,4 @@
+import { drawTravelDoodle, stopDoodle, tripMapUrl, notebookDay, notebookTime } from './notebook'
 import { flightNotes } from './flight'
 import {humanWhen} from '../travel/display'
 /*
@@ -5,7 +6,7 @@ import {humanWhen} from '../travel/display'
  * margins, no app navigation or blackboard. The same bytes are uploaded,
  * previewed and (after approval) attached, so what you see is what is sent.
  */
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
+import { PDFDocument, PDFString, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
 import type { ChecklistItem, Profile, Trip } from '../types'
 import QRCode from 'qrcode'
 import type { PrintPlan } from './plan'
@@ -110,6 +111,7 @@ async function stampStickers(pdf:PDFDocument,stickers:PrintSticker[]=[]){
 
 export async function buildPdf(doc: PrintDoc, plan: Pick<PrintPlan, 'pageSize' | 'layout' | 'grayscale' | 'repeat'>): Promise<BuiltPdf> {
   if (doc.kind === 'all') return bundlePdf(doc, plan)
+  if (doc.kind === 'card') return notebookPdf(doc, plan)
   if (doc.kind === 'flights') return flightPdf(doc, plan)
   const pdf = await PDFDocument.create()
   const c = content(doc)
@@ -163,19 +165,6 @@ export async function buildPdf(doc: PrintDoc, plan: Pick<PrintPlan, 'pageSize' |
   }
 
   newPage()
-  // Trip card: the same QR summary as before (bookings and stay), top right.
-  if (doc.kind === 'card') {
-    const t = doc.trip
-    const summary = [`TATADA · ${t.destination} · ${fmt(t.start)} – ${fmt(t.end)}`, ...t.bookings.map((b) => `${b.simulated?'[SAMPLE] ':''}${b.title} | ${b.when} | ${b.ref}`), t.localAddress ? `Stay: ${t.localAddress}` : ''].filter(Boolean).join('\n')
-    try {
-      const png = await QRCode.toDataURL(summary, { margin: 1, width: 240, color: { dark: plan.grayscale ? '#222222' : '#1d1d1b', light: '#ffffff' } })
-      const img = await pdf.embedPng(png)
-      const size = (card ? 1.1 : 1.35) * PT
-      page.drawImage(img, { x: ox + w - margin - size, y: oy + h - margin - size, width: size, height: size })
-      page.drawText('scan: trip summary', { x: ox + w - margin - size, y: oy + h - margin - size - 10, size: 7, font: regular, color: soft })
-      qrBottom = oy + h - margin - size - 14; qrWidth = size + 12
-    } catch { /* the same details are printed as text */ }
-  }
   const heading = () => {
   text(`tatada / ${doc.kind === 'hotels' ? 'A LITTLE PLACE TO LAND' : doc.kind === 'journal' ? 'THE MOMENTS WE KEPT' : 'YOUR LITTLE WORLD'}`, 11, bold, accent)
   y -= 6 * scale
@@ -244,6 +233,91 @@ export async function buildPdf(doc: PrintDoc, plan: Pick<PrintPlan, 'pageSize' |
   }
   const bytes = await pdf.save({ useObjectStreams: false })
   return { bytes, pageCount: pdf.getPageCount(), lossyText: lossy, title: c.title }
+}
+
+/** A travel notebook, with one dated timeline and useful public-map QR. */
+async function notebookPdf(doc: PrintDoc, plan: Pick<PrintPlan,'pageSize'|'layout'|'grayscale'|'repeat'>): Promise<BuiltPdf> {
+  const pdf = await PDFDocument.create(), trip = doc.trip
+  const title = `${trip.destination} / Travel notebook`
+  pdf.setTitle(title); pdf.setAuthor('Tatada'); pdf.setCreator('Tatada'); pdf.setProducer('Tatada')
+  pdf.setCreationDate(new Date(`${doc.printedOn}T00:00:00Z`));pdf.setModificationDate(new Date(`${doc.printedOn}T00:00:00Z`))
+  const pen = await pdf.embedFont(StandardFonts.TimesRomanItalic), heading = await pdf.embedFont(StandardFonts.TimesRomanBoldItalic)
+  const sans = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  const [pw,ph] = SIZES[plan.pageSize], small = plan.layout === '4x6-on-plain'
+  const [w,h] = small ? CARD : [pw,ph], scale = small ? .53 : 1
+  const ox=(pw-w)/2,oy=(ph-h)/2,left=ox+58*scale,right=ox+w-38*scale,width=right-left
+  const ink=plan.grayscale?rgb(.2,.2,.2):rgb(.19,.24,.22), muted=plan.grayscale?rgb(.43,.43,.43):rgb(.42,.45,.41), green=plan.grayscale?rgb(.3,.3,.3):rgb(.26,.39,.3)
+  const rust=plan.grayscale?rgb(.4,.4,.4):rgb(.67,.38,.25), ruled=plan.grayscale?rgb(.9,.9,.9):rgb(.85,.88,.82)
+  let lossy=false, page!:PDFPage, y=0
+  const clean=(value:string)=>{const result=printable(value);lossy ||=result.lossy;return result.text}
+  const write=(value:string,x:number,yy:number,size:number,font=pen,color=ink)=>page.drawText(clean(value),{x,y:yy,size:size*scale,font,color})
+  const qrUrl=tripMapUrl(trip)
+  const qr=await pdf.embedPng(await QRCode.toDataURL(qrUrl,{margin:4,width:400,errorCorrectionLevel:'M',color:{dark:plan.grayscale?'#333333':'#243b2b',light:'#ffffff'}}))
+  const pages:PDFPage[]=[]
+  function newPage(continued=false){
+    page=pdf.addPage([pw,ph]);pages.push(page)
+    if(small)for(const [x,yy] of [[ox,oy],[ox+w,oy],[ox,oy+h],[ox+w,oy+h]]){
+      page.drawLine({start:{x:x-8,y:yy},end:{x:x-3,y:yy},color:muted,thickness:.5})
+      page.drawLine({start:{x,y:yy-8},end:{x,y:yy-3},color:muted,thickness:.5})
+    }
+    page.drawRectangle({x:ox+6*scale,y:oy+9*scale,width:w-12*scale,height:h-18*scale,color:plan.grayscale?rgb(1,1,1):rgb(.995,.987,.952)})
+    for(let yy=oy+94*scale;yy<oy+h-155*scale;yy+=24*scale)page.drawLine({start:{x:left-5*scale,y:yy},end:{x:right,y:yy},color:ruled,thickness:.35*scale})
+    page.drawLine({start:{x:ox+43*scale,y:oy+83*scale},end:{x:ox+43*scale,y:oy+h-33*scale},color:plan.grayscale?ruled:rgb(.85,.65,.59),thickness:.7*scale})
+    for(let yy=oy+130*scale;yy<oy+h-65*scale;yy+=88*scale)page.drawCircle({x:ox+23*scale,y:yy,size:4*scale,color:rgb(1,1,1),borderColor:ruled,borderWidth:.7*scale})
+    const top=oy+h-44*scale
+    write('A LITTLE ADVENTURE / FIELD NOTES',left,top,9,bold,green)
+    let titleSize=36
+    while(heading.widthOfTextAtSize(clean(trip.destination),titleSize*scale)>width-88*scale&&titleSize>22)titleSize--
+    const titleLines=wrap(clean(trip.destination),heading,titleSize*scale,width-88*scale)
+    for(const [lineIndex,line] of titleLines.entries())write(line,left,top-(43+lineIndex*(titleSize+3))*scale,titleSize,heading,ink)
+    const titleExtra=(titleLines.length-1)*(titleSize+3)*scale
+    drawTravelDoodle(page,/yosemite/i.test(trip.destination)?'mountain':'star',right-72*scale,top-56*scale,66*scale,green)
+    const dates=trip.start===trip.end?notebookDay(trip.start):`${notebookDay(trip.start)} - ${notebookDay(trip.end)}`
+    write(`${dates} / ${trip.travelers} ${trip.travelers===1?'traveler':'travelers'}${continued?' / continued':''}`,left,top-65*scale-titleExtra,12,pen,muted)
+    if(trip.presentation)write('DEMO PLAN / check current conditions before you go',left,top-82*scale-titleExtra,8,sans,rust)
+    y=top-108*scale-titleExtra
+  }
+  function room(height:number){if(y-height<oy+105*scale)newPage(true)}
+  function paragraph(value:string,font=pen,size=12,indent=0){
+    const lines=wrap(clean(value),font,size*scale,width-indent*scale)
+    for(const line of lines){room(17*scale);write(line,left+indent*scale,y,size,font);y-=17*scale}
+  }
+  function section(label:string){room(42*scale);y-=8*scale;write(label,left,y,17,heading,green);y-=27*scale}
+  newPage()
+  const itinerary=[...(trip.itinerary??[])].sort((a,b)=>`${a.day}${a.time??'99'}`.localeCompare(`${b.day}${b.time??'99'}`))
+  let day=''
+  for(const stop of itinerary){
+    const lines=wrap(clean(stop.title),heading,15*scale,width-48*scale)
+    room((39+lines.length*19+(day!==stop.day?31:0))*scale)
+    if(day!==stop.day){section(trip.start===trip.end?'The plan':`${notebookDay(stop.day)} / the plan`);day=stop.day}
+    drawTravelDoodle(page,stopDoodle(stop.title),left,y-31*scale,30*scale,green)
+    write(notebookTime(stop.time),left+46*scale,y,10,bold,rust);y-=19*scale
+    for(const line of lines){write(line,left+46*scale,y,15,heading);y-=19*scale}
+    y-=15*scale
+  }
+  if(!itinerary.length){section('The plan');paragraph('A little room for adventure. Add your stops in Tatada and print them here.');y-=10*scale}
+  const bookings=trip.bookings
+  if(bookings.length){section('Little details to keep');for(const booking of bookings){paragraph(`${booking.simulated?'Sample: ':''}${booking.title} / ${booking.when}`,pen,11);y-=5*scale}}
+  const tasks=doc.items.filter(item=>item.tripId===trip.id&&!item.done&&item.kind!=='memory').slice(0,8)
+  if(tasks.length){section('Before we go');for(const task of tasks){room(35*scale);page.drawRectangle({x:left,y:y-2*scale,width:7*scale,height:7*scale,borderColor:green,borderWidth:.7*scale});paragraph(task.text,pen,11,17);y-=4*scale}}
+  if(y-oy>210*scale){section('Little things to remember');drawTravelDoodle(page,'star',right-21*scale,y+8*scale,15*scale,rust)}
+  // Keep a real, useful map link alongside the paper notes, not a non-opening text payload.
+  for(const [index,sheet] of pages.entries()){
+    page=sheet
+    const bottom=oy+27*scale,qsize=58*scale
+    page.drawImage(qr,{x:right-qsize,y:bottom,width:qsize,height:qsize})
+    page.node.addAnnot(pdf.context.register(pdf.context.obj({Type:'Annot',Subtype:'Link',Rect:[right-qsize,bottom,right,bottom+qsize],Border:[0,0,0],A:{Type:'Action',S:'URI',URI:PDFString.of(qrUrl)}})))
+    write(/yosemite/i.test(trip.destination)?'scan for park maps':'scan for a map',right-132*scale,bottom+21*scale,8,pen,muted)
+    drawTravelDoodle(page,'star',left,bottom+9*scale,24*scale,green)
+    write('tatada',left+30*scale,bottom+17*scale,24,heading,green)
+    write('less scrolling. more living.',left+31*scale,bottom+3*scale,8,pen,muted)
+    write(`${fmt(doc.printedOn)} / ${index+1}${trip.presentation?' / demo plan':''}`,left,bottom-10*scale,7,sans,muted)
+    decorate(page,doc,pen,left,oy+88*scale,width,plan.grayscale)
+  }
+  await stampStickers(pdf,doc.stickers)
+  const originals=pdf.getPageIndices()
+  for(let copy=1;copy<plan.repeat;copy++)for(const sheet of await pdf.copyPages(pdf,originals))pdf.addPage(sheet)
+  return {bytes:await pdf.save({useObjectStreams:false}),pageCount:pdf.getPageCount(),lossyText:lossy,title}
 }
 
 /** A small, cut-out keepsake with a standard QR and a generous quiet zone. */

@@ -50,9 +50,9 @@ export function TripWorkspace({ id, tab = 'plan' }: { id: string; tab?: string }
       <TopBar
         back="/trips"
         right={tab === 'notebook' ? undefined :
-          <button className="iconbtn" onClick={() => go(printRoute(trip.id, tab === 'journal' ? 'journal' : 'card'))} aria-label="Print">
+          <div className="ac-buttons"><button className="iconbtn" aria-label="Preview and decorate print" title="Preview & decorate" onClick={()=>go(`/trip/${trip.id}/print${tab==='journal'?'/journal':''}`)}><Doodle name="pencil" size={24}/></button><button className="iconbtn" onClick={() => go(printRoute(trip.id, tab === 'journal' ? 'journal' : 'card'))} aria-label="Print">
             <Doodle name="printer" size={26} />
-          </button>
+          </button></div>
         }
       />
       <header className="trip-hero">

@@ -17,7 +17,8 @@ const UNKNOWN_PRINTER: Omit<PrinterProfile, 'email' | 'updatedAt'> = { plainPape
 
 /**
  * One print workflow for the print icon and for "print …" requests in Magic.
- * Entry opens the editor. Only the final Print tap authorizes the prepared PDF for delivery.
+ * A fresh Print gesture authorizes generating and sending the current document.
+ * One-use route tokens never resend on reload; browsing and decorating alone never send.
  */
 export function PrintView({ id, doc, inline = false }: { id: string; doc?: string; inline?: boolean }) {
   const { state } = useStore()
@@ -62,18 +63,9 @@ export function PrintView({ id, doc, inline = false }: { id: string; doc?: strin
     getPrinter().then((p) => { if(live){setPrinter(p); setEditingPrinter(!p)} }, (e: Error) => { if(live){setPrinter(null); setProblem(e.message)} })
     getSender().then((r) => {if(live)setSender(r.sender)}, () => {if(live)setSender(null)})
     // Show where the last job for this document ended up (after a refresh or restart).
-    if(!inline)listJobs().then((jobs) => { if (!live || autoPreparing.current) return; const last = jobs.find((j) => j.document.tripId === id && j.document.kind === kind && j.status !== 'cancelled'); if (last){restored.current=true;setPreview(null);setJob(last);void jobPdf(last.id).then(blob=>{if(live&&!autoPreparing.current)setPreview(blob,last.id)},()=>{if(live)setProblem('Stored PDF unavailable. Prepare a new preview before sending.')})} }, () => {})
+    if(!inline)listJobs().then((jobs) => { if (!live || autoPreparing.current) return; const last = jobs.find((j) => j.document.tripId === id && j.document.kind === kind && j.status !== 'cancelled'); if(last){restored.current=true;setJob(last)} }, () => {})
     return () => { live = false }
   }, [id, kind])
-
-  useEffect(() => {
-    if (inline || autoStarted.current || printer === undefined || editingPrinter) return
-    const token = hashQuery().get('run')
-    if (!token) return
-    autoStarted.current = true
-    const requested = consumePrintIntent(token, id, kind, ask)
-    if(requested){autoPreparing.current=true;invalidate()}
-  }, [printer, editingPrinter, ask, id, kind])
 
   // Any change to the document or settings invalidates the prepared job and its approval.
   const invalidate = () => { restored.current=false; setJob(null); setPreview(null); setConfirmDup(false) }
@@ -82,7 +74,7 @@ export function PrintView({ id, doc, inline = false }: { id: string; doc?: strin
 
   // Notebook preview is local-only: opening it never creates a job or sends an email.
   useEffect(() => {
-    if (!trip || job) return
+    if (!trip || (job && !restored.current)) return
     let live = true
     const settings = planPrint(request, printer ?? UNKNOWN_PRINTER, choices)
     import('../print/pdf').then(({buildPdf}) => buildPdf({kind, trip, items:state.items, profile:state.profile, packing, packingOutfits, stickers, caption, printedOn:TODAY}, settings)).then(built => {
@@ -114,6 +106,19 @@ export function PrintView({ id, doc, inline = false }: { id: string; doc?: strin
     return()=>{live=false;clearTimeout(timer)}
   },[mailPending,printer,mailRequest])
 
+  useEffect(() => {
+    if (inline || autoStarted.current || printer === undefined || editingPrinter || mailPending) return
+    const token = hashQuery().get('run')
+    if (!token) return
+    // Consume synchronously before any async work: StrictMode and reloads cannot replay it.
+    autoStarted.current = true
+    if (consumePrintIntent(token, id, kind, ask)) {
+      autoPreparing.current = true
+      invalidate()
+      void prepare(true)
+    }
+  }, [printer, editingPrinter, mailPending, ask, id, kind])
+
   if (!trip) return (
     <div className="screen center">
       <Doodle name="printer" size={48} />
@@ -126,11 +131,11 @@ export function PrintView({ id, doc, inline = false }: { id: string; doc?: strin
   const profile = printer ?? { ...UNKNOWN_PRINTER, email: '', updatedAt: 0 }
   const plan = planPrint(request, profile, choices, job?.pageCount ? job.pageCount / Math.max(1, job.plan.repeat) : localPages || undefined)
 
-  async function prepare() {
+  async function prepare(sendNow = false) {
     if(running.current)return
     setProblem(''); setConfirmDup(false)
     if (plan.questions.length){setSettingsOpen(true);return setProblem('Check print settings.')}
-    if(!browserOnly&&!printer){setSettingsOpen(true);return setProblem('Save a printer in print settings.')}
+    if(!browserOnly&&!printer){setSettingsOpen(true);return setProblem('Save a printer in print settings, then tap Print.')}
     running.current=true
     const version = documentVersion
     setBusy('making the PDF…')
@@ -143,18 +148,19 @@ export function PrintView({ id, doc, inline = false }: { id: string; doc?: strin
       setPreview(null)
       setBusy('saving the PDF…')
       const prepared = await prepareJob({ pdf: built.bytes, document: { kind, title: built.title, tripId: trip!.id }, request, choices })
-      const attachment = await jobPdf(prepared.id)
+      const attachment = sendNow ? new Blob([built.bytes as BlobPart], {type:'application/pdf'}) : await jobPdf(prepared.id)
       if(version!==latestVersion.current)throw Error('The document changed while preparing. Prepare the latest version again.')
       restored.current=false
       setJob(prepared)
       setPreview(attachment, prepared.id)
       if(prepared.blocker){setProblem(prepared.blocker);setSettingsOpen(true)}
-    } catch (e) { setProblem((e as Error).message) } finally { running.current=false; setBusy('') }
+      else if(sendNow){setBusy('sending to your printer…');setJob(await approveJob(prepared))}
+    } catch (e) { const message=(e as Error).message;if(/exact document was/.test(message))setConfirmDup(true);setProblem(message) } finally { running.current=false; setBusy('') }
   }
 
 
   async function approve(o: { allowDuplicate?: boolean; resendAfterUncertain?: boolean } = {}) {
-    if (!job || running.current || !previewUrl || previewJobId !== job.id) return
+    if (!job || running.current) return
     running.current=true
     setProblem(''); setBusy('sending…')
     try { setJob(await approveJob(job, o)); setConfirmDup(false) }
@@ -168,25 +174,31 @@ export function PrintView({ id, doc, inline = false }: { id: string; doc?: strin
   return <div className={inline?'print-screen print-inline':'screen print-screen'}>
     {!inline&&<TopBar back={`/trip/${trip.id}`} title="print"/>}
     <div className="print-flow">
-      <div className="chips" role="group" aria-label="Document">{([['card','trip card','ticket'],['flights','flights','plane'],['hotels','stay','bed'],['packing','packing','suitcase'],['journal','journal','book'],['all','all','layers']] as const).map(([value,label,icon])=><Chip key={value} on={kind===value} onClick={()=>setKind(value)} icon={icon}>{label}</Chip>)}</div>
+      <div className="chips" role="group" aria-label="Document">{([['card','trip notebook','book'],['flights','flights','plane'],['hotels','stay','bed'],['packing','packing','suitcase'],['journal','journal','book'],['all','all','layers']] as const).map(([value,label,icon])=><Chip key={value} on={kind===value} onClick={()=>setKind(value)} icon={icon}>{label}</Chip>)}</div>
       <div className="print-design-header"><h2>Print &amp; decorate</h2>      <div className="print-final-actions">
         <a className="iconbtn" href={previewUrl||undefined} aria-disabled={!previewUrl} onClick={e=>{if(!previewUrl)e.preventDefault()}} download={`${trip.destination.toLowerCase().replace(/\W+/g,'-')}-${kind}.pdf`} aria-label="Download PDF"><Doodle name="download" size={26}/></a>
-        <Btn kind="solid" disabled={!!busy||mailPending||printer===undefined||job?.status==='sending'||job?.status==='send_uncertain'} onClick={()=>void prepare()}>{browserOnly?'refresh PDF':'prepare print'}</Btn>
+        <Btn kind="solid" disabled={!!busy||mailPending||printer===undefined||job?.status==='sending'||job?.status==='send_uncertain'} onClick={()=>{autoPreparing.current=true;if(confirmDup&&job?.status==='awaiting_approval')void approve({allowDuplicate:true});else void prepare(!browserOnly)}}>{browserOnly?'refresh PDF':confirmDup?'Print another copy':'Print'}</Btn>
       </div></div>
+      {busy&&<p role="status" aria-live="polite">{busy}</p>}
+      {job?.status==='submitted'&&<p role="status">{job.sender.kind==='mock'?'Demo delivery recorded. No real email was sent.':'Submitted to printer email. Paper completion is unconfirmed.'}</p>}
+      {job?.status==='send_uncertain'&&<div><p role="alert">Send status unknown. Not resent. Check your sent mail and printer before retrying.</p><Btn kind="ghost" disabled={!!busy} onClick={()=>void checkJob(job.id).then(setJob,e=>setProblem(e.message))}>check send status without resending</Btn><details><summary>Send again after checking</summary><p>This can produce a duplicate if the first email arrived.</p><Btn disabled={!!busy} onClick={()=>void approve({resendAfterUncertain:true})}>I checked · approve sending again</Btn></details></div>}
+      {(job?.status==='failed'||job?.status==='blocked')&&<p role="alert">Not sent: {job.error||job.blocker}</p>}
+      {problem&&<p role="alert">{problem}</p>}
       {browserOnly && <p className="small">PDF download only. No email is sent in browser-only mode.</p>}
-      {job && <section className="now-card" aria-label="Review prepared print">
-        <h3>{job.status === 'awaiting_approval' ? 'Review before sending' : 'Stored print record'}</h3>
-        {restored.current && <p className="small">Restored after reload. This is the stored document; choose prepare print to use your current trip and decorations.</p>}
+      {job && <details className="now-card" open={job.status==='awaiting_approval' && (!!job.blocker || confirmDup)}><summary>Print details &amp; PDF</summary><section aria-label="Print details">
+        <h3>{job.status === 'awaiting_approval' ? 'Ready to print' : 'Print details'}</h3>
+        {restored.current && <p className="small">Restored after reload. This is the stored document; tap Print to send your current trip and decorations.</p>}
         <p>{job.document.title} · {job.pageCount} pages · {new Date(job.createdAt).toLocaleString()}</p>
         <p className="small">From: {job.sender.label} → {job.address}</p>
         <ul className="small">{job.plan.lines.map((line,index)=><li key={index}>{line.setting}: {line.result}</li>)}</ul>
         <details><summary>Printer limitations &amp; checks</summary><ul className="small">{job.plan.limitations.map(line=><li key={line}>{line}</li>)}</ul></details>
         <p className="small">Document {job.contentHash.slice(0,12)} · Gmail submission does not confirm a printed page.</p>
-        {previewUrl && previewJobId === job.id && <a className="linkbtn" href={previewUrl} target="_blank" rel="noreferrer">Review exact PDF attachment</a>}
-        {job.status==='awaiting_approval' && <Btn kind="solid" disabled={!!busy||!!job.blocker||!previewUrl||previewJobId!==job.id||mailPending} onClick={()=>void approve(confirmDup?{allowDuplicate:true}:{})}>{confirmDup?'approve another copy':'approve this PDF & send'}</Btn>}
+        {previewUrl && previewJobId === job.id && <a className="linkbtn" href={previewUrl} target="_blank" rel="noreferrer">Open sent / prepared PDF</a>}
+        {previewJobId!==job.id && <button className="linkbtn" onClick={()=>void jobPdf(job.id).then(blob=>{const href=URL.createObjectURL(blob),link=document.createElement('a');link.href=href;link.download=`tatada-${job.document.kind}.pdf`;link.click();window.setTimeout(()=>URL.revokeObjectURL(href),60000)},e=>setProblem(e.message))}>Download stored print</button>}
+        {job.status==='awaiting_approval' && <Btn kind="solid" disabled={!!busy||!!job.blocker||mailPending} onClick={()=>void approve(confirmDup?{allowDuplicate:true}:{})}>{confirmDup?'Print another copy':'Print prepared PDF'}</Btn>}
         {job.blocker && <p role="alert">{job.blocker}</p>}
-      </section>}
-      <details className="print-decoration" open={designOpen} onToggle={e=>setDesignOpen(e.currentTarget.open)}><summary>{job ? 'Edit next draft · prepare again to apply' : 'Decorate'}</summary>{designOpen&&(designUrl?<Suspense fallback={<p>Loading page…</p>}><PrintPlayground source={designUrl} stickers={stickers} onChange={setStickers}/></Suspense>:<p>Loading page…</p>)}<input placeholder="Write a caption here…" className="chalk-input caption-line" aria-label="Keepsake caption" maxLength={80} value={caption} onChange={e=>setCaption(e.target.value)}/></details>
+      </section></details>}
+      <details className="print-decoration" open={designOpen} onToggle={e=>setDesignOpen(e.currentTarget.open)}><summary>{job ? 'Decorate your next print' : 'Decorate'}</summary>{designOpen&&(designUrl?<Suspense fallback={<p>Loading page…</p>}><PrintPlayground source={designUrl} stickers={stickers} onChange={setStickers}/></Suspense>:<p>Loading page…</p>)}<input placeholder="Write a caption here…" className="chalk-input caption-line" aria-label="Keepsake caption" maxLength={80} value={caption} onChange={e=>setCaption(e.target.value)}/></details>
       <details className="print-settings" open={settingsOpen} onToggle={e=>setSettingsOpen(e.currentTarget.open)}><summary><Doodle name="mail" size={18}/>Change print settings</summary>
         {!browserOnly&&<><MailSettings printer={printer??null} sender={sender} onSaved={p=>{setPrinter(p);setEditingPrinter(false);invalidate();setProblem('')}}/><GmailConnection preferredEmail={printer?.senderEmail} returnTo={`/trip/${trip.id}/print${kind==='card'?'':`/${kind}`}`}/><details><summary>Printer options</summary><PrinterSetup current={printer??null} senderLabel={sender?.label} onSaved={p=>{setPrinter(p);setEditingPrinter(false);invalidate()}}/></details></>}
         <label className="print-ask">Print request<input className="chalk-input" value={text} onChange={e=>setText(e.target.value)} placeholder="Two copies, black and white…" aria-label="Print request"/></label>
@@ -196,11 +208,7 @@ export function PrintView({ id, doc, inline = false }: { id: string; doc?: strin
         {job?.status==='send_uncertain'&&<Btn kind="ghost" onClick={()=>void checkJob(job.id).then(setJob,e=>setProblem(e.message))}>check send status</Btn>}
       </details>
 
-      {busy&&<p role="status" aria-live="polite">{busy}</p>}
-      {job?.status==='submitted'&&<p role="status">{job.sender.kind==='mock'?'Demo delivery recorded. No real email was sent.':'Submitted to printer email. Paper completion is unconfirmed.'}</p>}
-      {job?.status==='send_uncertain'&&<div><p role="alert">Send status unknown. Not resent. Check your sent mail and printer before retrying.</p><Btn kind="ghost" disabled={!!busy} onClick={()=>void checkJob(job.id).then(setJob,e=>setProblem(e.message))}>check send status without resending</Btn><details><summary>Send again after checking</summary><p>This can produce a duplicate if the first email arrived.</p><Btn disabled={!!busy||!previewUrl||previewJobId!==job.id} onClick={()=>void approve({resendAfterUncertain:true})}>I checked · approve sending again</Btn></details></div>}
-      {(job?.status==='failed'||job?.status==='blocked')&&<p role="alert">Not sent: {job.error||job.blocker}</p>}
-      {problem&&<p role="alert">{problem}</p>}
+
     </div>
   </div>
 }
@@ -227,7 +235,7 @@ function PrinterSetup({ current, onSaved, onCancel, senderLabel }: { current: Pr
       savePrinter({ ...v, email: v.email.trim() }).then(onSaved, (err: Error) => setError(err.message)).finally(() => setSaving(false))
     }}>
       <h3 className="section-h">your Epson printer</h3>
-      <p className="small">Every send requires approval of the prepared PDF.</p>
+      <p className="small">Saying or tapping Print sends directly using these saved settings.</p>
       <label><span className="small dim">printer email address</span><input className="chalk-input" type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} placeholder="name@print.epsonconnect.com" aria-label="Epson printer email" autoComplete="off" /></label>
       <p className="small dim">Find it in the Epson Connect User Page → Printer List, or on the printer's setup sheet. It's saved privately to your Tatada account.</p>
       <fieldset className="setup-q"><legend>plain paper size set in Epson Connect</legend>
