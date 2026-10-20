@@ -166,7 +166,7 @@ export async function buildPdf(doc: PrintDoc, plan: Pick<PrintPlan, 'pageSize' |
   // Trip card: the same QR summary as before (bookings and stay), top right.
   if (doc.kind === 'card') {
     const t = doc.trip
-    const summary = [`TATADA · ${t.destination} · ${fmt(t.start)} – ${fmt(t.end)}`, ...t.bookings.map((b) => `${b.title} | ${b.when} | ${b.ref}`), t.localAddress ? `Stay: ${t.localAddress}` : ''].filter(Boolean).join('\n')
+    const summary = [`TATADA · ${t.destination} · ${fmt(t.start)} – ${fmt(t.end)}`, ...t.bookings.map((b) => `${b.simulated?'[SAMPLE] ':''}${b.title} | ${b.when} | ${b.ref}`), t.localAddress ? `Stay: ${t.localAddress}` : ''].filter(Boolean).join('\n')
     try {
       const png = await QRCode.toDataURL(summary, { margin: 1, width: 240, color: { dark: plan.grayscale ? '#222222' : '#1d1d1b', light: '#ffffff' } })
       const img = await pdf.embedPng(png)
@@ -234,7 +234,7 @@ export async function buildPdf(doc: PrintDoc, plan: Pick<PrintPlan, 'pageSize' |
     }
   }
   for(const p of pages)decorate(p,doc,regular,(card?(pw-w)/2:0)+margin,(card?(ph-h)/2:0)+margin+4*scale,w-2*margin,plan.grayscale)
-  for (const [i, p] of pages.entries()) p.drawText(clean(`Printed from Tatada · ${fmt(doc.printedOn)}${pages.length > 1 ? ` · ${i + 1}/${pages.length}` : ''}`), { x: (card ? (pw - w) / 2 : 0) + margin, y: (card ? (ph - h) / 2 : 0) + margin * 0.6, size: card ? 6 : 8, font: regular, color: soft })
+  for (const [i, p] of pages.entries()) p.drawText(clean(`Tatada${doc.trip.presentation ? ' · SAMPLE TRIP' : ''} · ${fmt(doc.printedOn)}${pages.length > 1 ? ` · ${i + 1}/${pages.length}` : ''}`), { x: (card ? (pw - w) / 2 : 0) + margin, y: (card ? (ph - h) / 2 : 0) + margin * 0.6, size: card ? 6 : 8, font: regular, color: soft })
 
   await stampStickers(pdf,doc.stickers)
   // Disclosed copies workaround: repeat every page in order, once per copy.

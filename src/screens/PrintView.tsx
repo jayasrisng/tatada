@@ -40,23 +40,29 @@ export function PrintView({ id, doc, inline = false }: { id: string; doc?: strin
   const [sender, setSender] = useState<Sender | null>(null)
   const [job, setJob] = useState<PrintJob | null>(null)
   const [previewUrl, setPreviewUrl] = useState('')
+  const [previewJobId, setPreviewJobId] = useState('')
   const [localPages, setLocalPages] = useState(0)
   const [lossy, setLossy] = useState(false)
   const [busy, setBusy] = useState(''), [problem, setProblem] = useState(''), [confirmDup, setConfirmDup] = useState(false)
+  const running = useRef(false)
+  const restored = useRef(false)
+  const documentVersion = JSON.stringify([trip, state.items.filter(item=>item.tripId===id), state.profile, packing, packingOutfits, kind, stickers, caption, request, choices, printer])
+  const latestVersion = useRef(documentVersion)
+  latestVersion.current = documentVersion
   const url = useRef('')
   const autoStarted = useRef(false)
   const autoPreparing = useRef(false)
-  const setPreview = (blob: Blob | null) => { if (url.current) URL.revokeObjectURL(url.current); url.current = blob ? URL.createObjectURL(blob) : ''; setPreviewUrl(url.current) }
+  const setPreview = (blob: Blob | null, jobId = '') => { setPreviewJobId(blob ? jobId : ''); if (url.current) URL.revokeObjectURL(url.current); url.current = blob ? URL.createObjectURL(blob) : ''; setPreviewUrl(url.current) }
   useEffect(() => () => { if (url.current) URL.revokeObjectURL(url.current) }, [])
 
   useEffect(() => { setRequest(parsed); setChoices({}); if (parsed.document) setKind(parsed.document) }, [parsed])
   useEffect(() => {
     if (browserOnly) return
     let live = true
-    getPrinter().then((p) => { setPrinter(p); setEditingPrinter(!p) }, (e: Error) => { setPrinter(null); setProblem(e.message) })
-    getSender().then((r) => setSender(r.sender), () => setSender(null))
+    getPrinter().then((p) => { if(live){setPrinter(p); setEditingPrinter(!p)} }, (e: Error) => { if(live){setPrinter(null); setProblem(e.message)} })
+    getSender().then((r) => {if(live)setSender(r.sender)}, () => {if(live)setSender(null)})
     // Show where the last job for this document ended up (after a refresh or restart).
-    if(!inline)listJobs().then((jobs) => { if (!live || autoPreparing.current) return; const last = jobs.find((j) => j.document.tripId === id && j.document.kind === kind && j.status !== 'cancelled'); if (last && last.status !== 'awaiting_approval'){setJob(last);void jobPdf(last.id).then(blob=>{if(live&&!autoPreparing.current)setPreview(blob)},()=>{})} }, () => {})
+    if(!inline)listJobs().then((jobs) => { if (!live || autoPreparing.current) return; const last = jobs.find((j) => j.document.tripId === id && j.document.kind === kind && j.status !== 'cancelled'); if (last){restored.current=true;setPreview(null);setJob(last);void jobPdf(last.id).then(blob=>{if(live&&!autoPreparing.current)setPreview(blob,last.id)},()=>{if(live)setProblem('Stored PDF unavailable. Prepare a new preview before sending.')})} }, () => {})
     return () => { live = false }
   }, [id, kind])
 
@@ -70,8 +76,8 @@ export function PrintView({ id, doc, inline = false }: { id: string; doc?: strin
   }, [printer, editingPrinter, ask, id, kind])
 
   // Any change to the document or settings invalidates the prepared job and its approval.
-  const invalidate = () => { setJob(null); setPreview(null); setConfirmDup(false) }
-  useEffect(invalidate, [kind, stickers, caption, JSON.stringify(request), JSON.stringify(choices)])
+  const invalidate = () => { restored.current=false; setJob(null); setPreview(null); setConfirmDup(false) }
+  useEffect(invalidate, [kind, stickers, caption, JSON.stringify(request), JSON.stringify(choices), JSON.stringify(trip), JSON.stringify(state.items.filter(item=>item.tripId===id)), JSON.stringify(state.profile), JSON.stringify(packing), JSON.stringify(packingOutfits)])
   useEffect(()=>setStickers([]),[kind])
 
   // Notebook preview is local-only: opening it never creates a job or sends an email.
@@ -120,36 +126,43 @@ export function PrintView({ id, doc, inline = false }: { id: string; doc?: strin
   const profile = printer ?? { ...UNKNOWN_PRINTER, email: '', updatedAt: 0 }
   const plan = planPrint(request, profile, choices, job?.pageCount ? job.pageCount / Math.max(1, job.plan.repeat) : localPages || undefined)
 
-  async function prepare(sendNow=false) {
+  async function prepare() {
+    if(running.current)return
     setProblem(''); setConfirmDup(false)
     if (plan.questions.length){setSettingsOpen(true);return setProblem('Check print settings.')}
-    if(sendNow&&!browserOnly&&!printer){setSettingsOpen(true);return setProblem('Save a printer in print settings.')}
-    if(sendNow&&browserOnly){if(previewUrl)window.open(previewUrl,'_blank');return}
+    if(!browserOnly&&!printer){setSettingsOpen(true);return setProblem('Save a printer in print settings.')}
+    running.current=true
+    const version = documentVersion
     setBusy('making the PDF…')
     try {
       const { buildPdf } = await import('../print/pdf') // pdf-lib loads only when a PDF is made
       const built = await buildPdf({ kind, trip: trip!, items: state.items, profile: state.profile, packing, packingOutfits, stickers, caption, printedOn: TODAY }, plan)
+      if(version!==latestVersion.current)throw Error('The document changed while preparing. Prepare the latest version again.')
       setLossy(built.lossyText); setLocalPages(built.pageCount)
       if (browserOnly || !printer) { setPreview(new Blob([built.bytes as BlobPart], { type: 'application/pdf' })); return }
-      setBusy(printer.directPrint ? 'preparing your print…' : 'saving the PDF…')
+      setPreview(null)
+      setBusy('saving the PDF…')
       const prepared = await prepareJob({ pdf: built.bytes, document: { kind, title: built.title, tripId: trip!.id }, request, choices })
+      const attachment = await jobPdf(prepared.id)
+      if(version!==latestVersion.current)throw Error('The document changed while preparing. Prepare the latest version again.')
+      restored.current=false
       setJob(prepared)
-      setPreview(await jobPdf(prepared.id))
-      if ((sendNow||printer.directPrint) && !prepared.blocker && prepared.status === 'awaiting_approval') { setBusy('sending to your printer…'); setJob(await approveJob(prepared)) }
-      if(prepared.blocker)setProblem(prepared.blocker)
-    } catch (e) { setProblem((e as Error).message) } finally { setBusy('') }
+      setPreview(attachment, prepared.id)
+      if(prepared.blocker){setProblem(prepared.blocker);setSettingsOpen(true)}
+    } catch (e) { setProblem((e as Error).message) } finally { running.current=false; setBusy('') }
   }
 
 
   async function approve(o: { allowDuplicate?: boolean; resendAfterUncertain?: boolean } = {}) {
-    if (!job) return
+    if (!job || running.current || !previewUrl || previewJobId !== job.id) return
+    running.current=true
     setProblem(''); setBusy('sending…')
     try { setJob(await approveJob(job, o)); setConfirmDup(false) }
     catch (e) {
       const err = e as Error & { status?: number }
       if (/exact document was/.test(err.message)) setConfirmDup(true)
       setProblem(err.message)
-    } finally { setBusy('') }
+    } finally { running.current=false; setBusy('') }
   }
 
   return <div className={inline?'print-screen print-inline':'screen print-screen'}>
@@ -158,21 +171,34 @@ export function PrintView({ id, doc, inline = false }: { id: string; doc?: strin
       <div className="chips" role="group" aria-label="Document">{([['card','trip card','ticket'],['flights','flights','plane'],['hotels','stay','bed'],['packing','packing','suitcase'],['journal','journal','book'],['all','all','layers']] as const).map(([value,label,icon])=><Chip key={value} on={kind===value} onClick={()=>setKind(value)} icon={icon}>{label}</Chip>)}</div>
       <div className="print-design-header"><h2>Print &amp; decorate</h2>      <div className="print-final-actions">
         <a className="iconbtn" href={previewUrl||undefined} aria-disabled={!previewUrl} onClick={e=>{if(!previewUrl)e.preventDefault()}} download={`${trip.destination.toLowerCase().replace(/\W+/g,'-')}-${kind}.pdf`} aria-label="Download PDF"><Doodle name="download" size={26}/></a>
-        <button type="button" className="iconbtn" aria-label={confirmDup?"Print another copy":"Print"} disabled={!!busy||mailPending||!previewUrl||job?.status==='sending'||job?.status==='submitted'||job?.status==='send_uncertain'} onClick={()=>{if(job?.status==='awaiting_approval'&&!job.blocker)void approve(confirmDup?{allowDuplicate:true}:{});else void prepare(true)}}><Doodle name="printer" size={26}/></button>
+        <Btn kind="solid" disabled={!!busy||mailPending||printer===undefined||job?.status==='sending'||job?.status==='send_uncertain'} onClick={()=>void prepare()}>{browserOnly?'refresh PDF':'prepare print'}</Btn>
       </div></div>
-      <details className="print-decoration" open={designOpen} onToggle={e=>setDesignOpen(e.currentTarget.open)}><summary>Decorate</summary>{designOpen&&(designUrl?<Suspense fallback={<p>Loading page…</p>}><PrintPlayground source={designUrl} stickers={stickers} onChange={setStickers}/></Suspense>:<p>Loading page…</p>)}<input placeholder="Write a caption here…" className="chalk-input caption-line" aria-label="Keepsake caption" maxLength={80} value={caption} onChange={e=>setCaption(e.target.value)}/></details>
+      {browserOnly && <p className="small">PDF download only. No email is sent in browser-only mode.</p>}
+      {job && <section className="now-card" aria-label="Review prepared print">
+        <h3>{job.status === 'awaiting_approval' ? 'Review before sending' : 'Stored print record'}</h3>
+        {restored.current && <p className="small">Restored after reload. This is the stored document; choose prepare print to use your current trip and decorations.</p>}
+        <p>{job.document.title} · {job.pageCount} pages · {new Date(job.createdAt).toLocaleString()}</p>
+        <p className="small">From: {job.sender.label} → {job.address}</p>
+        <ul className="small">{job.plan.lines.map((line,index)=><li key={index}>{line.setting}: {line.result}</li>)}</ul>
+        <details><summary>Printer limitations &amp; checks</summary><ul className="small">{job.plan.limitations.map(line=><li key={line}>{line}</li>)}</ul></details>
+        <p className="small">Document {job.contentHash.slice(0,12)} · Gmail submission does not confirm a printed page.</p>
+        {previewUrl && previewJobId === job.id && <a className="linkbtn" href={previewUrl} target="_blank" rel="noreferrer">Review exact PDF attachment</a>}
+        {job.status==='awaiting_approval' && <Btn kind="solid" disabled={!!busy||!!job.blocker||!previewUrl||previewJobId!==job.id||mailPending} onClick={()=>void approve(confirmDup?{allowDuplicate:true}:{})}>{confirmDup?'approve another copy':'approve this PDF & send'}</Btn>}
+        {job.blocker && <p role="alert">{job.blocker}</p>}
+      </section>}
+      <details className="print-decoration" open={designOpen} onToggle={e=>setDesignOpen(e.currentTarget.open)}><summary>{job ? 'Edit next draft · prepare again to apply' : 'Decorate'}</summary>{designOpen&&(designUrl?<Suspense fallback={<p>Loading page…</p>}><PrintPlayground source={designUrl} stickers={stickers} onChange={setStickers}/></Suspense>:<p>Loading page…</p>)}<input placeholder="Write a caption here…" className="chalk-input caption-line" aria-label="Keepsake caption" maxLength={80} value={caption} onChange={e=>setCaption(e.target.value)}/></details>
       <details className="print-settings" open={settingsOpen} onToggle={e=>setSettingsOpen(e.currentTarget.open)}><summary><Doodle name="mail" size={18}/>Change print settings</summary>
         {!browserOnly&&<><MailSettings printer={printer??null} sender={sender} onSaved={p=>{setPrinter(p);setEditingPrinter(false);invalidate();setProblem('')}}/><GmailConnection preferredEmail={printer?.senderEmail} returnTo={`/trip/${trip.id}/print${kind==='card'?'':`/${kind}`}`}/><details><summary>Printer options</summary><PrinterSetup current={printer??null} senderLabel={sender?.label} onSaved={p=>{setPrinter(p);setEditingPrinter(false);invalidate()}}/></details></>}
         <label className="print-ask">Print request<input className="chalk-input" value={text} onChange={e=>setText(e.target.value)} placeholder="Two copies, black and white…" aria-label="Print request"/></label>
-        <div className="chips wrap" role="group" aria-label="Print settings"><Chip on={request.color==='grayscale'} onClick={()=>setRequest({...request,color:request.color==='grayscale'?undefined:'grayscale'})}>black &amp; white</Chip><Chip on={request.color==='color'} onClick={()=>setRequest({...request,color:request.color==='color'?undefined:'color'})}>color</Chip><Chip on={request.size==='4x6'} onClick={()=>setRequest({...request,size:request.size==='4x6'?undefined:'4x6'})}>4×6</Chip><Chip on={!!request.duplex} onClick={()=>setRequest({...request,duplex:request.duplex?undefined:true})}>two-sided</Chip><Chip on={(request.copies??1)>1} onClick={()=>setRequest({...request,copies:(request.copies??1)>=10?1:(request.copies??1)+1})}>{request.copies??1} copies</Chip></div>
+        <div className="chips wrap" role="group" aria-label="Print settings"><Chip on={request.color==='grayscale'} onClick={()=>setRequest({...request,color:request.color==='grayscale'?undefined:'grayscale'})}>black &amp; white</Chip><Chip on={request.color==='color'} onClick={()=>setRequest({...request,color:request.color==='color'?undefined:'color'})}>color</Chip>{(['letter','a4'] as const).map(size=><Chip key={size} on={request.size===size} onClick={()=>setRequest({...request,size})}>{size==='a4'?'A4':'Letter'}</Chip>)}<Chip on={request.size==='4x6'} onClick={()=>setRequest({...request,size:request.size==='4x6'?undefined:'4x6'})}>4×6</Chip><Chip on={!!request.duplex} onClick={()=>setRequest({...request,duplex:request.duplex?undefined:true})}>two-sided</Chip><Chip on={(request.copies??1)>1} onClick={()=>setRequest({...request,copies:(request.copies??1)>=10?1:(request.copies??1)+1})}>{request.copies??1} copies</Chip></div>
         {plan.questions.map(q=><div className="print-question" key={q.key} role="group" aria-label={q.text}><p>{q.text}</p><div className="ac-buttons">{q.options.map(o=><Btn key={o.value} kind="ghost" onClick={()=>setChoices({...choices,[q.key]:o.value})}>{o.label}</Btn>)}</div></div>)}
         {lossy&&<p className="small">Some text characters cannot be printed.</p>}
         {job?.status==='send_uncertain'&&<Btn kind="ghost" onClick={()=>void checkJob(job.id).then(setJob,e=>setProblem(e.message))}>check send status</Btn>}
       </details>
 
       {busy&&<p role="status" aria-live="polite">{busy}</p>}
-      {job?.status==='submitted'&&<p role="status">Sent to printer email. Paper completion is unconfirmed.</p>}
-      {job?.status==='send_uncertain'&&<p role="alert">Send status unknown. Not resent.</p>}
+      {job?.status==='submitted'&&<p role="status">{job.sender.kind==='mock'?'Demo delivery recorded. No real email was sent.':'Submitted to printer email. Paper completion is unconfirmed.'}</p>}
+      {job?.status==='send_uncertain'&&<div><p role="alert">Send status unknown. Not resent. Check your sent mail and printer before retrying.</p><Btn kind="ghost" disabled={!!busy} onClick={()=>void checkJob(job.id).then(setJob,e=>setProblem(e.message))}>check send status without resending</Btn><details><summary>Send again after checking</summary><p>This can produce a duplicate if the first email arrived.</p><Btn disabled={!!busy||!previewUrl||previewJobId!==job.id} onClick={()=>void approve({resendAfterUncertain:true})}>I checked · approve sending again</Btn></details></div>}
       {(job?.status==='failed'||job?.status==='blocked')&&<p role="alert">Not sent: {job.error||job.blocker}</p>}
       {problem&&<p role="alert">{problem}</p>}
     </div>
@@ -180,8 +206,8 @@ export function PrintView({ id, doc, inline = false }: { id: string; doc?: strin
 }
 
 function MailSettings({printer,sender,onSaved}:{printer:PrinterProfile|null;sender:Sender|null;onSaved:(p:PrinterProfile)=>void}){
- const [from,setFrom]=useState(printer?.senderEmail??(sender?.verified?sender.label:'')),[to,setTo]=useState(printer?.email??''),[error,setError]=useState(''),[busy,setBusy]=useState(false)
- useEffect(()=>{setFrom(printer?.senderEmail??(sender?.verified?sender.label:''));setTo(printer?.email??'')},[printer,sender])
+ const [from,setFrom]=useState(printer?.senderEmail??(sender?.verified&&sender.kind==='gmail'?sender.label:'')),[to,setTo]=useState(printer?.email??''),[error,setError]=useState(''),[busy,setBusy]=useState(false)
+ useEffect(()=>{setFrom(printer?.senderEmail??(sender?.verified&&sender.kind==='gmail'?sender.label:''));setTo(printer?.email??'')},[printer,sender])
  return <form className="print-mail-settings" aria-label="Print email settings" onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{if(from&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(from))throw Error('Check the From address.');const saved=await savePrinter({...UNKNOWN_PRINTER,...printer,senderEmail:from,email:to,directPrint:printer?.directPrint??true});onSaved(saved)}catch(e){setError((e as Error).message)}finally{setBusy(false)}}}><label><span className="sr-only">From</span><input placeholder="Sending email" type="email" className="chalk-input" aria-label="Sending email" value={from} onChange={e=>setFrom(e.target.value)}/></label><label><span className="sr-only">To</span><input placeholder="Printer email" type="email" required className="chalk-input" aria-label="Printer email" value={to} onChange={e=>setTo(e.target.value)}/></label>{sender?.verified&&<p className="small">Connected sender: {sender.label}</p>}<Btn type="submit" kind="ghost" disabled={busy}>{busy?'saving…':'save'}</Btn>{error&&<p role="alert">{error}</p>}</form>
 }
 
@@ -201,7 +227,7 @@ function PrinterSetup({ current, onSaved, onCancel, senderLabel }: { current: Pr
       savePrinter({ ...v, email: v.email.trim() }).then(onSaved, (err: Error) => setError(err.message)).finally(() => setSaving(false))
     }}>
       <h3 className="section-h">your Epson printer</h3>
-      <label className="print-direct"><input type="checkbox" checked={v.directPrint} onChange={e=>setV({...v,directPrint:e.target.checked})} /> Send when I tap Print.</label>
+      <p className="small">Every send requires approval of the prepared PDF.</p>
       <label><span className="small dim">printer email address</span><input className="chalk-input" type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} placeholder="name@print.epsonconnect.com" aria-label="Epson printer email" autoComplete="off" /></label>
       <p className="small dim">Find it in the Epson Connect User Page → Printer List, or on the printer's setup sheet. It's saved privately to your Tatada account.</p>
       <fieldset className="setup-q"><legend>plain paper size set in Epson Connect</legend>

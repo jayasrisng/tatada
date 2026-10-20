@@ -189,9 +189,15 @@ export class PrintService {
     if (job.status !== 'awaiting_approval' && !resend) throw new PrintError(409, `This print job is ${job.status.replace(/_/g, ' ')}.`, job.status)
     if (input.contentHash !== job.contentHash) throw new PrintError(409, 'The document or settings changed. Review the new preview and approve that.', 'changed')
     if (job.blocker) throw new PrintError(409, job.blocker, 'blocked')
-    const printer = this.printer(userId)
-    if (!printer || printerAddress(printer.email, job.plan.suffix) !== job.address) throw new PrintError(409, 'Your printer settings changed since this preview. Prepare it again.', 'changed')
     const sender = await this.delivery.sender(userId)
+    // sender() yields: another approval or a replaced preview may have won meanwhile.
+    if (job.approval?.idempotencyKey === key) return this.view(job)
+    if (job.status !== 'awaiting_approval' && !(resend && job.status === 'send_uncertain')) throw new PrintError(409, 'This print job is already being handled.', 'changed')
+    const printer = this.printer(userId)
+    if (!printer || printerAddress(printer.email, job.plan.suffix) !== job.address ||
+      canonical(planPrint(job.request, printer, job.choices, job.pageCount / job.plan.repeat)) !== canonical(job.plan)) {
+      throw new PrintError(409, 'Your printer settings changed since this preview. Prepare it again.', 'changed')
+    }
     if(printer.senderEmail&&sender.kind==='gmail'&&printer.senderEmail.toLowerCase()!==sender.label.toLowerCase())throw new PrintError(409,'The preferred sending account changed. Prepare the print again.','changed')
     if (!sender.ok || sender.kind !== job.sender.kind || sender.label !== job.sender.label) throw new PrintError(409, sender.ok ? 'The sending account changed since this preview. Prepare it again.' : sender.reason ?? 'Sending isn\'t available.', 'changed')
     const t = this.now()
@@ -232,8 +238,9 @@ export class PrintService {
   async check(userId: string, id: string) {
     const job = this.own(userId, id)
     if (job.status !== 'send_uncertain' || !this.delivery.reconcile) return this.view(job)
+    const attempt = job.attempts
     const found = await this.delivery.reconcile(userId, job)
-    if (found === 'submitted') this.store.update(() => { job.status = 'submitted'; job.updatedAt = this.now(); job.events.push({ at: job.updatedAt, text: 'Found the earlier send: the email was submitted.' }) })
+    if (found === 'submitted' && job.status === 'send_uncertain' && job.attempts === attempt) this.store.update(() => { job.status = 'submitted'; job.updatedAt = this.now(); job.events.push({ at: job.updatedAt, text: 'Found the earlier send: the email was submitted.' }) })
     return this.view(job)
   }
 
