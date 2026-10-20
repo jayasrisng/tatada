@@ -1,4 +1,4 @@
-import { drawTravelDoodle, stopDoodle, tripMapUrl, notebookDay, notebookTime } from './notebook'
+import { drawNotebookPaper, drawTravelDoodle, stopDoodle, tripMapUrl, notebookDay, notebookTime } from './notebook'
 import { flightNotes } from './flight'
 import {humanWhen} from '../travel/display'
 /*
@@ -118,19 +118,19 @@ export async function buildPdf(doc: PrintDoc, plan: Pick<PrintPlan, 'pageSize' |
   pdf.setTitle(c.title); pdf.setAuthor('Tatada'); pdf.setCreator('Tatada'); pdf.setProducer('Tatada')
   // Fixed dates keep identical documents byte-identical, so the approval hash is stable.
   pdf.setCreationDate(new Date(`${doc.printedOn}T00:00:00Z`)); pdf.setModificationDate(new Date(`${doc.printedOn}T00:00:00Z`))
-  const regular = await pdf.embedFont(doc.kind==='journal'?StandardFonts.TimesRomanItalic:StandardFonts.Helvetica), bold = await pdf.embedFont(doc.kind==='journal'?StandardFonts.TimesRomanBoldItalic:StandardFonts.HelveticaBold)
+  const regular = await pdf.embedFont(StandardFonts.TimesRomanItalic), bold = await pdf.embedFont(StandardFonts.TimesRomanBoldItalic)
   const ink = rgb(0.1, 0.1, 0.1), soft = rgb(0.38, 0.38, 0.38)
-  const accent = plan.grayscale ? rgb(0.35, 0.35, 0.35) : doc.kind === 'hotels' ? rgb(0.25, 0.43, 0.32) : rgb(0.32, 0.32, 0.65)
+  const accent = plan.grayscale ? rgb(0.35, 0.35, 0.35) : rgb(0.25, 0.43, 0.32)
   let lossy = false
   const clean = (s: string) => { const p = printable(s); lossy ||= p.lossy; return p.text }
 
   const [pw, ph] = SIZES[plan.pageSize]
   const card = plan.layout === '4x6-on-plain'
   const [w, h] = card ? CARD : [pw, ph]
-  const margin = card ? 0.25 * PT : 0.5 * PT
+  const margin = card ? 0.4 * PT : 0.75 * PT
   const scale = card ? 0.62 : 1
   const pages: PDFPage[] = []
-  let page!: PDFPage, ox = 0, oy = 0, y = 0, qrBottom = Infinity, qrWidth = 0
+  let page!: PDFPage, ox = 0, oy = 0, y = 0
   const newPage = () => {
     page = pdf.addPage([pw, ph]); pages.push(page)
     // A 4×6 card is centered on the plain sheet, with corner cut guides.
@@ -141,23 +141,13 @@ export async function buildPdf(doc: PrintDoc, plan: Pick<PrintPlan, 'pageSize' |
       page.drawLine({ start: { x, y: yy - 14 }, end: { x, y: yy - 4 }, thickness: 0.5, color: soft })
       page.drawLine({ start: { x, y: yy + 4 }, end: { x, y: yy + 14 }, thickness: 0.5, color: soft })
     }
-    page.drawRectangle({x:ox+margin-12*scale,y:oy+margin+30*scale,width:w-2*margin+24*scale,height:h-2*margin-16*scale,borderColor:plan.grayscale?rgb(.85,.85,.85):rgb(.88,.82,.72),borderWidth:.65})
-    page.drawLine({start:{x:ox+margin-12*scale,y:oy+h-margin+14*scale},end:{x:ox+w-margin+12*scale,y:oy+h-margin+14*scale},color:accent,thickness:3*scale})
-    if (doc.kind === 'hotels') {
-      const tint = plan.grayscale ? rgb(.96,.96,.96) : rgb(.95,.97,.94)
-      const panelHeight = Math.min(h-margin*2, 330*scale)
-      page.drawRectangle({x:ox+margin-10*scale,y:oy+h-margin-panelHeight,width:w-margin*2+20*scale,height:panelHeight+12*scale,color:tint,borderColor:accent,borderWidth:.5})
-      const sx=ox+w-margin-22*scale, sy=oy+h-margin-9*scale
-        page.drawCircle({x:sx+8*scale,y:sy-8*scale,size:6*scale,borderColor:accent,borderWidth:1})
-        page.drawLine({start:{x:sx+12*scale,y:sy-12*scale},end:{x:sx+23*scale,y:sy-23*scale},thickness:1,color:accent})
-        page.drawLine({start:{x:sx+20*scale,y:sy-20*scale},end:{x:sx+24*scale,y:sy-16*scale},thickness:1,color:accent})
-    }
+    drawNotebookPaper(page,ox+6*scale,oy+9*scale,w-12*scale,h-18*scale,plan.grayscale,scale)
+    drawTravelDoodle(page,doc.kind==='hotels'?'bed':doc.kind==='packing'?'suitcase':'camera',ox+w-margin-30*scale,oy+h-margin-28*scale,28*scale,accent)
     y = oy + h - margin
   }
-  const room = (needed: number) => { if (y - needed < oy + margin + 32 * scale) newPage() }
+  const room = (needed: number) => { if (y - needed < oy + margin + 60 * scale) newPage() }
   const text = (s: string, size: number, font: PDFFont, color = ink, gap = 1.35) => {
-    // Lines beside the QR code wrap narrower so they never run under it.
-    for (const line of wrap(clean(s), font, size * scale, w - margin * 2 - (y - size * scale * gap > qrBottom && pages.length === 1 ? qrWidth : 0))) {
+    for (const line of wrap(clean(s), font, size * scale, w - margin * 2)) {
       room(size * scale * gap)
       y -= size * scale * gap
       page.drawText(line, { x: ox + margin, y, size: size * scale, font, color })
@@ -174,11 +164,11 @@ export async function buildPdf(doc: PrintDoc, plan: Pick<PrintPlan, 'pageSize' |
   }
   heading()
   for (const [sectionIndex, s] of c.sections.entries()) {
-    if (sectionIndex > 0 && (doc.kind === 'hotels')) { newPage(); heading() }
+    if (sectionIndex > 0 && (doc.kind === 'hotels' || doc.kind === 'journal')) { newPage(); heading() }
     room((s.tiles?.length ? 225 : 40) * scale)
     y -= 10 * scale
-    text(s.heading.toUpperCase(), 10, bold, accent)
-    page.drawLine({ start: { x: ox + margin, y: y - 4 * scale }, end: { x: ox + w - margin - (y - 4 * scale > qrBottom && pages.length === 1 ? qrWidth : 0), y: y - 4 * scale }, thickness: 0.6, color: accent })
+    text(s.heading, 17, bold, accent)
+    page.drawLine({ start: { x: ox + margin, y: y - 4 * scale }, end: { x: ox + w - margin, y: y - 4 * scale }, thickness: 0.6, color: accent })
     y -= 6 * scale
     for (const l of s.lines) { text(l, 12, regular); if (doc.kind === 'journal') y -= 6 * scale }
     if (doc.kind === 'hotels') {
@@ -216,14 +206,22 @@ export async function buildPdf(doc: PrintDoc, plan: Pick<PrintPlan, 'pageSize' |
         const img = await embedPhoto(pdf,bytes)
         const width = Math.min(w-margin*2, 300*scale), height = Math.min(180*scale, width*img.height/img.width)
         const actualWidth = height*img.width/img.height
-        room(height + 35*scale); y -= height + 12*scale
+        room(height + 65*scale); y -= height + 20*scale
+        page.drawRectangle({x:ox+margin-8*scale,y:y-25*scale,width:actualWidth+16*scale,height:height+35*scale,color:rgb(1,1,1),borderColor:plan.grayscale?rgb(.75,.75,.75):rgb(.8,.77,.67),borderWidth:.6})
         page.drawImage(img, {x:ox+margin, y, width:actualWidth, height})
-        text(photo.caption, 10, regular, soft)
+        page.drawRectangle({x:ox+margin+actualWidth/2-27*scale,y:y+height-5*scale,width:54*scale,height:15*scale,color:plan.grayscale?rgb(.9,.9,.9):rgb(.94,.86,.62),opacity:.65})
+        y-=8*scale;text(photo.caption, 10, regular, soft);y-=25*scale
       } catch { text('Photo could not be included.', 10, regular, soft) }
     }
   }
-  for(const p of pages)decorate(p,doc,regular,(card?(pw-w)/2:0)+margin,(card?(ph-h)/2:0)+margin+4*scale,w-2*margin,plan.grayscale)
-  for (const [i, p] of pages.entries()) p.drawText(clean(`Tatada${doc.trip.presentation ? ' · SAMPLE TRIP' : ''} · ${fmt(doc.printedOn)}${pages.length > 1 ? ` · ${i + 1}/${pages.length}` : ''}`), { x: (card ? (pw - w) / 2 : 0) + margin, y: (card ? (ph - h) / 2 : 0) + margin * 0.6, size: card ? 6 : 8, font: regular, color: soft })
+  if(doc.kind==='journal'){room(40*scale);y-=15*scale;text('One little thing I want to remember...',12,regular,soft)}
+  for (const [i, p] of pages.entries()) {
+    const x=(card?(pw-w)/2:0)+margin,bottom=(card?(ph-h)/2:0)+18*scale
+    drawTravelDoodle(p,'star',x,bottom+9*scale,21*scale,accent)
+    p.drawText('tatada',{x:x+28*scale,y:bottom+14*scale,size:21*scale,font:bold,color:accent})
+    p.drawText(clean(`${fmt(doc.printedOn)} / ${i+1}${doc.trip.presentation?' / sample trip':''}`),{x:x+100*scale,y:bottom+14*scale,size:7*scale,font:regular,color:soft})
+    decorate(p,doc,regular,x,bottom+39*scale,w-margin*2,plan.grayscale)
+  }
 
   await stampStickers(pdf,doc.stickers)
   // Disclosed copies workaround: repeat every page in order, once per copy.
@@ -242,7 +240,7 @@ async function notebookPdf(doc: PrintDoc, plan: Pick<PrintPlan,'pageSize'|'layou
   pdf.setTitle(title); pdf.setAuthor('Tatada'); pdf.setCreator('Tatada'); pdf.setProducer('Tatada')
   pdf.setCreationDate(new Date(`${doc.printedOn}T00:00:00Z`));pdf.setModificationDate(new Date(`${doc.printedOn}T00:00:00Z`))
   const pen = await pdf.embedFont(StandardFonts.TimesRomanItalic), heading = await pdf.embedFont(StandardFonts.TimesRomanBoldItalic)
-  const sans = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  const sans = await pdf.embedFont(StandardFonts.TimesRomanItalic), bold = await pdf.embedFont(StandardFonts.TimesRomanBoldItalic)
   const [pw,ph] = SIZES[plan.pageSize], small = plan.layout === '4x6-on-plain'
   const [w,h] = small ? CARD : [pw,ph], scale = small ? .53 : 1
   const ox=(pw-w)/2,oy=(ph-h)/2,left=ox+58*scale,right=ox+w-38*scale,width=right-left
@@ -325,7 +323,7 @@ async function flightPdf(doc: PrintDoc, plan: Pick<PrintPlan, 'pageSize'|'layout
   const pdf = await PDFDocument.create(), title = `${doc.trip.destination} / Flights`
   pdf.setTitle(title); pdf.setAuthor('Tatada'); pdf.setCreator('Tatada'); pdf.setProducer('Tatada')
   pdf.setCreationDate(new Date(`${doc.printedOn}T00:00:00Z`)); pdf.setModificationDate(new Date(`${doc.printedOn}T00:00:00Z`))
-  const regular = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold)
+  const regular = await pdf.embedFont(StandardFonts.TimesRomanItalic), bold = await pdf.embedFont(StandardFonts.TimesRomanBoldItalic)
   const [pw,ph] = SIZES[plan.pageSize], small = plan.layout === '4x6-on-plain'
   const width = small ? 288 : Math.min(492,pw-72), height = small ? 432 : 252, x=(pw-width)/2, top=small?(ph+height)/2:ph-60
   const ink=rgb(.14,.17,.19), muted=rgb(.38,.4,.4), accent=plan.grayscale?muted:rgb(.25,.39,.37)
@@ -344,6 +342,7 @@ async function flightPdf(doc: PrintDoc, plan: Pick<PrintPlan, 'pageSize'|'layout
       while(font.widthOfTextAtSize(str,fitted)>max && fitted>6) fitted-=.25
       page.drawText(str,{x:xx,y:yy,font,size:fitted,color:ink})
     }
+    drawTravelDoodle(page,'plane',x+width-42,top-38,22,accent)
     write('tatada / a little way to go',x+pad,top-24,10,bold)
     write(booking.simulated?'SAMPLE KEEPSAKE':'FLIGHT NOTES',x+pad,top-43,7,regular)
     const route=booking.flight ? `${booking.flight.from}  >  ${booking.flight.to}` : booking.title
@@ -361,7 +360,8 @@ async function flightPdf(doc: PrintDoc, plan: Pick<PrintPlan, 'pageSize'|'layout
     write('scan your flight notes',qx,qy-10,7,regular,size)
     write(booking.simulated?'Sample journey - not valid for boarding.':'Travel summary - use your airline boarding pass at the airport.',x+pad,y+15,7,regular,width-40)
     decorate(page,doc,regular,x+pad,y+27,width-pad*2,plan.grayscale)
-    page.drawText(`Tatada / ${fmt(doc.printedOn)} / cut along the outer line`,{x,y:y-17,font:regular,size:7,color:muted})
+    drawTravelDoodle(page,'star',x,y-23,14,accent)
+    page.drawText(`tatada / ${fmt(doc.printedOn)} / cut along the outer line`,{x:x+19,y:y-17,font:regular,size:8,color:muted})
   }
   await stampStickers(pdf,doc.stickers)
   if(plan.repeat>1){const originals=pdf.getPageIndices();for(let n=1;n<plan.repeat;n++)for(const page of await pdf.copyPages(pdf,originals))pdf.addPage(page)}
