@@ -1,3 +1,4 @@
+import { TripReadiness } from '../components/TripReadiness'
 import {ItineraryPlanner} from '../components/ItineraryPlanner'
 import {TripCalendar} from '../components/TripCalendar'
 import {FlightTicket} from '../components/FlightTicket'
@@ -12,10 +13,10 @@ import { MomentComposer } from '../components/MomentComposer'
 import { printRoute } from '../print/intent'
 import { lazy, Suspense, useState } from 'react'
 import { useStore } from '../state/store'
-import { go, hashQuery, useUI } from '../state/ui'
+import { go, hashQuery } from '../state/ui'
 import { Doodle, Scribble } from '../components/Doodle'
 import { AddRow, ChecklistRow } from '../components/Checklist'
-import { Box, Btn, Chip, SampleNote, TopBar, daysUntil, fmtRange } from '../components/ui'
+import { Btn, Chip, SampleNote, TopBar, daysUntil, fmtRange } from '../components/ui'
 import { TripSharing } from '../components/TripSharing'
 import { TripResearch } from '../components/TripResearch'
 import { Notebook } from './Notebook'
@@ -68,6 +69,8 @@ export function TripWorkspace({ id, tab = 'plan' }: { id: string; tab?: string }
         </div>
         {trip.constraints.some(c=>c.length>70)&&<details className="trip-idea"><summary>Your trip idea</summary><p>{trip.constraints.filter(c=>c.length>70).join(' · ')}</p></details>}
       </header>
+      {(tab === 'plan' || tab === 'itinerary') && <TripReadiness trip={trip}/>}
+      {trip.presentation && <p className="sample-note" role="note">Sample trip · illustrative plans and arrangements. No live reservation is implied.</p>}
 
       <nav className="seg" aria-label="Trip sections">
         {tabs.map((t) => (
@@ -95,7 +98,7 @@ function Plan({ trip }: { trip: Trip }) {
   return (
     <div className="plan"><Btn onClick={()=>go(`/trip/${trip.id}/itinerary`)}>open itinerary · your days, packing &amp; good to know</Btn>{trip.planning?.transport!=='drive'&&trip.planning?.transport!=='rental-car'&&<FlightSearch key={trip.id} trip={trip}/>}<OfflineDownload trip={trip}/>
       {items.some((i) => i.priority && !i.done) && <section aria-label="Priority tasks"><h3 className="section-h">priority</h3><ul className="checklist">{items.filter((i) => i.priority && !i.done).map((i) => <ChecklistRow key={i.id} item={i} />)}</ul></section>}
-      {trip.status !== 'past' && <><NextStep trip={trip}/><NowCard trip={trip}/></>}
+      {trip.status !== 'past' && <><NextStep trip={trip}/></>}
 
       {trip.start!==trip.end && !trip.bookings.some((b) => b.kind === 'stay') && trip.status !== 'past' && (
         <section>
@@ -125,7 +128,7 @@ function Plan({ trip }: { trip: Trip }) {
               </div>
             ))}
           </div>
-          {trip.bookings.some((b) => b.simulated) && !trip.presentation && <SampleNote>codes marked from the demo are sample data</SampleNote>}
+          {trip.bookings.some((b) => b.simulated) && <SampleNote>codes marked from the demo are sample data</SampleNote>}
         </section>
       )}
 
@@ -133,7 +136,7 @@ function Plan({ trip }: { trip: Trip }) {
         const list = items.filter((i) => i.phase === p.id && !(i.priority && !i.done)).sort((a, b) => Number(a.done) - Number(b.done))
         const done = list.filter((i) => i.done).length
         return (
-          <details key={p.id} className="phase">
+          <details key={p.id} className="phase" open={p.id === 'plan' && items.some(item => item.id.startsWith('fo-')) ? true : undefined}>
             <summary className="section-h">
               {p.label.toLowerCase()} <span className="dim small">{list.length ? `${done}/${list.length}` : ''}</span>
             </summary>
@@ -148,14 +151,6 @@ function Plan({ trip }: { trip: Trip }) {
       })}
     </div>
   )
-}
-
-/** One clear next action; the full checklist remains below it. */
-function NowCard({trip}:{trip:Trip}) {
-  const {state}=useStore(), {openMagic}=useUI()
-  const open=state.items.filter(i=>i.tripId===trip.id&&!i.done&&(i.phase==='plan'||i.phase==='prepare')).sort((a,b)=>Number(!!b.priority)-Number(!!a.priority))
-  const next=open[0]
-  return <Box className="now-card" tint="yellow"><span className="paper-label">before you go</span><h2>{next?'One next step':'Your checklist is clear'}</h2>{next&&<div className="next-action"><p>{next.text}</p><button className="iconbtn" aria-label="Talk to Fo about the next task" onClick={()=>openMagic({tripId:trip.id,assistant:true,itemId:next.id,prefill:next.magicPrompt??`Help me with this trip task: ${next.text}`})}><Doodle name="sparkle" size={22}/></button></div>}</Box>
 }
 
 function Journal({ trip }: { trip: Trip }) {

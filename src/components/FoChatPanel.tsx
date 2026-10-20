@@ -9,19 +9,14 @@ import { FoVoice } from './FoVoice'
 import { SpeechButton } from './SpeechButton'
 import { beginSignIn, apiUrl } from '../config'
 import { useEffect, useRef, useState } from 'react'
-import type { Trip, Profile } from '../types'
+import type { Trip } from '../types'
+import { tripContext, adviceText } from '../assistant/context'
 import * as fo from '../state/foChat'
 import { Doodle } from './Doodle'
 import { Btn } from './ui'
 
 const conversationTitle=(chat:fo.FoChat)=>{const first=chat.turns.find(t=>t.role==='me');return (first?.displayText??first?.text.replace(/^(?:Trip context:|Context: Today,)[^\n]*\n\n/,'').replace(/\n\n\(Tatada ref T-[^)]*\)$/,'')??'New conversation').slice(0,70)}
 const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('')
-const tripContext = (t: Trip, profile: Profile) => {
-  const air=t.bookings.filter(b=>b.kind==='flight').slice(0,2).map(b=>`${b.simulated?'sample ':''}${b.title.slice(0,35)} ${b.flight?.number??''}`).join('; ') || 'not saved'
-  const stay=t.bookings.find(b=>b.kind==='stay')
-  const base=stay?`${stay.simulated?'sample ':''}${stay.title.slice(0,55)} ${stay.checkIn??''} to ${stay.checkOut??''}`:'not saved'
-  return `Trip context: ${t.destination}, ${t.country}; ${t.start} to ${t.end}; ${t.travelers} travelers. Home airport: ${profile.homeAirport}. Diet: ${profile.diet.join('; ')}. Budget: ${t.budget}. Interests: ${t.vibe.join('; ')}. Air: ${air}. Stay: ${base}. Route plan: ${JSON.stringify(t.planning??{})}. Saved itinerary: ${(t.itinerary??[]).slice(0,6).map(i=>`${i.day} ${i.time??''} ${i.title}${i.done?' (completed)':''}`).join('; ')}. Needs: ${t.constraints.join('; ').slice(0,90)||'not supplied'}. Membership labels (unverified): ${t.discounts.join('; ').slice(0,60)||'none'}.`.slice(0,1600)
-}
 
 /**
  * A conversation with the real Fo, through Tatada's server. Opening it only
@@ -125,7 +120,7 @@ export function FoChatPanel({ trip, initialText }: { trip?: Trip; initialText?: 
     run(async () => {
       const c = chat ?? (await fo.createChat(trip?.id))
       setChat(c);setPaused(false)
-      const prepared = await fo.prepare(c.id, text.trim(), trip && withTrip ? tripContext(trip, state.profile) : `Context: Today, ${new Date().toLocaleDateString('en-CA')}. Device timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Location has not been shared; ask before making local recommendations.`)
+      const prepared = await fo.prepare(c.id, text.trim(), trip && withTrip ? tripContext(trip, state.profile, state.items) : `Context: Today, ${new Date().toLocaleDateString('en-CA')}. Device timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. Location has not been shared; ask before making local recommendations.`)
       setConfirmed([])
       key.current = newKey()
       if (prepared.pending && prepared.pending.risk.every((r) => r === 'fo_authorization')) {
@@ -183,13 +178,14 @@ export function FoChatPanel({ trip, initialText }: { trip?: Trip; initialText?: 
         {(!chat || !chat.turns.length) && connected && !pending && (
           <div className="magic-empty">
             <p className="magic-hello">what can Fo help with?</p>
-            <p className="dim small center-text">Messages go to the real Fo{provider === 'mock' ? ' (mock)' : ''} when you tap send. Actions such as bookings and payments get a separate review.</p>
+            <p className="dim small center-text">Messages go to {provider === 'mock' ? 'a simulated Fo for rehearsal' : 'the real Fo'} when you tap send. Actions such as bookings and payments get a separate review.</p>
           </div>
         )}
         {chat?.turns.map((t) => (
           <div key={t.id} className={`bubble ${t.role === 'me' ? 'me' : 'tatada'} fo-turn ${t.kind ?? ''}`}>
             {t.role === 'fo' && <span className="fo-who">{provider === 'mock' ? 'mock Fo' : 'Fo'} {t.kind === 'question' ? 'asks' : t.kind === 'error' ? 'reports a problem' : 'says'}</span>}
-            <p className="fo-text">{t.role === 'me' ? t.displayText ?? t.text.replace(/^(?:Trip context:|Context: Today,)[^\n]*\n\n/, '').replace(/\n\n\(Tatada ref T-[^)]*\)$/, '') : t.text}</p>
+            <p className="fo-text">{t.role === 'me' ? t.displayText ?? t.text.replace(/^(?:Trip context:|Context: Today,)[^\n]*\n\n/, '').replace(/\n\n\(Tatada ref T-[^)]*\)$/, '') : adviceText(t.text)}</p>
+            <p className="small dim"><time dateTime={new Date(t.at).toISOString()}>{new Date(t.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</time>{t.role==='fo' && ' · Assistant response, not provider confirmation'}</p>
             {trip&&t.role==='fo'&&t.kind!=='error'&&<FoProposal trip={trip} text={t.text} sourceId={`${chat.id}:${t.id}`}/>}
             {t.role === 'me' && t.delivery && t.delivery !== 'delivered' && <span className={`fo-delivery ${t.delivery}`}>{t.delivery === 'sending' ? 'sending…' : t.delivery === 'uncertain' ? 'checking whether Fo got it…' : 'not delivered'}</span>}
           </div>
@@ -274,11 +270,12 @@ export function FoChatPanel({ trip, initialText }: { trip?: Trip; initialText?: 
         </button>
       </form>
       {trip && <label className="fo-ctx small"><input type="checkbox" checked={keepMoment} onChange={e=>setKeepMoment(e.target.checked)}/> keep my message in this trip’s journal</label>}
-      {trip && (
+      {trip && (<>
         <label className="fo-ctx small">
           <input type="checkbox" checked={withTrip} onChange={(e) => setWithTrip(e.target.checked)} /> use my trip details
         </label>
-      )}
+        {trip && withTrip && <details className="small"><summary>Details shared with Fo</summary><p>Current dates, preferences, saved arrangements, up to 20 stops and 10 open tasks. Private reservation references and contact details are excluded. Saving a suggestion requires your review.</p></details>}
+      </>)}
     </>
   )
 }

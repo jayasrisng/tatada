@@ -20,6 +20,7 @@ export function ItineraryPlanner({trip}:{trip:Trip}) {
  const {state,dispatch}=useStore(),{info}=useServer(),{openMagic}=useUI()
  const [request,setRequest]=useState(''),[plan,setPlan]=useState<TripPlan>(),[choices,setChoices]=useState<Record<string,number>>({})
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false),[checked,setChecked]=useState('')
+ const [sourceChecked,setSourceChecked]=useState(false)
  const [replaceRemaining,setReplaceRemaining]=useState(false),[editing,setEditing]=useState(!trip.itinerary?.length)
  const [planSnapshot,setPlanSnapshot]=useState('')
  const autoStarted=useRef(false),generation=useRef(0),requestInput=useRef<HTMLTextAreaElement>(null)
@@ -36,6 +37,7 @@ export function ItineraryPlanner({trip}:{trip:Trip}) {
    if(version!==generation.current)return
    if(result.incomplete)throw Error('The plan was cut short. Try a simpler request.')
    const parsed=parseTripPlan(result.sections.map(s=>s.text).join('\n'),trip.start,trip.end,revision)
+   setSourceChecked(result.searched && result.sections.some(section=>section.sources.length>0))
    const cited=new Set(result.sections.flatMap(s=>s.sources.map(source=>source.url)))
    for(const day of parsed.days)for(const stop of day.stops)for(const option of stop.options)if(!option.url||!cited.has(option.url)){delete option.rating;delete option.distance}
    setPlan(parsed);setChoices({});setChecked(result.checkedAt)
@@ -59,7 +61,7 @@ export function ItineraryPlanner({trip}:{trip:Trip}) {
   if(!plan)return
   try{
    if(planSnapshot!==JSON.stringify(trip.itinerary))throw Error('Your itinerary changed while planning. Generate a fresh revision.')
-   const items=selectedPlanItems(plan,choices,crypto.randomUUID()).filter(i=>!replaceRemaining||i.day>=localToday()).filter(i=>!trip.itinerary?.some(old=>old.done&&old.day===i.day&&old.title===i.title))
+   const items=selectedPlanItems(plan,choices,crypto.randomUUID()).map(item=>({...item,note:[item.note,`Research checked: ${checked}. ${sourceChecked?'Source-linked suggestions':'No supporting citations returned; unverified suggestions'}, not confirmed reservations.`].filter(Boolean).join('\n')})).filter(i=>!replaceRemaining||i.day>=localToday()).filter(i=>!trip.itinerary?.some(old=>old.done&&old.day===i.day&&old.title===i.title))
    if(!items.length)throw Error('Choose at least one stop to save.')
    dispatch({type:'saveItineraryPlan',tripId:trip.id,items,guide:plan.essentials?{...plan.essentials,checkedAt:checked}:undefined,replaceFrom:replaceRemaining?localToday():undefined})
    setSaved(true);setPlan(undefined);setEditing(false);setError('')
@@ -92,7 +94,7 @@ export function ItineraryPlanner({trip}:{trip:Trip}) {
   {busy&&<p role="status" className="small dim">Checking your route and sources…</p>}
   {!info.authenticated&&editing&&<p className="small dim">Connect your account in Profile to plan.</p>}
   {(error||dateError)&&<p role="alert">{error||dateError}</p>}
-  {plan&&<div className="planner-choices" aria-live="polite"><h3>Pick your favorites</h3>{plan.days.map(d=><article className="planner-day" key={d.day}><h3>{fmtDay(d.day)}</h3>{d.stops.map((stop,i)=>{const key=`${d.day}:${i}`;return <fieldset key={key}><legend>{stop.time?fmtTime(stop.time):'Flexible'}</legend>{stop.options.map((o,j)=><div className="planner-option" key={j}><label><input type="radio" name={key} checked={(choices[key]??0)===j} onChange={()=>setChoices(c=>({...c,[key]:j}))}/><strong>{o.title}</strong></label><details><summary>why this fits</summary><p>{o.note}</p>{(o.rating||o.distance)&&<p className="small">{[o.rating&&`Rating: ${o.rating}`,o.distance].filter(Boolean).join(' · ')}</p>}{o.url&&<a href={o.url} target="_blank" rel="noreferrer" className="small">source ↗</a>}</details></div>)}<label className="small"><input type="radio" name={key} checked={choices[key]===-1} onChange={()=>setChoices(c=>({...c,[key]:-1}))}/> leave this open</label></fieldset>})}</article>)}
+  {plan&&<div className="planner-choices" aria-live="polite"><h3>Pick your favorites</h3><p className="small dim">Research checked: {checked ? new Date(checked).toLocaleString() : 'time unavailable'}. {sourceChecked?'Source-linked suggestions; review sources and availability.':'No supporting citations returned. Treat the plan as unverified.'}</p>{plan.days.map(d=><article className="planner-day" key={d.day}><h3>{fmtDay(d.day)}</h3>{d.stops.map((stop,i)=>{const key=`${d.day}:${i}`;return <fieldset key={key}><legend>{stop.time?fmtTime(stop.time):'Flexible'}</legend>{stop.options.map((o,j)=><div className="planner-option" key={j}><label><input type="radio" name={key} checked={(choices[key]??0)===j} onChange={()=>setChoices(c=>({...c,[key]:j}))}/><strong>{o.title}</strong></label><details><summary>why this fits</summary><p>{o.note}</p>{(o.rating||o.distance)&&<p className="small">{[o.rating&&`Rating: ${o.rating}`,o.distance].filter(Boolean).join(' · ')}</p>}{o.url&&<a href={o.url} target="_blank" rel="noreferrer" className="small">source ↗</a>}</details></div>)}<label className="small"><input type="radio" name={key} checked={choices[key]===-1} onChange={()=>setChoices(c=>({...c,[key]:-1}))}/> leave this open</label></fieldset>})}</article>)}
    {replaceRemaining&&<p className="small dim">This replaces unfinished stops from today onward. Completed stops stay.</p>}<Btn onClick={save}>save my choices</Btn>
    {plan.essentials&&<TripGuide guide={{...plan.essentials,checkedAt:checked}}/>}
   </div>}

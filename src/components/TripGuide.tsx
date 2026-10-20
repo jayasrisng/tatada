@@ -1,6 +1,6 @@
 import type {PlanGuide} from '../types'
 export function TripGuide({guide}:{guide:PlanGuide}) {
- return <section className="trip-guide" aria-label="Packing and good to know"><details><summary>Timing &amp; travel</summary><p>{guide.summary}</p></details><details><summary>What to pack</summary><ul>{guide.packing.map((item,i)=><li key={i}>{item}</li>)}</ul></details><details><summary>Good to know</summary>{guide.notes.map((n,i)=><article key={i}><h4>{n.title}</h4><p>{n.text}</p>{n.url&&/^https:\/\//.test(n.url)&&<a href={n.url} target="_blank" rel="noreferrer">official / reference source ↗</a>}</article>)}</details></section>
+ return <section className="trip-guide" aria-label="Packing and good to know"><p className="small dim">Research snapshot · {guide.checkedAt ? new Date(guide.checkedAt).toLocaleString() : 'time unavailable'}. Recheck changing conditions before travel.</p><details><summary>Timing &amp; travel</summary><p>{guide.summary}</p></details><details><summary>What to pack</summary><ul>{guide.packing.map((item,i)=><li key={i}>{item}</li>)}</ul></details><details><summary>Good to know</summary>{guide.notes.map((n,i)=><article key={i}><h4>{n.title}</h4><p>{n.text}</p>{n.url&&/^https:\/\//.test(n.url)&&<a href={n.url} target="_blank" rel="noreferrer">official / reference source ↗</a>}</article>)}</details></section>
 }
 export function YosemiteChecks({destination}:{destination:string}) {
  if(!/yosemite/i.test(destination))return null
