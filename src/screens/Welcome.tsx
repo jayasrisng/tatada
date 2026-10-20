@@ -33,12 +33,12 @@ export function Welcome() {
   return (
     <div className="screen welcome">
       {state.onboarded && <button className="iconbtn profile-close" aria-label="Close profile" onClick={() => go('/')}><Doodle name="x" size={24} /></button>}
-      {step === 0 && state.onboarded && <div className="profile-overview"><h1 className="wizard-q">Your space, {state.profile.name || 'star'}.</h1><ProfileWeather/><Btn kind="solid" onClick={()=>setStep(1)}>edit my details</Btn><details className="profile-section"><summary>Your data</summary><AccountPanel/></details><details className="profile-section"><summary>Connections · Fo, Gmail &amp; Calendar</summary><FoConnection/><GmailConnection/><CalendarConnection/></details><details className="profile-section"><summary>Travel documents</summary><Suspense fallback={<p>Opening private documents…</p>}><DocumentVault/></Suspense></details><AccountLifecycle deleteOnly/><nav className="profile-policies" aria-label="Policies"><a href="#/policies/terms">Terms &amp; conditions</a><a href="#/policies/privacy">Privacy</a><a href="#/policies/sources">Sources &amp; credits</a></nav>{(workspace.kind === 'demo' || workspace.kind === 'local-demo') && <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>}</div>}
+      {step === 0 && state.onboarded && <div className="profile-overview"><h1 className="wizard-q">{state.profile.name ? `Your space, ${state.profile.name}.` : 'Hey Star.'}</h1><ProfileWeather/><Btn kind="solid" onClick={()=>setStep(1)}>edit my details</Btn><details className="profile-section"><summary>Your data</summary><AccountPanel/></details><details className="profile-section"><summary>Connections · Fo, Gmail &amp; Calendar</summary><FoConnection/><GmailConnection/><CalendarConnection/></details><details className="profile-section"><summary>Travel documents</summary><Suspense fallback={<p>Opening private documents…</p>}><DocumentVault/></Suspense></details><AccountLifecycle deleteOnly/><nav className="profile-policies" aria-label="Policies"><a href="#/policies/terms">Terms &amp; conditions</a><a href="#/policies/privacy">Privacy</a><a href="#/policies/sources">Sources &amp; credits</a></nav>{(workspace.kind === 'demo' || workspace.kind === 'local-demo') && <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>}</div>}
       {step === 0 && !state.onboarded && (
         <div className="welcome-hero">
           <Doodle name="sparkle" size={64} className="spin-slow hero-star" />
           <h1 className="logo big">tatada</h1>
-          <p className="welcome-line">Hey star.<br />Less scrolling. More living.</p>
+          <p className="welcome-line">Hey Star.<br />Less scrolling. More living.</p>
           <section className="manifesto" aria-label="What Tatada is about"><p>Same stardust. Fewer borders.</p><p>Keep a little mystery. Let the wow happen IRL.</p><p>Fo handles the planning chaos. You do the living.</p><p>Go make a memory. Put the damn phone away.</p></section>
           <Btn kind="solid" onClick={() => setStep(1)}>
             let's begin
@@ -49,7 +49,7 @@ export function Welcome() {
 
       {step === 1 && (
         <div className="wizard-body">
-          <h1 className="wizard-q">what should we call you, star?</h1>
+          <h1 className="wizard-q">Hey Star, what should we call you?</h1>
           <input className="chalk-input big" value={p.name} onChange={(e) => setP({ ...p, name: e.target.value })} placeholder="your name" autoFocus aria-label="Your name" />
           <h2 className="wizard-q small">home airport</h2>
           <input className="chalk-input" value={p.homeAirport} maxLength={4} onChange={(e) => setP({ ...p, homeAirport: e.target.value.toUpperCase() })} placeholder="SFO" aria-label="Home airport" />

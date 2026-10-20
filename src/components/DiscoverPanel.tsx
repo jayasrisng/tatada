@@ -179,7 +179,7 @@ export function DiscoverPanel({ trip }: { trip?: Trip }) {
     </div>}
 
     {!trip && <details className="research-card"><summary>What should I wear today?</summary><TodayStyleChat /></details>}
-    <details className="research-card"><summary>Something else in mind?</summary><p>F1 at a sports bar, a client lunch, a city festival, or a quiet afternoon. Start with your own words.</p><ResearchPanel key={`${location?.name ?? cityText}:${trip?.id ?? 'today'}`} title="Make today yours" context={[location ? `Selected location: ${location.name}` : cityText ? `Location entered by the star: ${cityText}` : 'Location not supplied. Ask before making nearby recommendations.', trip ? `Trip: ${trip.destination}, ${trip.start}–${trip.end}` : 'Context: Today; no trip selected.'].join('\n')} prompt={query} /></details>
+    <details className="research-card"><summary>Something else in mind?</summary><p>F1 at a sports bar, a client lunch, a city festival, or a quiet afternoon. Start with your own words.</p><ResearchPanel key={`${location?.name ?? cityText}:${trip?.id ?? 'today'}`} title="Make today yours" context={[location ? `Selected location: ${location.name}` : cityText ? `Location entered by the traveler: ${cityText}` : 'Location not supplied. Ask before making nearby recommendations.', trip ? `Trip: ${trip.destination}, ${trip.start}–${trip.end}` : 'Context: Today; no trip selected.'].join('\n')} prompt={query} /></details>
     <p className="small dim discover-foot">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a> · <a href="#/policies/sources" onClick={closeMagic}>Sources</a></p>
   </section>
 }

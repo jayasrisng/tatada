@@ -1,136 +1,135 @@
-# tatada ✶
+# Tatada ✶
 
-A travel companion with trips, tasks, a research notebook, memories, printable trip cards, and an approval-first connection to Wajo Fo. Built for the Wajo AI × Anthropic GSD Hackathon.
+**Pronounced “Ta-tuh-duh”**—the feeling of a little magic falling into place.
 
-Requires Node 22.18+.
+**Plan the trip. Put the phone away. Live it.**
 
-## Current continuation — October 19, 2026
+## Problem
 
-Read [the continuation verification report](docs/verification/continuation-2026-10-19.md) and [release preparation / retention / exact owner actions](docs/production-readiness-2026-10-19.md) first. Older sections below retain historical setup and may describe superseded behavior.
+Travel planning eats the time you wanted to spend traveling. Flights in twenty tab. hotels in another 20. Restaurants in another. Dietary needs, budgets, calendars, packing lists and confirmations scattered everywhere.
 
-Reviewed PDF/text confirmations now join existing travel records, with on-device extraction, duplicate checks and separate encrypted original storage. Explicit offline trip packs include a production service-worker shell, itinerary, reservations, addresses, saved guidance and original tickets; no tokens or passport-vault data. Destination-local next steps use saved IANA zones. Fo replies can become reviewed, editable, reversible local records. Synced trips support reviewed view-only snapshot links with ownership checks, expiry and revocation. Account exports/deletion, nested validation and conflict-choice controls are available.
+Expedia Group’s research found travelers spent **303 minutes researching travel content across the 45 days before booking**. Tatada brings the moving parts of travel into one personal workspace. [Research](https://www.expedia.com/newsroom/eg-path-to-purchase-research/)
 
-Run `TATADA_DEV_PORT=5180 npm run dev:offline` for a built local preview with a live backend and explicit offline downloads. Stop the previous launcher on that port first. New server routes require restarting that backend. No public release is implied. Run `npm test`, then a connected `/tatada/` production build and `npm run check:continuation` for the isolated fixture story; see the report for commands and honest counts.
+## TL;DR
 
-## Run the live local app
+**Your whole trip, from the first “what if?” to the memories you bring home—with less screen time in between.**
+
+When you think “trip,” you think:
+
+1. **Getting there:** flights, transport and confirmations.
+2. **Being there:** a place to stay, good food, things to do and a plan that fits you.
+3. **Getting ready:** budget, documents, outfits and packing.
+4. **Keeping it together:** tasks, calendars, offline essentials and sharing the plan.
+5. **Remembering it:** little notes, photos, journals and printed keepsakes.
+
+That is Tatada’s canvas. Bring your details, say what matters and start planning immediately. Fo chat and calls, sourced research and a day-by-day itinerary help turn the pieces into choices you can act on.
+
+### A blackboard for planning. The real world for wonder.
+
+We’re building for **digital detox**: enough time on your phone to get ready, then permission to put it away. Tatada’s chalkboard gives you useful words, choices and logistics instead of an endless feed of destination photos.
+
+**Leave a few surprises unopened.** Know how to get there and what you need, without seeing every view before you arrive. Let the first sight of a place happen when you’re standing in it. Your own photos belong in the journal afterward.
+
+## What we solve
+
+**The ambition: turn four–five hours of trip planning into 20 minutes of decisions.** That is our product target; traveler timing studies are still ahead.
+
+Start with what Tatada already knows: your dates, home airport, budget, interests, food preferences and saved travel details. Speak or type what you want. Build a plan for Sunday, Monday, Tuesday—and every day you’re away.
+
+- **Choose your days.** Review a complete itinerary, compare alternatives for meals and activities, and save your picks together.
+- **Find your fit.** Ask for vegetarian restaurants, a slower pace or places near your stay. Source links explain recommendations; ratings and distances appear only when sourced.
+- **Choose a flight.** Research route options or check configured fare inventory, then add your choice to the itinerary. A saved option becomes a reservation only after booking with the provider.
+- **Talk to Fo.** Chat or call from the app. Fo chat can use your saved trip and food preferences. The current phone connection does not automatically write a call’s choices back into Tatada; the itinerary builder handles reviewed saves today.
+- **Carry one plan.** Export chosen stops to Google Calendar, download offline essentials, save confirmations and share a filtered itinerary.
+- **Pack and remember.** Plan outfits from your own closet, make a packing list, keep a journal and print the memories.
+
+Open **Trips → choose a trip → Itinerary** to see or build its days, packing and good-to-know notes. New trips open there automatically. For a day trip, choose **plan a day trip**; the SF → Yosemite example includes both drives and a home-by time. Use **something changed** to review a revised remaining plan.
+
+Less searching. Fewer repeated decisions. More time outside.
+
+## Inside Tatada
+
+The app in a phone-sized viewport, shown one screen at a time. These sample trips demonstrate the interface; they are not live bookings.
+
+### Your world
+
+![Tatada home](assets/screenshots/home.png)
+
+### Your day-by-day itinerary
+
+![Tatada itinerary planner](assets/screenshots/itinerary.png)
+
+### Your trip notebook
+
+![Tatada trip notebook](assets/screenshots/notebook.png)
+
+### Your closet
+
+![Tatada closet and outfit planning](assets/screenshots/closet.png)
+
+### Your travel journal
+
+![Tatada travel journal](assets/screenshots/journal.png)
+
+## Connect your accounts
+
+**Fo:** the operator configures private Wajo credentials on the backend. Open **Profile → Connections** to check the connection. Fo chat shares the trip context you enable; calls use Wajo’s microphone/audio service.
+
+**Google:** configure a Google Cloud Web application OAuth client, enable Gmail and Calendar APIs, and register the exact backend callback. Keep `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REDIRECT_URI` private. Add your intended Google account as a test user while the OAuth app is in Testing.
+
+Connect Gmail and Calendar separately in **Profile → Connections**. Gmail authorizes PDF print emails. Calendar authorizes app-created calendars with `calendar.app.created`. Review the event preview before adding anything. Calendar exports are one-way copies; Apple Calendar and Outlook can use the `.ics` download.
+
+## Privacy, security and terms
+
+**Keep private things close. Share only what a feature needs.**
+
+- Passport and visa files stay in a **passphrase-encrypted on-device vault**, with separate encrypted backups. Original confirmations also have encrypted device storage.
+- Clothing segmentation runs **in your browser** after the model downloads. Offline trip packs keep selected essentials available on the device.
+- Connected workspaces also save data on the backend. Google tokens are encrypted server-side; API keys and OAuth secrets stay out of the frontend and Git.
+- Itinerary research sends the displayed planning context to Anthropic. Fo requests go to Wajo. Browser dictation may use the browser’s speech service. AI and calls are not entirely on-device.
+- You review plans, calendar additions and printing. Trip/account deletion requires confirmation. Exports, external calendar copies and provider records have separate retention.
+
+Read **Terms & conditions** and **Privacy** in the app. AI suggestions need your judgment; prices, availability and opening hours can change. Upload content you have permission to use. Before public launch, operator identity, support/privacy contact and retention periods still need to be finalized.
+
+## Repository
+
+`src/` contains the app; `server/` the private API and integrations; `shared/` shared validation; `supabase/` hosted backend setup; `public/` app assets; `assets/screenshots/` README images; `scripts/` launch/build support.
+
+Private review notes, runbooks and test tooling are ignored and archived locally. Previously committed copies remain in earlier Git history.
+
+Map data: [OpenStreetMap / ODbL](https://www.openstreetmap.org/copyright), [Natural Earth](https://www.naturalearthdata.com/about/terms-of-use/). Weather: [Open-Meteo](https://open-meteo.com/).
+
+## Current hosting and running the app
+
+**Tatada currently runs as a connected, locally hosted prototype.** The working preview is `http://127.0.0.1:5180/`. Fo, Gmail and Google Calendar have been connected on the owner's local runtime. This does not certify an equivalent deployed website or transfer those sessions through a Git push.
+
+Use Node 22.22+ and npm. Install dependencies, copy `.env.example` to the ignored `.env`, then supply your own authorized server credentials. `WAJO_FO_API_KEY` is required for the connected personal launcher; `CLAUDE_API_KEY` or `ANTHROPIC_API_KEY` enables research. Google integration additionally needs the OAuth setup above.
 
 ```bash
-npm install
-npm run dev                 # http://127.0.0.1:5173
-# If that port is occupied:
-TATADA_DEV_PORT=5180 npm run dev
+npm ci
+cp .env.example .env
+# Fill the private .env; never commit it.
+TATADA_DEV_PORT=5180 npm run dev:offline
 ```
 
-Keep `WAJO_FO_ENDPOINT`, `WAJO_FO_API_KEY`, and `CLAUDE_API_KEY` (or `ANTHROPIC_API_KEY`) in the ignored `.env`. The launcher starts a live, localhost-only personal backend and points the frontend at it. It never silently starts mock Fo. Existing servers are not stopped. API keys belong to the one local owner; this mode is refused in public production. `npm run dev:frontend` remains for isolated frontend development, and mock providers remain only for contract tests and explicit rehearsals.
-
-The world map is zoomable, uses bundled Natural Earth vectors, and has no inferred location star. Blackboard is the first-use default; a chosen light theme persists. `#/brand` previews the palette; [brand kit](docs/brand-kit.md) documents colors, lettering, marks and icons. New trips begin with a dream, then only the planning categories the star selects. Today remains independent of trip context.
-
-Magic task controls open live Fo chat. The separate small star toggles priority without contacting a provider. Browser microphone dictation is optional and always produces editable text. “Call Fo” requests a Wajo call link only on a tap; the provider's call page handles microphone permission and audio. No outbound calls, messages or print jobs are started by opening a screen.
-
-Claude research uses the real Messages API with bounded web search, actual citations and checked times. A saved trip briefing is included in workspace exports. Neither research nor Fo receives the document vault automatically. Research can consider worldwide sources and requests beyond coffee or three event sites. No connected airline inventory, mileage account or payment processor is implied by a text recommendation.
-
-Workspace saves and the local server's `.data/` survive reloads. Export/import provides portable backups including journals. Friends can share reviewed read-only itinerary files and keep independent copies; downloaded copies cannot be revoked. Sensitive profile information, bookings, private itinerary notes and documents are excluded from shared trip files.
-
-Private documents live separately in AES-GCM-encrypted IndexedDB, unlocked by a PBKDF2-derived non-extractable key. The key and passphrase are never persisted. Ordinary exports and server workspace sync exclude them. Use a separate encrypted backup; forgetting the passphrase or clearing site data without a backup loses access. Vault fields are manually reviewed and only checked text fields enter a Fo draft after an explicit choice. There is no automatic OCR or document upload to an AI service.
-
-Clothing detection is browser-local visible-garment segmentation, not physical fit simulation. The shared import reviews each photo's metadata/location independently. New map records retain metadata only after confirmation; existing photos and memories are preserved.
-
-Epson PDF preparation and approval remain implemented, but **real Fo attachment delivery is blocked by Wajo's current text-only tool schema**. No print is reported as sent without provider evidence. Multi-user hosted sign-in, Claude configuration on the hosted backend, and the updated public frontend require separate release work. See [architecture and integration boundaries](docs/architecture.md).
-
-## Discover and remember
-
-Tap the central star and type what you want, e.g. “coffee near me with good parking and a nice view”, “a vegetarian restaurant I would actually enjoy”, or “live music this weekend”. Tatada turns the request into editable preferences, then shows a few results with the mapped evidence behind each one. Unknown details stay in “details”. Save any result to the selected trip or to tasks.
-
-- **Places** come from OpenStreetMap through Photon and OSM tags. Ranking uses distance, diet tags, opening hours, a public lot near the venue or the venue's own parking, view evidence, outdoor seating and Wi-Fi. Walking times come from the public OSM foot router after the list appears; if it doesn't answer, straight-line distance is shown and labeled. No ratings source is connected.
-- **Events** combine public Luma, Eventbrite and Partiful listings into one deduplicated list. Times use the event's time zone, with distance when the source gives a location, plus price (free / listed price / not listed), reasons and source links. Filters cover today, tomorrow, this weekend, the next 7 days and free only. Expired, canceled, clearly sold-out and online-only listings are excluded. If a source fails or doesn't cover the city, the rest still show, with a one-line explanation.
-
-Events are read by a small key-free service (`server/events/`) because the providers don't allow direct browser requests. `npm run dev` and `npm run preview` mount it at `/events-api`. `npm run events` runs it standalone on port 8790. It is separate from the paused Fo/sign-in server. Static hosting (GitHub Pages) can't run it. `npm run build:website` points the site at the `tatada-events` Supabase function. Until that function is deployed, the panel falls back to provider search links. After deploying, `npm run check:events-remote` verifies health, CORS and source access from Supabase's network.
-
-**One photo import** (Trips → my maps & timeline, or Style → add from photos) reads each photo on the device:
-- Embedded date, GPS and IPTC/XMP location labels prefill the place, city and country.
-- GPS-only photos can get a city/country suggestion after you agree. Only rounded coordinates go to Photon, never the image or a guessed place name.
-- Unknown fields stay blank. A batch can mix places.
-- The same photos go through clothing detection, and only pieces you name, categorize and mark “I still own it” join the closet.
-- Location and clothing problems are independent and retryable, and duplicates are skipped.
-
-The map view shows the same world map, a concise country → city → place list, and a checkbox list of every country for hand edits. Google Photos account linking is not active. [Feature boundaries](docs/feature-limits.md) describe data, storage and provider limitations.
-
-## Checks
+The launcher builds the frontend and starts a live backend bound to loopback. Stop the previous launcher before reusing the same port or private data store. `npm run dev` provides frontend hot reload; use the built `dev:offline` preview for cold offline downloads. Keep the computer awake while demonstrating.
 
 ```bash
-npm test           # state, portability, discovery ranking/hours, events parsing/dedupe/timezones, OAuth, actions, chat, hosting
-npm run build      # typecheck frontend and server; build production frontend
-npm run check:browser # browser-only checks against the preview at port 5174
-npm run check:features # nearby + events (fixtures); home map, Today context, photo import
-node scripts/check-print.mjs # print workflow: MODE=browser | mock | live (see the script header)
-npm run predemo    # isolated /tatada/ build + separate mock API; smoke and theme checks
+npm run typecheck
+npm run build
+# Optional browser-only development, without connected backend behavior:
+npm run dev:frontend
 ```
 
-`predemo` uses temporary mock data and its own ports (15173 and 18787); it leaves existing local servers alone. Browser checks require locally installed Chrome. The rehearsal also verifies preview isolation and disconnect error handling. Screenshots go to ignored `scripts/out/`.
+Type checking and the production build are available in this repository. Private test tooling and owner runbooks stay outside the public snapshot.
 
-## Printing to an Epson printer
+**Website deployment is a separate step.** GitHub Pages can serve the frontend; it cannot run the private Node backend or use server secrets. The retained hosted adapter uses per-user Wajo OAuth, while the current shared owner API-key mode is intentionally localhost-only. The same existing Google OAuth client can be reused with its production callback configured, but local connected sessions are not automatically migrated.
 
-The print icon on a trip and “print …” requests in Magic open the same workflow:
-1. You set up the printer once: its Epson Connect email address and printer-wide settings.
-2. Your words become settings: “print in color”, “make it 4×6”, “double-sided”, “two copies”.
-3. Tatada makes a clean white PDF and shows that exact PDF with the printer, sender, page count, what each setting really does, and limitations.
-4. Nothing is emailed until you approve.
-
-Per Epson's documentation, only grayscale (`=+bk`) and two-sided (`=+dl`) can be requested per email, through the printer address. Paper size, color output and the email-body/sender pages are printer-wide settings. Copies aren't supported, so Tatada offers a disclosed repeat-the-pages PDF or one copy. A 4×6 request becomes a 4×6 card with cut guides on plain paper, and only after you agree.
-
-Approval is tied to the PDF's hash, the printer address, the sender, the settings and the copies. Any edit needs a new approval. Repeated clicks and refreshes send once, uncertain sends are never resent automatically, and “email submitted” is never presented as “printed”.
-
-**Status:** Fo's `ask_fo` accepts text only and doesn't expose a sending account, so live Fo delivery reports that blocker. Development uses a mock sender. Without the backend, the app offers PDF preview, download and browser printing, and no printer address is saved. See `docs/fo-integration.md`.
-
-To try the full flow locally with the mock sender:
+For the retained hosted shape, configure the backend's persistent store, stable sealing secret, public origin and provider secrets; add `https://<project>.supabase.co/functions/v1/tatada-api/api/gmail/callback` to the Google client. Gmail and Calendar share that callback with separate bound state. Keep `http://127.0.0.1:5180/api/gmail/callback` for this local preview. Connect the intended accounts on the hosted runtime and verify its end-to-end behavior before claiming readiness.
 
 ```bash
-TATADA_SINGLE_OWNER=1 APP_URL=http://localhost:5182 npm run server     # mock Fo, localhost only
-VITE_ENABLE_BACKEND=true VITE_API_URL= npx vite --host localhost --port 5182
+# Only after the intended hosted API and account configuration are verified:
+VITE_ENABLE_BACKEND=true npm run build:website
 ```
 
-`npm run server:fo` (single-owner, live) loads `WAJO_FO_ENDPOINT` and `WAJO_FO_API_KEY` from `.env`. The key is used only as that local owner's Fo credential and is never sent to the browser.
-
-## Website: jayasrisng.com/tatada
-
-GitHub Pages hosts the standalone frontend beneath `/tatada/`. A separate backend is required for live Fo and server workspace sync; the live API is deployed on Supabase Edge Functions with a private Postgres runtime store. GitHub Pages serves the frontend only.
-
-```bash
-npm run build:website
-```
-
-The default build keeps workspace saves in the browser and does not call Tatada’s paused backend. User-triggered discovery uses public map and routing APIs; clothing detection downloads model files for local inference. For future backend opt-in, the build command retains the public API address `https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-api`. The frontend also accepts `VITE_API_URL` for another HTTPS API origin and `VITE_BASE_PATH` for another subpath. These are public build settings, never secrets.
-
-The portfolio's `scripts/sync-tatada.mjs` copies only the reviewed `dist/` bundle into its `public/tatada/` directory. Its existing Pages deployment preserves that page during future portfolio builds. No `.data/`, credentials, or user workspace is published.
-
-## Optional backend (paused)
-
-The following describes retained backend code, available only with `VITE_ENABLE_BACKEND=true`. Wajo sign-in is not currently offered in the default app.
-
-When a hosted API is unavailable, the page explicitly says so and offers a separate sample preview. Preview actions are simulated, cannot use the live action API, and never update real tasks or export the signed-in account's requests. It must not be presented as a working live connection.
-
-The Supabase adapter reuses the action and chat services. A database lease serializes mutations across instances, state is flushed before provider side effects, and bounded background work advances when clients poll. Interrupted sends are reconciled after lease expiry. Work resumes when a client reconnects; this is not an always-running general job scheduler.
-
-Hosted sign-in uses a single-use exchange bound to the initiating browser and a tab-scoped bearer session, so it does not require third-party cookies. Wajo refresh/access tokens remain sealed in Postgres. If Wajo supplies no stable identity, successful OAuth creates a new private connection session instead of pretending to identify a reusable account; the profile asks users to export before signing out.
-
-Supabase source: `supabase/functions/tatada-api/` and `supabase/schemas/tatada.sql`. The function performs its own session authentication (`verify_jwt = false`); only health, OAuth entry/callback, and session setup are public. The database table and RPCs are accessible only to the backend service role. Never copy the service-role key to the browser.
-
-## What is real
-
-- Trip/task editing, canvas positions, memories, QR generation, browser printing, and versioned export/import work.
-- With backend opt-in, authenticated workspaces sync to the running Tatada server, with account-scoped local caching and recovery copies. Local Node mode stores data in `.data/` and supports one process; hosted mode uses Supabase Postgres.
-- The structured email helper has server-authoritative approval hashes, duplicate prevention, restart recovery, and evidence checks. Uncertain sends are never blindly retried. Quotes are not bookings.
-- The paused Fo chat implementation uses the server's MCP adapter. Unknown response shapes remain working/unverified rather than claiming success.
-- Fares, ratings, forecasts, demo confirmations, and notebook sources are sample data. Live travel research is not connected.
-
-## Source map
-
-- `src/screens/`: canvas, trips, planning, notebook, journal, tasks, style, print, onboarding.
-- `src/state/`: reducer, storage validation, server client, Fo chat client, portability.
-- `src/magic/`: trip-aware drafting, dates, decision evidence, simulated fallback.
-- `server/`: HTTP API, OAuth, sessions, action/chat workers, mock/live Fo adapters, tests.
-- `server/events/`: key-free public event search (Luma, Eventbrite, Partiful), separate from the Fo API.
-- `src/discovery/`: request parsing, place ranking, opening hours, event display.
-- `src/travel/`: countries, visited/planned, the shared photo importer.
-- `src/print/` + `server/print.ts`: print plans (Epson rules), PDFs, approval-bound print jobs.
-- `docs/fo-integration.md`: provider discovery and live verification limits.
+Publish only the reviewed frontend output. Never publish `.env`, `.data`, private archives, API keys, OAuth tokens, passport files or personal confirmation documents. The current localhost demo can be used now; a public deployment with the same connected behavior has not yet been certified.

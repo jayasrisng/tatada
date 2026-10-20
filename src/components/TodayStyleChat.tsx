@@ -4,7 +4,7 @@ import { api, useServer } from '../state/server'
 import { useStore } from '../state/store'
 import { useToday } from '../state/today'
 import { Doodle } from './Doodle'
-import { SpeechButton } from './SpeechButton'
+import { VoiceField } from './VoiceField'
 import type { ResearchAnswer } from './ResearchPanel'
 
 export function TodayStyleChat() {
@@ -20,8 +20,7 @@ export function TodayStyleChat() {
       const context = JSON.stringify({date: today, closet: wardrobe.slice(0, 80).map(g => ({id: g.id, name: g.name, category: g.category, color: g.color, vibe: g.vibe})), recentConversation: turns.slice(-3).map(t => ({question: t.me.slice(0, 400), answer: t.reply.slice(0, 700)}))}).slice(0, 8000)
       try {const answer = await api<ResearchAnswer>('/api/intelligence', {method: 'POST', json: {purpose: 'style', question, context}, signal: AbortSignal.timeout(100_000)}); setTurns(previous => [...previous.slice(-5), {me: question, reply: answer.sections.map(s => s.text).join('\n\n')}]); setText(current=>current.trim()===question?'':current) } catch(e) {setError((e as Error).message)} finally {setBusy(false)}
     }}>
-      <div className="chat-composer style-composer"><textarea className="chalk-input" aria-label="Today outfit plans" maxLength={2000} value={text} onChange={e=>setText(e.target.value)} placeholder="What’s the plan? Anything in the wash?" required/>
-      <div className="chat-composer-actions"><SpeechButton disabled={busy} onText={spoken=>setText(previous=>[previous,spoken].filter(Boolean).join(' '))}/><button type="submit" className="iconbtn" aria-label="style my day" disabled={busy||!text.trim()||!info.authenticated||info.provider!=='live'}><Doodle name="sparkle" size={24}/></button></div></div>
+      <VoiceField ariaLabel="Today outfit plans" value={text} onChange={setText} maxLength={2000} placeholder="What’s the plan? Anything in the wash?" required disabled={busy} actions={<button type="submit" className="iconbtn" aria-label="style my day" disabled={busy||!text.trim()||!info.authenticated||info.provider!=='live'}><Doodle name="sparkle" size={24}/></button>}/>
       {busy&&<p role="status" className="small dim">Putting a look together…</p>}
     </form>
     {!wardrobe.length && <p className="small">Your closet is empty. Add a few pieces in Style so suggestions can use what you own.</p>}

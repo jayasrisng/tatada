@@ -154,9 +154,9 @@ export function FoConnection() {
         <p className="dim">Mock Fo: every request goes through the real approval and verification pipeline, but no email is sent. For the local live presentation, run <code>npm run server:fo</code>.</p>
       ) : info.foConnected ? (
         <>
-          <p>Fo is authorized. Approved helper emails are sent to allowed recipients; Fo chat can act beyond that email list.</p>
-          <p className="dim small">Helper email recipients: {info.liveRecipients?.length ? info.liveRecipients.join(', ') : 'nobody yet (set TATADA_LIVE_RECIPIENTS)'}</p>
-          <ReadOnlyCheck />
+          <p>Fo is connected.</p>
+
+          <details className="connection-details"><summary>Connection details</summary><ReadOnlyCheck /></details>
           <Btn kind="ghost" disabled={busy} onClick={disconnect}>
             disconnect
           </Btn>

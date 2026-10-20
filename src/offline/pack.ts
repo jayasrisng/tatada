@@ -8,6 +8,7 @@ export function makePack(workspace: string, trip: Trip, tickets: string[], now =
     id: trip.id, destination: trip.destination, country: trip.country, start: trip.start, end: trip.end, timeZone: trip.timeZone,
     travelers: trip.travelers, companions: '', budget: 0, vibe: [], constraints: [], discounts: [], status: trip.status, tint: trip.tint,
     summary: {}, options: [], memories: [], bookings: trip.bookings.map(b => ({ ...b, flight: b.flight ? { ...b.flight } : undefined })),
+    planGuide: trip.planGuide ? structuredClone(trip.planGuide) : undefined,
     itinerary: trip.itinerary?.map(i => ({ ...i })), localAddress: trip.localAddress, arrival: trip.arrival,
     journeyDone: trip.journeyDone ? { ...trip.journeyDone } : undefined, research: trip.research?.map(r => ({ ...r, sections: r.sections.map(s => ({ text: s.text, sources: s.sources.map(u => ({ ...u })) })) })),
   } }

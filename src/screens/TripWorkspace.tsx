@@ -1,3 +1,4 @@
+import {ItineraryPlanner} from '../components/ItineraryPlanner'
 import {TripCalendar} from '../components/TripCalendar'
 import {FlightTicket} from '../components/FlightTicket'
 import {DeleteTrip} from '../components/DeleteTrip'
@@ -38,6 +39,7 @@ export function TripWorkspace({ id, tab = 'plan' }: { id: string; tab?: string }
   const d = daysUntil(trip.start)
   const tabs = [
     { id: 'plan', label: 'Plan' },
+    { id: 'itinerary', label: 'Itinerary' },
     { id: 'notebook', label: 'Notebook' },
     { id: 'journal', label: 'Journal' },
   ]
@@ -60,10 +62,11 @@ export function TripWorkspace({ id, tab = 'plan' }: { id: string; tab?: string }
         </p>
         <div className="chips">
           {trip.status !== 'past' && <Chip tint={trip.tint}>{d > 0 ? `in ${d} days` : trip.end < today ? 'finished' : 'happening now'}</Chip>}
-          {trip.constraints.map((c) => (
+          {trip.constraints.filter(c=>c.length<=70).map((c) => (
             <Chip key={c}>{c}</Chip>
           ))}
         </div>
+        {trip.constraints.some(c=>c.length>70)&&<details className="trip-idea"><summary>Your trip idea</summary><p>{trip.constraints.filter(c=>c.length>70).join(' · ')}</p></details>}
       </header>
 
       <nav className="seg" aria-label="Trip sections">
@@ -75,9 +78,10 @@ export function TripWorkspace({ id, tab = 'plan' }: { id: string; tab?: string }
       </nav>
 
       {tab === 'plan' && <><TripResearch trip={trip} /><Plan trip={trip} /><TripSharing trip={trip} /></>}
-      {tab === 'notebook' && <Notebook key={hashQuery().get('category') ?? 'flight'} trip={trip} />}
-      {tab === 'journal' && <Journal key={trip.id} trip={trip} />}
-      <TripCalendar key={trip.id+'-calendar'} trip={trip}/><DeleteTrip key={trip.id} trip={trip}/>
+      {tab === 'itinerary' && <ItineraryPlanner key={trip.id+'-itinerary'} trip={trip}/>}
+      {tab === 'notebook' && <Notebook key={trip.id+'-notebook-'+(hashQuery().get('category') ?? 'flight')} trip={trip} />}
+      {tab === 'journal' && <Journal key={trip.id+'-journal'} trip={trip} />}
+      <TripCalendar key={trip.id+'-calendar'} trip={trip}/><DeleteTrip key={trip.id+'-delete'} trip={trip}/>
 
     </div>
   )
@@ -89,11 +93,11 @@ function Plan({ trip }: { trip: Trip }) {
   const [addingStay, setAddingStay] = useState(false)
   const items = state.items.filter((i) => i.tripId === trip.id)
   return (
-    <div className="plan"><FlightSearch key={trip.id} trip={trip}/><OfflineDownload trip={trip}/>
+    <div className="plan"><Btn onClick={()=>go(`/trip/${trip.id}/itinerary`)}>open itinerary · your days, packing &amp; good to know</Btn>{trip.planning?.transport!=='drive'&&trip.planning?.transport!=='rental-car'&&<FlightSearch key={trip.id} trip={trip}/>}<OfflineDownload trip={trip}/>
       {items.some((i) => i.priority && !i.done) && <section aria-label="Priority tasks"><h3 className="section-h">priority</h3><ul className="checklist">{items.filter((i) => i.priority && !i.done).map((i) => <ChecklistRow key={i.id} item={i} />)}</ul></section>}
       {trip.status !== 'past' && <><NextStep trip={trip}/><NowCard trip={trip}/></>}
 
-      {!trip.bookings.some((b) => b.kind === 'stay') && trip.status !== 'past' && (
+      {trip.start!==trip.end && !trip.bookings.some((b) => b.kind === 'stay') && trip.status !== 'past' && (
         <section>
           {addingStay ? (
             <AddStay trip={trip} onDone={() => setAddingStay(false)} />
@@ -129,17 +133,17 @@ function Plan({ trip }: { trip: Trip }) {
         const list = items.filter((i) => i.phase === p.id && !(i.priority && !i.done)).sort((a, b) => Number(a.done) - Number(b.done))
         const done = list.filter((i) => i.done).length
         return (
-          <section key={p.id} className="phase">
-            <h3 className="section-h">
+          <details key={p.id} className="phase">
+            <summary className="section-h">
               {p.label.toLowerCase()} <span className="dim small">{list.length ? `${done}/${list.length}` : ''}</span>
-            </h3>
+            </summary>
             <ul className="checklist">
               {list.map((i) => (
                 <ChecklistRow key={i.id} item={i} />
               ))}
             </ul>
             <AddRow tripId={trip.id} phase={p.id} />
-          </section>
+          </details>
         )
       })}
     </div>
@@ -151,7 +155,7 @@ function NowCard({trip}:{trip:Trip}) {
   const {state}=useStore(), {openMagic}=useUI()
   const open=state.items.filter(i=>i.tripId===trip.id&&!i.done&&(i.phase==='plan'||i.phase==='prepare')).sort((a,b)=>Number(!!b.priority)-Number(!!a.priority))
   const next=open[0]
-  return <Box className="now-card" tint="yellow"><span className="paper-label">before you go</span><h2>{next?`${open.length} ${open.length===1?'thing':'things'} left on your checklist`:'Your checklist is clear'}</h2>{next&&<div className="next-action"><p>{next.text}</p><button className="iconbtn" aria-label="Talk to Fo about the next task" onClick={()=>openMagic({tripId:trip.id,assistant:true,itemId:next.id,prefill:next.magicPrompt??`Help me with this trip task: ${next.text}`})}><Doodle name="sparkle" size={22}/></button></div>}</Box>
+  return <Box className="now-card" tint="yellow"><span className="paper-label">before you go</span><h2>{next?'One next step':'Your checklist is clear'}</h2>{next&&<div className="next-action"><p>{next.text}</p><button className="iconbtn" aria-label="Talk to Fo about the next task" onClick={()=>openMagic({tripId:trip.id,assistant:true,itemId:next.id,prefill:next.magicPrompt??`Help me with this trip task: ${next.text}`})}><Doodle name="sparkle" size={22}/></button></div>}</Box>
 }
 
 function Journal({ trip }: { trip: Trip }) {

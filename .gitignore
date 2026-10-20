@@ -10,4 +10,14 @@ scripts/out
 .data
 outfits/
 supabase/.temp
-docs/verification/google-*.png
+
+# Private owner notes and verification stay local, including future additions.
+/.local/
+/docs/
+/tests/
+/server/tests/
+/.github/workflows/ci.yml
+# Publish only the launch/build scripts used by the app.
+/scripts/*
+!/scripts/dev.mjs
+!/scripts/offline-plugin.ts

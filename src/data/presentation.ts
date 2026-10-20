@@ -17,18 +17,6 @@ const endDay = (date: string) => { const d = new Date(date + 'T12:00:00Z'); d.se
 export function presentationTrips(): Trip[] {
   const la = makeTrip('la', 'LAX', 'United States', '2026-10-19', '2026-10-25', 34.0522, -118.2437, 0)
   const yosemite = makeTrip('yosemite', 'Yosemite', 'United States', '2026-11-06', '2026-11-08', 37.7459, -119.5936, 1)
-  for (const t of [la, yosemite]) {
-    const outdoor = t === yosemite
-    const days = [t.start, t.start, t.end]
-    const mid = new Date(t.start + 'T12:00:00Z'); mid.setUTCDate(mid.getUTCDate() + 1); days[1] = mid.toISOString().slice(0, 10)
-    t.itinerary = days.flatMap((day, index) => [
-      {id: `${t.id}-${index}-breakfast`, day, time: '08:30', title: 'Breakfast & a slow start', dress: 'casual' as const},
-      {id: `${t.id}-${index}-day`, day, time: '10:00', title: index === 0 ? 'Arrive, settle in & take a short walk' : index === 2 ? 'One last stop, pack & travel home' : outdoor ? 'A walk chosen for the day’s conditions and your energy' : 'A neighbourhood walk and one cultural stop', dress: outdoor ? 'active' as const : 'casual' as const},
-      {id: `${t.id}-${index}-lunch`, day, time: '13:00', title: 'Lunch, water & a proper break', dress: 'casual' as const},
-      {id: `${t.id}-${index}-evening`, day, time: '18:30', title: 'Dinner & a little journal time', dress: 'casual' as const},
-    ])
-    t.memories = [{id: `${t.id}-prompt`, day: t.start, kind: 'note', text: 'Journal prompt: What surprised me today? What did I notice with my phone away?'}]
-  }
   // Saved sample arrangements make the owner’s upcoming LA journey usable end to end.
   la.arrival = '2026-10-19T10:30'
   la.localAddress = 'Little Tokyo, Los Angeles'
@@ -40,23 +28,7 @@ export function presentationTrips(): Trip[] {
     {id:la.id+'-dinner',kind:'dinner',title:'Dinner near the stay',when:'2026-10-19 · 18:30',at:'2026-10-19T18:30',ref:'',detail:'An easy first-night meal · no real table reserved',simulated:true},
     {id:la.id+'-return',kind:'flight',title:'LAX → SFO',when:'2026-10-25 · 17:00 departure',at:'2026-10-25T17:00',flight:{airline:'Tatada Air',number:'TT 202',from:'LAX',to:'SFO'},ref:'',detail:'One traveler · illustrative flight',simulated:true},
   ]
-  la.itinerary = [
-    {id:la.id+'-lunch',day:la.start,time:'12:30',title:'Lunch in Downtown LA',dress:'casual'},
-    {id:la.id+'-check-in',day:la.start,time:'15:00',title:'Check in, unpack & take a breath',dress:'casual'},
-    {id:la.id+'-stroll',day:la.start,time:'16:30',title:'A short Little Tokyo walk',dress:'casual'},
-    {id:la.id+'-dinner-stop',day:la.start,time:'18:30',title:'Dinner near the stay',dress:'casual'},
-    {id:la.id+'-breakfast',day:'2026-10-20',time:'09:00',title:'Breakfast, with nowhere to rush',dress:'casual'},
-    {id:la.id+'-culture',day:'2026-10-20',time:'11:00',title:'One cultural stop downtown',dress:'casual',note:'Choose what is open and feels right on the day.'},
-    {id:la.id+'-lunch2',day:'2026-10-20',time:'13:00',title:'Lunch & a proper break',dress:'casual'},
-    {id:la.id+'-open',day:'2026-10-20',time:'15:00',title:'An open afternoon: wander, rest or meet someone',dress:'casual'},
-    {id:la.id+'-evening',day:'2026-10-20',time:'19:00',title:'Dinner & one small journal moment',dress:'casual'},
-    {id:la.id+'-pack',day:la.end,time:'09:00',title:'Breakfast & pack',dress:'casual'},
-    {id:la.id+'-checkout',day:la.end,time:'11:00',title:'Check out & leave bags with the stay',dress:'casual'},
-    {id:la.id+'-last-lunch',day:la.end,time:'12:30',title:'A last lunch before collecting bags',dress:'casual'},
-    {id:la.id+'-airport',day:la.end,time:'14:00',title:'Collect bags & head to LAX',dress:'casual'},
-  ]
-  for(let day=21;day<=24;day++)la.itinerary!.push({id:`${la.id}-free-${day}`,day:`2026-10-${day}`,title:'Free time',dress:'casual'})
-  la.itinerary!.sort((a,b)=>(a.day+(a.time??'')).localeCompare(b.day+(b.time??'')))
+  // Upcoming itineraries are researched from the traveler’s actual dates and route.
   return [la, yosemite, ...past.map(([id, city, country, , date, lat, lon, memory], i) => {
     const trip = makeTrip(id, city, country, date, endDay(date), lat, lon, i + 2, true)
     const airport = ({'mexico-city':'MEX',paris:'CDG',vijayawada:'VGA',nairobi:'NBO',rio:'GIG',sydney:'SYD'} as Record<string,string>)[id]

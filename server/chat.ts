@@ -100,7 +100,7 @@ export class FoChatService {
     if (BUSY.includes(c.status)) throw new ActionError(409, 'Fo is still working on the last message.')
     const text = typeof body.text === 'string' ? body.text.trim() : ''
     if (!text || text.length > MAX_TEXT) throw new ActionError(400, 'Write a message first.')
-    const context = typeof body.context === 'string' && body.context.trim() ? body.context.trim().slice(0, 500) : ''
+    const context = typeof body.context === 'string' && body.context.trim() ? body.context.trim().slice(0, 1600) : ''
     const first = !c.conversationId && !c.turns.some((t) => t.role === 'me')
     const message = [context, text, first ? `(Tatada ref ${c.ref})` : ''].filter(Boolean).join('\n\n')
     const answering = c.status === 'needs_input' ? [...c.turns].reverse().find((t) => t.role === 'fo')?.text : undefined

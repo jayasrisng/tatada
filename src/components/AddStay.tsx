@@ -55,7 +55,6 @@ export function AddStay({ trip, onDone }: { trip: Trip; onDone?: () => void }) {
       {field('contact', 'Their email (from your confirmation)', 'email', { placeholder: 'optional' })}
       <div className="date-row">
         {field('checkIn', 'check-in', 'date', { min: trip.start, max: trip.end })}
-        <span />
         {field('checkOut', 'check-out', 'date', { min: trip.start, max: trip.end })}
       </div>
       {field('ref', 'Booking reference', 'text', { placeholder: 'optional' })}

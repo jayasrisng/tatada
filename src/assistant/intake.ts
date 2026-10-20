@@ -1,0 +1,21 @@
+import type {TripPlanning} from '../types'
+import {isIsoDate} from '../magic/dates'
+export interface IntakeDraft {destination?:string;country?:string;origin?:string;transport?:TripPlanning['transport'];start?:string;end?:string;travelers?:number;companions?:string;budget?:number;goals?:string;arrivalAirport?:string}
+export interface IntakeReply {reply:string;questions:string[];ready:boolean;draft:IntakeDraft}
+export function parseIntake(text:string,today:string):IntakeReply {
+ const block=text.match(/```(?:json|tatada-intake)\s*\n([\s\S]*?)```/)
+ const data=JSON.parse(block?block[1]:text.trim()) as Record<string,unknown>
+ if(!data||typeof data.reply!=='string'||!data.reply.trim()||data.reply.length>1600||!Array.isArray(data.questions)||data.questions.length>3||!data.questions.every(q=>typeof q==='string'&&q.length>0&&q.length<=400))throw Error('The follow-up was incomplete. Please try again.')
+ if(!data.draft||typeof data.draft!=='object'||Array.isArray(data.draft))throw Error('Trip details were incomplete.')
+ const raw=data.draft as Record<string,unknown>,draft:IntakeDraft={}
+ for(const key of ['destination','country','origin','companions','goals','arrivalAirport'] as const)if(raw[key]!==undefined){if(typeof raw[key]!=='string'||raw[key].length>(key==='goals'?1800:150))throw Error('A trip detail was invalid.');draft[key]=raw[key]}
+ for(const key of ['start','end'] as const)if(raw[key]!==undefined){if(!isIsoDate(raw[key]))throw Error('Clarify the exact travel dates.');draft[key]=raw[key]}
+ if(raw.transport!==undefined){if(!['drive','rental-car','flight','rail','other'].includes(String(raw.transport)))throw Error('Choose how you want to travel.');draft.transport=raw.transport as TripPlanning['transport']}
+ if(raw.travelers!==undefined){if(!Number.isInteger(raw.travelers)||Number(raw.travelers)<1||Number(raw.travelers)>100)throw Error('Confirm the number of travelers.');draft.travelers=raw.travelers as number}
+ if(raw.budget!==undefined){if(typeof raw.budget!=='number'||!Number.isFinite(raw.budget)||raw.budget<0)throw Error('Confirm the budget.');draft.budget=raw.budget}
+ if(draft.arrivalAirport&&!/^[A-Z]{3}$/.test(draft.arrivalAirport))throw Error('The airport code needs clarification.')
+ const complete=!!draft.destination?.trim()&&!!draft.origin?.trim()&&!!draft.start&&!!draft.end&&draft.start>=today&&draft.end>=draft.start&&!!draft.travelers&&!!draft.transport&&draft.transport!=='other'
+ if(data.ready===true&&!complete)throw Error('A destination, exact dates, starting point, transport and traveler count are needed before creating the trip.')
+ return {reply:data.reply,questions:data.questions as string[],ready:data.ready===true&&complete&&data.questions.length===0,draft}
+}
+export const intakePrompt=`Help shape a trip through a conversation before building its itinerary. Return ONLY fenced tatada-intake JSON: {"reply":"short friendly reply","questions":["up to three missing questions"],"ready":false,"draft":{"destination":"place","country":"country","origin":"city or airport","transport":"drive|rental-car|flight|rail|other","start":"YYYY-MM-DD","end":"YYYY-MM-DD","travelers":1,"companions":"solo/family/etc","budget":0,"goals":"all agreed goals and constraints","arrivalAirport":"IATA if confirmed"}}. Include only facts supplied or confirmed by the traveler across this conversation. Do not invent dates, airport codes, transport, budget or traveler count. Resolve relative dates using the supplied device date and timezone; ask if ambiguous. Ask only missing material questions, in natural language, at most three at a time. Use saved preferences without asking them again unless relevant; confirm an origin inferred from a profile. Budget is optional and in USD in this app; clarify currency if needed. Preserve accessibility/diet constraints and existing arrangements. Once destination, exact dates, origin, transport and traveler count are clear, questions should be empty and ready true; explain the proposed pacing briefly. Do not research prices, book, purchase or claim a booking here. Family visits, city holidays and driving trips need different rhythms. Never force flights/hotels onto an own-car day trip. No repeated generic breakfast/lunch/dinner routines. No identity documents or payment details.`

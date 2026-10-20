@@ -132,7 +132,8 @@ export const fmtRange = (a: string, b: string) => {
   const o: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', timeZone: 'UTC' }
   const s = new Date(a + 'T00:00:00Z')
   const e = new Date(b + 'T00:00:00Z')
-  const sameMonth = s.getUTCMonth() === e.getUTCMonth()
+  if (a === b) return s.toLocaleDateString('en-US', o)
+  const sameMonth = s.getUTCMonth() === e.getUTCMonth() && s.getUTCFullYear() === e.getUTCFullYear()
   return `${s.toLocaleDateString('en-US', o)} – ${sameMonth ? e.getUTCDate() : e.toLocaleDateString('en-US', o)}`
 }
 

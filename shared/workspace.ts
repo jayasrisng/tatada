@@ -31,6 +31,9 @@ const action = shape({
   outcomeData: optional(shape({ demo: bool, transfer: optional(bool) })), email: optional(email),
 })
 const trip = shape({
+  conversation:optional(list(shape({stopId:optional(str),id:str,from:oneOf('you','magic'),text:str,at:str}))),
+  planning: optional(shape({origin:str,transport:oneOf('drive','rental-car','flight','rail','other'),arriveBy:str,homeBy:str,goals:str})),
+  planGuide: optional(shape({checkedAt:str,summary:str,packing:strings,notes:list(shape({title:str,text:str,url:optional(str)}))})),
   timeZone: optional(str),
   journeyDone: optional(v => object(v) && Object.entries(v).every(([key, value]) => ['flight','arrival','stay','days','onward'].includes(key) && bool(value))),
   mapPlaces: optional(list(shape({name: str, lat: num, lon: num}))), presentation: optional(bool), destinationPoint: optional(shape({ lat: num, lon: num })),

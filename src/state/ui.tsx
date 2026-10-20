@@ -32,6 +32,8 @@ interface MagicOpts {
 }
 
 interface UI {
+  mapsApp:'google'|'apple'
+  setMapsApp:(app:'google'|'apple')=>void
   focusTripId?: string
   setFocusTrip: (id?: string) => void
   magic: (MagicOpts & { open: boolean }) | null
@@ -43,6 +45,11 @@ const Ctx = createContext<UI | null>(null)
 
 export function UIProvider({ children }: { children: ReactNode }) {
   const { state, workspace } = useStore()
+  const mapsKey=`${workspace.storageKey}:maps-app`
+  const readMapsApp=(): 'google'|'apple'=>{try{return localStorage.getItem(mapsKey)==='apple'?'apple':'google'}catch{return 'google'}}
+  const [mapsApp,setMaps]=useState(readMapsApp)
+  useEffect(()=>{setMaps(readMapsApp())},[mapsKey])
+  const setMapsApp=(app:'google'|'apple')=>{setMaps(app);try{localStorage.setItem(mapsKey,app)}catch{/* Keep this session's choice. */}}
   const modeKey = `${workspace.storageKey}:trip-mode`
   const [focusTripId, setFocus] = useState<string | undefined>(() => { try { const id = sessionStorage.getItem(modeKey); return state.trips.some(t => t.id === id) ? id! : undefined } catch { return undefined } })
   const setFocusTrip = (id?: string) => {
@@ -55,7 +62,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const opener = useRef<HTMLElement | null>(null)
   const openMagic = (o: MagicOpts = {}) => {
     opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    setMagic({ ...o, tripId: focusTripId ?? o.tripId, open: true })
+    setMagic({ ...o, tripId: o.tripId ?? focusTripId, open: true })
   }
   const closeMagic = () => {
     setMagic(null)
@@ -64,7 +71,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
     requestAnimationFrame(() => el?.isConnected && el.focus())
   }
   return (
-    <Ctx.Provider value={{ magic, openMagic, closeMagic, focusTripId, setFocusTrip }}>
+    <Ctx.Provider value={{ mapsApp,setMapsApp,magic, openMagic, closeMagic, focusTripId, setFocusTrip }}>
       {children}
     </Ctx.Provider>
   )

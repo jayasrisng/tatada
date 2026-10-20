@@ -26,6 +26,10 @@ export function App() {
   const { state, storageWarning } = useStore()
   const { magic, focusTripId, setFocusTrip } = useUI()
   const [root, id, tab, sub] = route
+  useEffect(() => {
+    if (focusTripId && root === 'new') { setFocusTrip(undefined); return }
+    if (focusTripId && root === 'trip' && id !== focusTripId && state.trips.some(t => t.id === id)) setFocusTrip(id)
+  }, [root, id, focusTripId, state.trips, setFocusTrip])
   useServerSync()
 
   useEffect(() => {

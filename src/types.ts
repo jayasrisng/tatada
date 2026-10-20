@@ -95,7 +95,25 @@ export interface SavedResearch {
 
 export type JourneyStep = 'flight' | 'arrival' | 'stay' | 'days' | 'onward'
 
+export interface TripPlanning {
+  origin: string
+  transport: 'drive' | 'rental-car' | 'flight' | 'rail' | 'other'
+  arriveBy: string
+  homeBy: string
+  goals: string
+}
+export interface PlanGuide {
+  checkedAt: string
+  summary: string
+  packing: string[]
+  notes: {title: string; text: string; url?: string}[]
+}
+export interface TripTurn {stopId?:string;id:string;from:'you'|'magic';text:string;at:string}
+
 export interface Trip {
+  conversation?:TripTurn[]
+  planning?: TripPlanning
+  planGuide?: PlanGuide
   timeZone?: string
   journeyDone?: Partial<Record<JourneyStep, boolean>>
   mapPlaces?: {name: string; lat: number; lon: number}[]

@@ -25,7 +25,7 @@ const CATS: { id: Category; label: string; icon: string }[] = [
 export function Notebook({ trip }: { trip: Trip }) {
   const {state} = useStore()
   const [printOpen,setPrintOpen] = useState<'flights'|'hotels'|null>(null)
-  const [cat, setCat] = useState<Category>(() => CATS.find(c => c.id === hashQuery().get('category'))?.id ?? 'flight')
+  const [cat, setCat] = useState<Category>(() => CATS.find(c => c.id === hashQuery().get('category'))?.id ?? (trip.planning?.transport==='drive'||trip.planning?.transport==='rental-car'?'move':'flight'))
   const [compare, setCompare] = useState(false)
   const [showResearch,setShowResearch] = useState(false)
   const opts = trip.options.filter((o) => o.category === cat)
@@ -36,6 +36,7 @@ export function Notebook({ trip }: { trip: Trip }) {
 
   return (
     <div className="notebook">
+      <p className="small dim">Your bookings and travel options. The itinerary is your timed plan for each day.</p>
       {printOpen && <NotebookPrintDialog id={trip.id} kind={printOpen} onClose={()=>setPrintOpen(null)}/>}
       <div className="cat-row" role="tablist">
         {CATS.map((c) => (
@@ -184,13 +185,13 @@ function Compare({ options }: { options: ResearchOption[] }) {
   )
 }
 
-/* No live research yet, so say so and offer real next steps instead of made-up options. */
+/* Offer a next step when there are no saved options in this section. */
 function NextSteps({ trip, cat }: { trip: Trip; cat: Category }) {
   const { openMagic } = useUI()
   const hasStay = trip.bookings.some((b) => b.kind === 'stay')
   return (
     <div className="next-steps">
-      <p className="dim">Live research isn't connected yet, so this page stays empty instead of showing made-up options.</p>
+      <p className="dim">No saved options here yet. Add your arrangements above, or keep planning your route in Itinerary.</p>
       {cat === 'stay' &&
         (hasStay ? (
           <p>

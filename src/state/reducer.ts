@@ -1,11 +1,13 @@
 import {withoutTrip} from '../travel/delete'
 import {applyProposal,undoProposal,type Proposal} from '../assistant/proposals'
-import type { AppState, JourneyStep, Booking, CanvasPos, ChatMessage, ChecklistItem, DecisionRecord, FoAction, Garment, ItineraryItem, Look, Memory, Profile, StayDetails, TravelPhoto, Trip } from '../types'
+import type { AppState, JourneyStep, Booking, CanvasPos, ChatMessage, ChecklistItem, DecisionRecord, FoAction, Garment, ItineraryItem, Look, Memory, Profile, PlanGuide, TripPlanning, StayDetails, TravelPhoto, Trip, TripTurn } from '../types'
 import { outcome } from '../magic/engine'
 import { uid } from './id'
 
 export type Act =
+  | {type:'appendTripConversation';tripId:string;turns:TripTurn[]}
   | {type:'deleteTrip';tripId:string}
+  | {type:'saveTripPlanning';tripId:string;planning:TripPlanning}
   | {type: 'applyProposal';id:string;proposal:Proposal}
   | {type: 'undoProposal';id:string}
   | { type: 'importTravelPhotos'; photos: TravelPhoto[]; trips: Trip[] }
@@ -49,6 +51,8 @@ export type Act =
   | { type: 'unkeepLook'; id: string }
   | { type: 'resetLooks'; tripId: string }
   | { type: 'saveItinerary'; tripId: string; item: ItineraryItem }
+  | { type: 'restoreItineraryPlan'; tripId:string; expected:string; items:ItineraryItem[]; guide?:PlanGuide }
+  | { type: 'saveItineraryPlan'; tripId: string; items: ItineraryItem[]; guide?: PlanGuide; replaceFrom?: string; replaceIds?: string[] }
   | { type: 'deleteItinerary'; tripId: string; id: string }
 
 const patchAction = (s: AppState, id: string, fn: (a: FoAction) => FoAction): AppState => ({
@@ -58,6 +62,7 @@ const patchAction = (s: AppState, id: string, fn: (a: FoAction) => FoAction): Ap
 
 export function reducer(s: AppState, a: Act): AppState {
   switch (a.type) {
+    case 'saveTripPlanning': return {...s,trips:s.trips.map(t=>t.id===a.tripId?{...t,planning:a.planning}:t)}
     case 'deleteTrip': return withoutTrip(s,a.tripId)
     case 'setTripTimeZone':
       return {...s,trips:s.trips.map(t=>t.id===a.tripId?{...t,timeZone:a.zone||undefined}:t)}
@@ -104,6 +109,8 @@ export function reducer(s: AppState, a: Act): AppState {
       }
     case 'toggleJourneyStep':
       return {...s,trips:s.trips.map(t=>t.id===a.tripId?{...t,journeyDone:{...t.journeyDone,[a.step]:!t.journeyDone?.[a.step]}}:t)}
+    case 'appendTripConversation':
+      return {...s,trips:s.trips.map(t=>t.id===a.tripId?{...t,conversation:[...new Map([...(t.conversation??[]),...a.turns].map(turn=>[turn.id,turn])).values()].slice(-100)}:t)}
     case 'toggleStop':
       return {...s, trips:s.trips.map(t=>t.id===a.tripId?{...t,itinerary:(t.itinerary??[]).map(i=>i.id===a.id?{...i,done:!i.done}:i)}:t)}
     case 'addMemory':
@@ -166,6 +173,18 @@ export function reducer(s: AppState, a: Act): AppState {
       return { ...s, looks: (s.looks ?? []).map((l) => (l.id === a.id ? { ...l, verdict: 'skip' } : l)) }
     case 'resetLooks':
       return { ...s, looks: (s.looks ?? []).filter((l) => l.tripId !== a.tripId) }
+    case 'restoreItineraryPlan':
+      return {...s,trips:s.trips.map(t=>t.id===a.tripId&&JSON.stringify([t.itinerary,t.planGuide])===a.expected?{...t,itinerary:a.items,planGuide:a.guide}:t)}
+    case 'saveItineraryPlan': {
+      return {...s,trips:s.trips.map(t=>{
+        if(t.id!==a.tripId)return t
+        const previous=t.itinerary??[]
+        const retained=previous.filter(i=>i.done||(a.replaceIds ? !a.replaceIds.includes(i.id) : !a.replaceFrom||i.day<a.replaceFrom))
+        const chosen=a.items.filter(i=>i.day>=t.start&&i.day<=t.end&&i.title.trim()&&!previous.some(old=>old.id===i.id&&old.done))
+        const merged=[...new Map([...retained,...chosen].map(i=>[i.id,i])).values()]
+        return {...t,planGuide:a.guide??t.planGuide,itinerary:merged.sort((x,y)=>(x.day+(x.time??'')).localeCompare(y.day+(y.time??'')))}
+      })}
+    }
     case 'saveItinerary':
       return {
         ...s,
