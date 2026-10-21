@@ -18,16 +18,16 @@ export function AccountLifecycle({exportOnly=false,deleteOnly=false}:{exportOnly
 
     <label className="small"><input type="checkbox" checked={includeVault} onChange={e=>setIncludeVault(e.target.checked)}/> Also delete this workspace’s encrypted passport / visa vault on this device</label>
     <label>Type DELETE to remove {connected?'active account data and this device’s copies':'this browser workspace and its confirmations'}<input className="chalk-input" aria-label="Confirm account deletion" value={confirm} onChange={e=>setConfirm(e.target.value)}/></label>
-    <Btn kind="ghost" disabled={busy||confirm!=='DELETE'} onClick={async()=>{setBusy(true);let resume:(()=>void)|undefined;let removedServer=serverDeleted;try{
+    <Btn kind="ghost" disabled={busy||confirm!=='DELETE'} onClick={async()=>{setBusy(true);let resume:(()=>void)|undefined;let removedServer=serverDeleted,identityPending=false;try{
       resume=await workspace.suspendSync?.()
-      if(connected&&!removedServer){await api('/api/account/delete',{method:'POST',json:{confirm}});removedServer=true;setServerDeleted(true)}
+      if(connected&&!removedServer){const result=await api<{identityDeletionPending?:boolean}>('/api/account/delete',{method:'POST',json:{confirm}});identityPending=result.identityDeletionPending===true;removedServer=true;setServerDeleted(true)}
       await clearOriginals(workspace.storageKey)
       if(includeVault)await deleteVault(workspace.storageKey)
       const selected=localStorage.getItem(OFFLINE_SELECTED)
       if(selected?.startsWith(workspace.storageKey+':offline:'))localStorage.removeItem(OFFLINE_SELECTED)
       const keys=Object.keys(localStorage).filter(k=>k===workspace.storageKey||k===workspace.storageKey+':recovery'||k===workspace.storageKey+':sync'||k.startsWith(workspace.storageKey+':offline:'))
       keys.forEach(k=>localStorage.removeItem(k));localStorage.setItem(workspace.storageKey+':deleted','1');sessionStorage.removeItem(`${workspace.storageKey}:trip-mode`);if(connected){saveSession();await signOutAuth().catch(()=>{})}
-      location.replace(`${location.pathname}#/welcome`);location.reload()
+      location.replace(`${location.pathname}#/welcome?account_deleted=1${identityPending?'&identity_cleanup=pending':''}`);location.reload()
     }catch(e){if(!removedServer)resume?.();setMessage(`Deletion needs attention: ${(e as Error).message}. Successfully removed records stay removed; retry remaining device cleanup.`);setBusy(false)}}}>confirm and delete account</Btn>
     <p className="small dim">Tatada retains active records until deletion. Local operator backups and hosting backups follow the retention policy in docs; deleting active data cannot erase already exported files or provider records.</p>{message&&<p role="status">{message}</p>}
   </>

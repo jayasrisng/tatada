@@ -237,6 +237,7 @@ function SignIn({ onDemo }: { onDemo: () => void }) {
               {AUTH_REASONS[reason??'']??AUTH_MESSAGES[auth]??AUTH_MESSAGES.error}
             </p>
           )}
+          {new URLSearchParams(location.hash.split('?')[1]??'').get('account_deleted')==='1'&&<p role="status">Active Tatada account data was deleted. {new URLSearchParams(location.hash.split('?')[1]??'').get('identity_cleanup')==='pending'?'Identity cleanup is queued and may need operator follow-up. ':''}Other-device copies and backups have separate removal controls.</p>}
           {info.authMethod==='supabase'?<EmailSignIn/>:<a className="btn btn-solid signin-btn" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>
             <Doodle name="arrow" size={20} />
             <span>Continue with Wajo</span>

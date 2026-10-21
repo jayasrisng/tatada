@@ -79,6 +79,7 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
     body: init.json !== undefined ? JSON.stringify(init.json) : undefined,
   }, path)
   const body = await res.json().catch(() => ({}))
+  if(res.status===401&&path!=='/api/session')window.dispatchEvent(new Event('tatada-auth-changed'))
   if (!res.ok) throw new ApiError(res.status, body.error ?? `Server error (${res.status})`,body.code)
   return body as T
 }
@@ -204,6 +205,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       })
       const body = await res.json().catch(() => ({}))
       if (res.status === 409) return { ok: false, version: body.version, state: body.state }
+      if(res.status===401)window.dispatchEvent(new Event('tatada-auth-changed'))
       if (!res.ok) throw new ApiError(res.status, body.error ?? 'Could not save to the server')
       return { ok: true, version: body.version }
     },
