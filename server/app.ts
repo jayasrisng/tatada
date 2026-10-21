@@ -5,6 +5,7 @@ import {withoutTrip} from '../src/travel/delete.ts'
 import type {AppState} from '../src/types.ts'
 import type {AmadeusTravel} from './travel.ts'
 import {ShareService} from './sharing.ts'
+import {BETA_VERSION} from './beta.ts'
 import {validateWorkspace} from '../shared/workspace.ts'
 import type { GmailConnection } from './gmail.ts'
 import type { IntelligenceService } from './intelligence.ts'
@@ -112,6 +113,7 @@ export function createApp(deps: Deps) {
   const shares = new ShareService(store,now)
   const live = actions.provider === 'live'
   const authLimit = new Limiter(10, 10 * 60_000, now, store, 'auth')
+  const betaLimit = new Limiter(60, 10 * 60_000, now, store, 'beta')
   const writeLimit = new Limiter(120, 60_000, now, store, 'write')
   const secure = deps.secureCookies ? '; Secure' : ''
   const loginCookiePath = deps.loginCookiePath ?? '/api/'
@@ -230,7 +232,7 @@ export function createApp(deps: Deps) {
         }
         if (method !== 'GET' && origin !== deps.allowedOrigin) return send(res, 403, { error: 'Request origin not allowed' })
       }
-      if (path === '/api/health' && method === 'GET') return send(res, 200, { ok: true, provider: actions.provider })
+      if (path === '/api/health' && method === 'GET') return send(res, 200, { ok: true, provider: actions.provider,version:BETA_VERSION })
       if (method !== 'GET' && req.headers['x-tatada'] !== '1') return send(res, 403, { error: 'Missing X-Tatada header' })
 
       // Owner mode: refuse anything that isn't this machine's own app (blocks LAN access and DNS rebinding).
@@ -253,6 +255,13 @@ export function createApp(deps: Deps) {
         store.update(() => {entry!.usedAt=now();entry!.expiresAt=Math.min(entry!.expiresAt,now())}) // older servers also reject consumed tombstones
         return send(res, 200, { sessionToken: newSession(entry!.userId) })
       }
+      if(deps.identity?.beta&&method==='POST'&&['/api/beta/invitation','/api/beta/activate'].includes(path)){
+        if(!betaLimit.allow(ip(req)))return send(res,429,{error:'Too many invitation requests. Try later.'})
+        const body=await readBody(req),token=typeof body.token==='string'?body.token:''
+        if(path==='/api/beta/invitation')return send(res,200,await deps.identity.beta.inspect(token))
+        await deps.identity.beta.activate(token,typeof body.email==='string'?body.email.trim():'',typeof body.password==='string'?body.password:'')
+        return send(res,200,{activated:true})
+      }
       const current = deps.owner||deps.identity ? undefined : sessionOf(req)
       let principal:Principal|undefined
       if(deps.identity){const header=String(req.headers.authorization??'');const token=header.startsWith('Bearer ')?header.slice(7):'';const verified=token?await deps.identity.verify(token):null;if(verified&&principalAllowed(store,verified,now()))principal=verified}
@@ -268,6 +277,14 @@ export function createApp(deps: Deps) {
         if(path==='/api/session'&&method==='POST')return send(res,200,{authMethod:'supabase',prototype:true,authenticated:true,passwordChangeRequired:true,foConnected:false})
         if(path!=='/api/auth/logout')return send(res,403,{error:'Change your temporary password and sign in again before using Tatada.',code:'PASSWORD_CHANGE_REQUIRED'})
       }
+      if(path.startsWith('/api/beta/')&&deps.identity?.beta){
+        if(!principal||principal.passwordChangeRequired)return send(res,401,{error:'Sign in to an activated account first.'})
+        if(path==='/api/beta/feedback'&&method==='POST')return send(res,201,await deps.identity.beta.feedback(principal.id,await readBody(req)))
+        if(principal.role!=='owner'||!freshMfa(store,principal,now()))return send(res,403,{error:'Owner access and recent authenticator verification are required.'})
+        if(path==='/api/beta/admin'&&method==='GET')return send(res,200,await deps.identity.beta.admin(principal.id,'list'))
+        if(path==='/api/beta/admin'&&method==='POST'){const body=await readBody(req);return send(res,200,await deps.identity.beta.admin(principal.id,String(body.action),body))}
+        return send(res,404,{error:'Not found'})
+      }
       if(principal&&method!=='GET')store.update(d=>{(d.authLastSeen??={})[principal!.sessionId]=now()})
       let userId = deps.owner ? OWNER_ID : deps.identity?(principal?ownerFor(store,principal,now(),path==='/api/session'&&method==='POST'):undefined):current?.s.userId
       const unlocked=!deps.identity||freshMfa(store,principal,now())
@@ -276,6 +293,7 @@ export function createApp(deps: Deps) {
       if(deps.identity&&path==='/api/auth/exchange')return send(res,410,{error:'Sign in with your invited email and password.'})
       if(deps.identity&&path==='/api/security/status')return principal?send(res,200,{unlocked,expiresAt:unlocked?principal.mfaAt!+MFA_WINDOW:0,hasTotp:principal.hasTotp}):send(res,401,{error:'Sign in with your email first.'})
       if(deps.identity&&path==='/api/security/lock'&&method==='POST'){if(!principal)return send(res,401,{error:'Sign in first.'});store.update(d=>{(d.authLocks??={})[principal!.sessionId]=now()});return send(res,200,{unlocked:false})}
+      if(principal?.role==='owner'&&path==='/api/account/delete')return send(res,403,{error:'Owner removal requires an offline recovery plan.'})
       if(deps.identity&&path==='/api/account/link'&&method==='POST'){if(!principal)return send(res,401,{error:'Sign in with your invited account first.'});needMfa();if(!authLimit.allow(`link:${principal.id}`))return send(res,429,{error:'Too many linking attempts. Try later.'});const body=await readBody(req);userId=linkOwner(store,principal,typeof body.key==='string'?body.key:'',now());await store.flush();return send(res,200,{linked:true})}
       if(deps.identity&&(/^\/api\/(print|gmail|calendar|account\/(?:export|delete|recovery-key)|shares)(?:\/|$)/.test(path))&&path!=='/api/gmail/callback'){if(!principal)return send(res,401,{error:'Sign in with your invited account first.'});needMfa()}
       if(deps.identity&&(path==='/api/auth/wajo/link'||/^\/api\/fo\/(?:disconnect|test-refresh|diagnostics|oauth-observations|trace)$/.test(path)))needMfa()
@@ -284,7 +302,7 @@ export function createApp(deps: Deps) {
       /* ── session & sign-in ── */
 
       if (path === '/api/session' && method === 'POST') {
-        if (userId) return send(res, 200, status(userId))
+        if (userId) return send(res, 200, {...status(userId),betaOwner:principal?.role==='owner',beta:!!deps.identity?.beta,version:BETA_VERSION})
         if(deps.identity)return send(res,200,status())
         // Demo accounts exist only in mock mode, and say so.
         if (!live) {

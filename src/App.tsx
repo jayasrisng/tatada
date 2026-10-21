@@ -1,3 +1,4 @@
+import {BetaFeedback} from './components/Beta'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useStore } from './state/store'
 import { go, useRoute, useUI } from './state/ui'
@@ -83,6 +84,7 @@ export function App() {
         </div>
       )}
       <MagicSheet />
+      <BetaFeedback/>
     </div>
   )
 }

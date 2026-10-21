@@ -1,3 +1,4 @@
+import {InviteActivation} from './Beta'
 import {ChangePassword} from './ChangePassword'
 import {EmailSignIn} from './EmailSignIn'
 import {AccountRecovery} from './AccountRecovery'
@@ -115,6 +116,7 @@ export function AuthGate() {
 
   useEffect(()=>{if(needsLoad.current&&accountId)setLoadRevision(n=>n+1);else if(latest.current&&!blocked.current)onChange(latest.current)},[retry,onChange])
 
+  if(route[0]==='invite'&&route[1])return <InviteActivation token={route[1]}/>
   if(route[0]==='shared'&&route[1])return <SharedTripView token={route[1]}/>
   const offlinePack = loadSelectedPack()
   if (offlinePack && (!loaded||!accountId) && (!navigator.onLine || (!browserOnly && info.checked && !info.available))) return <OfflineTrip pack={offlinePack}/>
@@ -241,6 +243,7 @@ function SignIn({ onDemo }: { onDemo: () => void }) {
           )}
           {new URLSearchParams(location.hash.split('?')[1]??'').get('account_deleted')==='1'&&<p role="status">Active Tatada account data was deleted. {new URLSearchParams(location.hash.split('?')[1]??'').get('identity_cleanup')==='pending'?'Identity cleanup is queued and may need operator follow-up. ':''}Other-device copies and backups have separate removal controls.</p>}
           {new URLSearchParams(location.hash.split('?')[1]??'').get('password_changed')==='1'&&<p role="status">Password changed. Sign in with your new password.</p>}
+          {new URLSearchParams(location.hash.split('?')[1]??'').get('invite_activated')==='1'&&<p role="status">Account activated. Sign in with your chosen email label and password.</p>}
           {info.authMethod==='supabase'?<EmailSignIn/>:<a className="btn btn-solid signin-btn" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>
             <Doodle name="arrow" size={20} />
             <span>Continue with Wajo</span>
@@ -248,7 +251,7 @@ function SignIn({ onDemo }: { onDemo: () => void }) {
           <button className="linkbtn" onClick={onDemo}>explore a sample trip first</button>{info.authMethod!=='supabase'&&<AccountRecovery/>}
           <p className="small dim">{info.authMethod==='supabase'?'Sign in with the same invited email account on each device. To migrate an older Wajo workspace, unlock Account security and link its saved recovery key before adding new work.':<>Returning on a new device? Restore your existing workspace before reconnecting if Wajo does not provide a verified account identity. A new connection can create a separate workspace; Tatada never merges accounts by a typed email.</>}</p>
           <p className="dim small signin-fine">
-            {info.authMethod==='supabase'?'Tatada uses administrator-provisioned email and password accounts. Wajo is an optional connection after sign-in.':'Tatada signs you in with your Wajo account. Your Wajo password and tokens never reach this page.'}
+            {info.authMethod==='supabase'?'Tatada uses private invitation accounts with password authentication. Wajo is an optional connection after sign-in.':'Tatada signs you in with your Wajo account. Your Wajo password and tokens never reach this page.'}
           </p>
         </div>
       </main>

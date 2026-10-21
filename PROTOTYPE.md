@@ -1,3 +1,5 @@
+> For the current automatic-invitation beta (owner plus ten testers), use [BETA.md](BETA.md). This earlier manual-provisioning document is retained for administrator-assisted recovery and historical context.
+
 # Tatada v0.1 private prototype — owner procedure
 
 This candidate updates `melon/v0.1-alpha` from `22f026b`. It supports at most **10 active invited Supabase UIDs**. There is no public registration, automated email password recovery, payment processing, document cloud synchronization, public share-link access or cloud-print delivery. PDF download and account-specific Epson settings remain available. Wajo is optional and unsafe Fo execution remains disabled.

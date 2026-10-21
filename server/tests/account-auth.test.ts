@@ -1,3 +1,5 @@
+import {emptyState} from '../../src/data/seed.ts'
+import {randomUUID} from 'node:crypto'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {SupabaseIdentity,ownerFor,linkOwner,freshMfa,principalAllowed,MFA_WINDOW,finishAuthDeletions,type IdentityGateway,type Principal} from '../account-auth.ts'
@@ -136,4 +138,33 @@ test('password endpoint requires recent TOTP for enrolled users and never create
  const body={currentPassword:'Synthetic-initial-only!',password:'Synthetic-rotated-only!'}
  f.lock();assert.equal((await f.request('alice','/api/auth/password','POST',body)).status,403);assert.equal(calls,0)
  f.principals.alice.hasTotp=false;assert.equal((await f.request('alice','/api/auth/password','POST',body)).status,200);assert.equal(calls,1);assert.equal(f.store.data.authOwners,undefined)
+})
+
+test('beta owner interface requires live owner role plus fresh TOTP; regular users retain feedback access',async()=>{
+ const f=fixture(true),calls:string[]=[];f.identity.beta={inspect:async()=>({role:'tester'}),activate:async()=>{},admin:async(id,action)=>{calls.push(`${id}:${action}`);return {invitations:[],feedback:[]}},feedback:async(id)=>{calls.push(`${id}:feedback`);return {id:'synthetic-feedback'}}}
+ f.principals.alice.role='owner';f.principals.bob.role='tester'
+ for(const token of ['alice','bob'])await f.request(token,'/api/session','POST')
+ assert.equal((await f.request('','/api/beta/admin')).status,401)
+ assert.equal((await f.request('bob','/api/beta/admin')).status,403);assert.equal(calls.length,0)
+ assert.equal((await f.request('alice','/api/beta/admin')).status,200);assert.deepEqual(calls,[`${uid}:list`])
+ assert.equal((await f.request('bob','/api/beta/feedback','POST',{message:'Synthetic UI issue'})).status,201)
+ f.lock();assert.equal((await f.request('alice','/api/beta/admin','POST',{action:'create'})).status,403)
+ assert.equal((await f.request('alice','/api/account/delete','POST')).status,403)
+ assert.equal((await f.request('','/api/beta/invitation','POST',{token:'synthetic'})).status,200)
+})
+
+test('ten independent concurrent users retain separate cloud workspaces across conflicts and renewed sessions',async()=>{
+ const f=fixture(true),labels=Array.from({length:10},(_,i)=>`synthetic-tester-${i}`)
+ for(const label of labels)f.principals[label]={...p,id:randomUUID(),sessionId:randomUUID(),role:'tester'}
+ await Promise.all(labels.map(label=>f.request(label,'/api/session','POST')))
+ const saved=await Promise.all(labels.map((label,i)=>{const state=emptyState();state.onboarded=true;state.profile.name=`Synthetic profile ${i}`;state.items=[{id:`synthetic-task-${i}`,text:`Private task ${i}`,phase:'prepare',kind:'task',done:false}];return f.request(label,'/api/workspace','PUT',{baseVersion:0,state})}))
+ for(const result of saved)assert.equal(result.status,200)
+ const reads=await Promise.all(labels.map(label=>f.request(label,'/api/workspace')))
+ for(let i=0;i<10;i++){assert.equal(reads[i].body.state.profile.name,`Synthetic profile ${i}`);assert.equal(reads[i].body.state.items[0].id,`synthetic-task-${i}`)}
+ const conflict=await Promise.all([1,2].map(()=>f.request(labels[0],'/api/workspace','PUT',{baseVersion:1,state:reads[0].body.state})));assert.deepEqual(conflict.map(v=>v.status).sort(),[200,409])
+ await f.request(labels[0],'/api/auth/logout','POST',{});f.principals[labels[0]].sessionId=randomUUID();await f.request(labels[0],'/api/session','POST')
+ f.store.data=JSON.parse(JSON.stringify(f.store.data)) // persisted JSON round-trip
+ assert.equal((await f.request(labels[0],'/api/workspace')).body.state.items[0].id,'synthetic-task-0')
+ for(let i=1;i<10;i++)assert.equal((await f.request(labels[i],'/api/workspace')).body.version,1)
+ assert.equal(new Set(labels.map(label=>f.store.data.authOwners![f.principals[label].id].owner)).size,10)
 })

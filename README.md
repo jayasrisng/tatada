@@ -1,3 +1,5 @@
+> Current private-beta release and owner instructions: [BETA.md](BETA.md). Automatic one-use invitations support ten testers plus a separate owner. Production promotion remains gated on verified recovery and real Auth checks.
+
 # Tatada ✶
 
 **Pronounced “Ta-tuh-duh”**—the feeling of a little magic falling into place.
@@ -167,7 +169,7 @@ and must be kept privately. They do not recover an on-device vault passphrase.
 
 ### Release gates and rollback
 
-The release branch must pass typecheck, build, deterministic tests, dependency audit and desktop/mobile Playwright. Browser coverage distinguishes sample journeys and controlled API fixtures from live provider evidence. Real verified-email login and TOTP must pass on two disposable accounts and survive refresh/device changes. Optional Wajo connection must remain attached to the same owner. Legacy workspace linking consumes its existing recovery key once; never merge by typed email.
+The release branch must pass typecheck, build, deterministic tests, dependency audit and desktop/mobile Playwright. Browser coverage distinguishes sample journeys and controlled API fixtures from live provider evidence. Real invitation-backed password login and TOTP must pass on two disposable accounts and survive refresh/device changes. Optional Wajo connection must remain attached to the same owner. Legacy workspace linking consumes its existing recovery key once; never merge by typed email.
 
 Before promotion, verify the Google OAuth application's publishing/test-user status and exact redirect URIs, actual Supabase backup availability and a restore drill in an isolated target. Application export or an in-memory repository test does not prove database backups. Keep the existing sealing secret and runtime row unchanged; these changes add optional JSON fields without replacing account IDs or recovery records. Do not deploy while a required gate is unresolved.
 

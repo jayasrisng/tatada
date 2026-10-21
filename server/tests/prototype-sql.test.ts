@@ -74,3 +74,43 @@ test('declarative schema agrees with migration and browser roles cannot read inv
  await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({role:'anon'})]);assert.deepEqual((await db.query('select tatada_private.auth_session_active($1,$2) v',[id,sid])).rows[0],{v:{active:false}})
  }finally{await db.close()}
 })
+
+const betaMigration=readFileSync(new URL('../../supabase/migrations/20261021211841_beta_invitations_feedback.sql',import.meta.url),'utf8')
+async function betaFixture(){const db=await fixture();await db.exec(betaMigration);await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({role:'service_role'})]);return db}
+async function beta(db:PGlite,action:string,actor:string|null,args:Record<string,unknown>={}){return(await db.query<{v:any}>('select public.tatada_beta($1,$2,$3) v',[action,actor,args])).rows[0].v}
+async function claimed(db:PGlite,hash:string){const nonce=randomUUID(),link=await beta(db,'begin',null,{hash,nonce}),id=randomUUID();assert.equal(link.error,undefined);await db.transaction(async tx=>{await tx.query('insert into auth.users(id,encrypted_password,raw_app_meta_data)values($1,$2,$3)',[id,'synthetic-claimed-hash',{provider:'email'}]);await tx.query('update auth.users set raw_app_meta_data=raw_app_meta_data||$2 where id=$1',[id,{...metadata(),tatada_beta_invitation:link.id,tatada_beta_claim:nonce,tatada_email_ownership_verified:false}])});return id}
+test('beta owner bootstrap is one-use and owner is separate from ten reserved tester slots',async()=>{
+ const db=await betaFixture();try{
+ const ownerHash='a'.repeat(64);await beta(db,'bootstrap',null,{hash:ownerHash});assert.equal((await beta(db,'bootstrap',null,{hash:'b'.repeat(64)})).error,'owner_exists')
+ const owner=await claimed(db,ownerHash);assert.equal((await verify(db,owner,await session(db,owner))).requiresPasswordChange,false)
+ assert.equal((await db.query<{slot:number}>("select slot from tatada_private.prototype_invites where user_id=$1",[owner])).rows[0].slot,0)
+ for(let n=1;n<=10;n++)assert.equal((await beta(db,'create',owner,{hash:n.toString(16).padStart(64,'0')})).slot,n)
+ assert.equal((await beta(db,'create',owner,{hash:'f'.repeat(64)})).error,'capacity')
+ const tester=await claimed(db,'1'.padStart(64,'0'));assert.equal((await beta(db,'create',tester,{hash:'c'.repeat(64)})).error,'owner_required')
+ await db.query('update auth.users set raw_user_meta_data=$2 where id=$1',[tester,{role:'owner',tatada_prototype:true}]);assert.equal((await beta(db,'list',tester)).error,'owner_required')
+ assert.equal((await beta(db,'begin',null,{hash:'1'.padStart(64,'0'),nonce:randomUUID()})).error,'invalid_invitation')
+ }finally{await db.close()}
+})
+test('revocation preserves user rows, immediately denies sessions, and frees a slot; expiration and racing claims fail closed',async()=>{
+ const db=await betaFixture();try{
+ await beta(db,'bootstrap',null,{hash:'a'.repeat(64)});const owner=await claimed(db,'a'.repeat(64))
+ const invitation=await beta(db,'create',owner,{hash:'b'.repeat(64)}),tester=await claimed(db,'b'.repeat(64)),sid=await session(db,tester);assert.equal((await verify(db,tester,sid)).active,true)
+ await beta(db,'revoke',owner,{id:invitation.id});assert.equal((await verify(db,tester,sid)).active,false);assert.equal((await db.query('select id from auth.users where id=$1',[tester])).rows.length,1)
+ await db.query('update auth.users set encrypted_password=$2 where id=$1',[tester,'synthetic-login-reencryption']);assert.equal((await verify(db,tester,await session(db,tester))).active,false)
+ const next=await beta(db,'create',owner,{hash:'c'.repeat(64)});assert.equal(next.slot,1)
+ const race=await Promise.all([1,2].map(()=>beta(db,'begin',null,{hash:'c'.repeat(64),nonce:randomUUID()})));assert.equal(race.filter(v=>!v.error).length,1)
+ await beta(db,'revoke',owner,{id:next.id})
+ const expiry=await beta(db,'create',owner,{hash:'d'.repeat(64)});await db.query("update tatada_private.beta_invitations set expires_at=clock_timestamp()-interval '1 second' where id=$1",[expiry.id]);assert.equal((await beta(db,'inspect',null,{hash:'d'.repeat(64)})).error,'invalid_invitation');assert.equal((await beta(db,'create',owner,{hash:'e'.repeat(64)})).slot,1)
+ for(const role of ['anon','authenticated']){await db.exec(`set role ${role}`);await assert.rejects(()=>beta(db,'list',owner),/permission denied/);await assert.rejects(()=>db.query('select * from tatada_private.beta_invitations'),/permission denied/);await db.exec('reset role')}
+ }finally{await db.close()}
+})
+test('feedback is bounded, owner-only for review, and regular users cannot resolve other reports',async()=>{
+ const db=await betaFixture();try{
+ await beta(db,'bootstrap',null,{hash:'a'.repeat(64)});const owner=await claimed(db,'a'.repeat(64));await beta(db,'create',owner,{hash:'b'.repeat(64)});const tester=await claimed(db,'b'.repeat(64))
+ const input={category:'saving',severity:'critical',message:'The save button does not finish.',page:'/trip/:id',version:'synthetic-fixture',device:'phone'}
+ const report=await beta(db,'feedback',tester,input);assert.ok(report.id);assert.equal((await beta(db,'list',tester)).error,'owner_required');assert.equal((await beta(db,'resolve',tester,{id:report.id})).error,'owner_required')
+ const view=await beta(db,'list',owner);assert.equal(view.feedback[0].severity,'critical');assert.equal(view.invitations[0].token_hash,undefined);assert.equal(view.invitations[0].claim_nonce,undefined)
+ await beta(db,'resolve',owner,{id:report.id,status:'resolved'});assert.equal((await beta(db,'list',owner)).feedback[0].status,'resolved')
+ for(let n=1;n<5;n++)await beta(db,'feedback',tester,input);assert.equal((await beta(db,'feedback',tester,input)).error,'rate')
+ }finally{await db.close()}
+})

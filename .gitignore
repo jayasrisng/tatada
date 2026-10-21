@@ -30,3 +30,7 @@ supabase/.temp
 !/scripts/e2e-server.mjs
 
 !/scripts/prototype-admin.mjs
+
+!/scripts/beta-owner.mjs
+
+!/scripts/backup-verify.mjs

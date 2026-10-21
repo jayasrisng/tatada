@@ -1,3 +1,4 @@
+import {BetaOwner} from '../components/Beta'
 import {FEATURES} from '../features'
 import {SecurityGate} from '../components/SecurityGate'
 import {AccountSecurity} from '../components/AccountSecurity'
@@ -113,4 +114,4 @@ function WelcomeContent() {
   )
 }
 
-export function Welcome(){return <SecurityGate><AccountSecurity/><WelcomeContent/></SecurityGate>}
+export function Welcome(){return <SecurityGate><AccountSecurity/><BetaOwner/><WelcomeContent/></SecurityGate>}

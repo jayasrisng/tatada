@@ -46,6 +46,9 @@ export const ACTIVE: ServerStatus[] = ['approved', 'sending', 'send_uncertain', 
 
 export interface ServerInfo {
   authMethod?:'supabase'|'legacy'
+  beta?:boolean
+  betaOwner?:boolean
+  version?:string
   prototype?:boolean
   passwordChangeRequired?:boolean
   /** False until the first status check finishes. */

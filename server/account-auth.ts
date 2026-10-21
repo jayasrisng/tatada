@@ -1,18 +1,19 @@
+import {SupabaseBeta,type BetaGateway} from './beta.ts'
 import {Buffer} from 'node:buffer'
 import {randomToken,sha256,canonical} from './crypto.ts'
 import {ActionError} from './actions.ts'
 import type {Store} from './store.ts'
-export interface Principal {id:string;sessionId:string;sessionCreatedAt:number;mfaAt?:number;hasTotp:boolean;passwordChangeRequired?:boolean;passwordChange?:{nonce:string;changedAt:string|null}}
-export interface IdentityGateway {publicConfig:{mode:'supabase';url:string;publicKey:string;prototype?:true;login?:'password';testerLimit?:10};verify(token:string):Promise<Principal|null>;changePassword?(token:string,p:Principal,current:string,password:string):Promise<void>;deleteUser?(id:string):Promise<void>}
+export interface Principal {id:string;sessionId:string;sessionCreatedAt:number;mfaAt?:number;hasTotp:boolean;role?:'owner'|'tester';passwordChangeRequired?:boolean;passwordChange?:{nonce:string;changedAt:string|null}}
+export interface IdentityGateway {publicConfig:{mode:'supabase';url:string;publicKey:string;prototype?:true;login?:'password';testerLimit?:10;beta?:true};beta?:BetaGateway;verify(token:string):Promise<Principal|null>;changePassword?(token:string,p:Principal,current:string,password:string):Promise<void>;deleteUser?(id:string):Promise<void>}
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export const MFA_WINDOW=5*60_000
 /** getUser authoritatively verifies the token before any JWT claim is used.
  * The service-only RPC additionally rejects externally revoked/expired sessions.
  */
 export class SupabaseIdentity implements IdentityGateway {
- publicConfig:IdentityGateway['publicConfig']
+ publicConfig:IdentityGateway['publicConfig'];beta:BetaGateway
  private key:string;private request:typeof fetch
- constructor(o:{url:string;publicKey:string;serviceKey:string;fetch?:typeof fetch}){const url=new URL(o.url);if(url.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(url.hostname))throw Error('Auth requires HTTPS');if(!o.publicKey||!o.serviceKey||o.publicKey===o.serviceKey||o.publicKey.startsWith('sb_secret_'))throw Error('Separate public and server authentication keys are required');try{if(JSON.parse(Buffer.from(o.publicKey.split('.')[1]??'','base64url').toString()).role==='service_role')throw new ActionError(500,'A service key cannot be exposed as a public key')}catch(e){if(e instanceof ActionError)throw e}this.publicConfig={mode:'supabase',url:url.origin,publicKey:o.publicKey,prototype:true,login:'password',testerLimit:10};this.key=o.serviceKey;this.request=o.fetch??fetch}
+ constructor(o:{url:string;publicKey:string;serviceKey:string;fetch?:typeof fetch}){const url=new URL(o.url);if(url.protocol!=='https:'&&!['localhost','127.0.0.1'].includes(url.hostname))throw Error('Auth requires HTTPS');if(!o.publicKey||!o.serviceKey||o.publicKey===o.serviceKey||o.publicKey.startsWith('sb_secret_'))throw Error('Separate public and server authentication keys are required');try{if(JSON.parse(Buffer.from(o.publicKey.split('.')[1]??'','base64url').toString()).role==='service_role')throw new ActionError(500,'A service key cannot be exposed as a public key')}catch(e){if(e instanceof ActionError)throw e}this.publicConfig={mode:'supabase',url:url.origin,publicKey:o.publicKey,prototype:true,login:'password',testerLimit:10,beta:true};this.beta=new SupabaseBeta({url:url.origin,serviceKey:o.serviceKey,fetch:o.fetch});this.key=o.serviceKey;this.request=o.fetch??fetch}
  async deleteUser(id:string){if(!UUID.test(id))throw Error('Invalid account ID');const response=await this.request(`${this.publicConfig.url}/auth/v1/admin/users/${id}`,{method:'DELETE',headers:{apikey:this.key,authorization:`Bearer ${this.key}`},signal:AbortSignal.timeout(10000)});if(!response.ok&&response.status!==404)throw Error('Identity deletion is pending.')}
  async changePassword(token:string,p:Principal,current:string,password:string){
   if(!p.passwordChangeRequired||!p.passwordChange||!current||password.length<12||password.length>1024||current.length>1024||password===current)throw new ActionError(400,'Use your current password and a different new password of at least 12 characters.')
@@ -35,13 +36,13 @@ export class SupabaseIdentity implements IdentityGateway {
   if(!user.id||!UUID.test(user.id)||!user.email_confirmed_at||claims.sub!==user.id||claims.iss!==`${this.publicConfig.url}/auth/v1`||claims.role!=='authenticated'||typeof claims.exp!=='number'||claims.exp*1000<=Date.now()||typeof claims.session_id!=='string'||!UUID.test(claims.session_id))return null
   const active=await this.request(`${this.publicConfig.url}/rest/v1/rpc/tatada_prototype_session_active`,{method:'POST',headers:{apikey:this.key,authorization:`Bearer ${this.key}`,'content-type':'application/json'},body:JSON.stringify({p_user:user.id,p_session:claims.session_id}),signal:AbortSignal.timeout(10000)})
   if(!active.ok)throw new ActionError(503,'Authentication session checks need server configuration.')
-  const session=await active.json() as {active?:boolean;invited?:boolean;requiresPasswordChange?:boolean;resetNonce?:string;passwordChangedAt?:string|null;createdAt?:number}
+  const session=await active.json() as {active?:boolean;invited?:boolean;role?:'owner'|'tester';requiresPasswordChange?:boolean;resetNonce?:string;passwordChangedAt?:string|null;createdAt?:number}
   if(session.active!==true||session.invited!==true||typeof session.requiresPasswordChange!=='boolean'||typeof session.createdAt!=='number'||!Number.isFinite(session.createdAt))return null
   if(session.requiresPasswordChange&&(typeof session.resetNonce!=='string'||!(session.passwordChangedAt===null||typeof session.passwordChangedAt==='string')))return null
   const methods=Array.isArray(claims.amr)?claims.amr as {method?:string;timestamp?:number}[]:[]
   const hasTotp=user.factors?.some(f=>f.factor_type==='totp'&&f.status==='verified')??false
   const mfaAt=claims.aal==='aal2'&&hasTotp?Math.max(0,...methods.filter(m=>m&&['totp','mfa/totp'].includes(m.method??'')&&typeof m.timestamp==='number'&&Number.isFinite(m.timestamp)).map(m=>m.timestamp!*1000)):0
-  return {id:user.id,sessionId:claims.session_id,sessionCreatedAt:session.createdAt,hasTotp,mfaAt:mfaAt||undefined,passwordChangeRequired:session.requiresPasswordChange,...session.requiresPasswordChange?{passwordChange:{nonce:session.resetNonce!,changedAt:session.passwordChangedAt!}}:{}}
+  return {id:user.id,role:session.role==='owner'?'owner':'tester',sessionId:claims.session_id,sessionCreatedAt:session.createdAt,hasTotp,mfaAt:mfaAt||undefined,passwordChangeRequired:session.requiresPasswordChange,...session.requiresPasswordChange?{passwordChange:{nonce:session.resetNonce!,changedAt:session.passwordChangedAt!}}:{}}
  }
 }
 export function principalAllowed(store:Store,p:Principal,now=Date.now()){const last=store.data.authLastSeen?.[p.sessionId]??p.sessionCreatedAt;return store.data.authDeletedUsers?.[p.id]===undefined&&store.data.authRevokedSessions?.[p.sessionId]===undefined&&(store.data.authRevokedBefore?.[p.id]===undefined||p.sessionCreatedAt>store.data.authRevokedBefore[p.id])&&now-p.sessionCreatedAt<30*86400000&&now-last<14*86400000}
