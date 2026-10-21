@@ -301,6 +301,7 @@ test('parallel OAuth attempts keep separate CSRF cookies and exchange bindings; 
   assert.ok(code);assert.equal(params.get('auth_attempt'),index?c:a)
   assert.equal((await b.call('/api/auth/exchange',{method:'POST',json:{code,binding:'wrong'}})).body.code,'exchange_browser_mismatch')
   assert.equal((await b.call('/api/auth/exchange',{method:'POST',json:{code,binding}})).status,200)
+  assert.ok(t.store.data.sessionExchanges![sha256(code!)].expiresAt<=t.clock.t,'legacy rollback code must reject a consumed exchange as expired')
   assert.equal((await b.call('/api/auth/exchange',{method:'POST',json:{code,binding}})).body.code,'exchange_used')
  }
  assert.equal((await b.call('/api/auth/exchange',{method:'POST',json:{code:'missing',binding:one}})).body.code,'exchange_invalid')

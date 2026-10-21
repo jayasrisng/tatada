@@ -241,7 +241,7 @@ export function createApp(deps: Deps) {
         const entry = store.data.sessionExchanges?.[sha256(code)]
         const failure = !entry ? 'exchange_invalid' : entry.binding !== binding ? 'exchange_browser_mismatch' : entry.usedAt!==undefined ? 'exchange_used' : entry.expiresAt <= now() ? 'exchange_expired' : undefined
         if(failure){console.info('[tatada auth]',failure);return send(res,401,{error:failure==='exchange_browser_mismatch'?'This sign-in belongs to a different browser. Start a new sign-in here.':failure==='exchange_used'?'This sign-in was already used. Start a new sign-in.':'This sign-in expired or is invalid. Start a new sign-in.',code:failure})}
-        store.update(() => {entry!.usedAt=now()})
+        store.update(() => {entry!.usedAt=now();entry!.expiresAt=Math.min(entry!.expiresAt,now())}) // older servers also reject consumed tombstones
         return send(res, 200, { sessionToken: newSession(entry!.userId) })
       }
       const current = deps.owner ? undefined : sessionOf(req)
