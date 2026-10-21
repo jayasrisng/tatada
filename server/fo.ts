@@ -61,6 +61,8 @@ export interface TraceEntry {
 }
 
 export interface VoiceJoin {signalUrl:string;participantToken:string;iceTransportPolicy: 'relay'|'all'}
+export interface FoConversation { conversationId: string; title?: string; channel?: string; startedAt?: string }
+
 export interface FoAdapter {
   joinVoice?(userId:string):Promise<VoiceJoin>
   startVoice?(userId: string): Promise<{ links: string[]; message: string }>
@@ -73,7 +75,7 @@ export interface FoAdapter {
   ask(userId: string, a: { message: string; conversationId?: string; newConversation?: boolean }): Promise<FoReply>
   reply(userId: string, conversationId: string, waitSeconds: number): Promise<FoReply>
   conversation(userId: string, conversationId: string): Promise<TranscriptEntry[]>
-  conversations(userId: string): Promise<{ conversationId: string }[]>
+  conversations(userId: string): Promise<FoConversation[]>
   connected(userId: string): boolean
 }
 
@@ -294,10 +296,10 @@ export class LiveFoAdapter implements FoAdapter {
     const p = payload(r)
     const list = Array.isArray(p) ? p : ((p as Record<string, unknown> | undefined)?.conversations as unknown[] | undefined)
     if (Array.isArray(list)) {
-      return list
-        .map((c) => str((c as Record<string, unknown>)?.conversationId) ?? str((c as Record<string, unknown>)?.id))
-        .filter((id): id is string => !!id)
-        .map((conversationId) => ({ conversationId }))
+      return list.flatMap((value) => {
+        const row=value as Record<string,unknown>,conversationId=str(row?.conversationId)??str(row?.id)
+        return conversationId ? [{conversationId,title:str(row.title)?.slice(0,180),channel:str(row.channel)?.slice(0,60),startedAt:str(row.startedAt)}] : []
+      })
     }
     return [...textOf(r).matchAll(/conversationId["']?\s*[:=]\s*["']?([\w-]+)/g)].map((m) => ({ conversationId: m[1] }))
   }

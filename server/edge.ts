@@ -45,7 +45,7 @@ export function createEdgeHandler(options: EdgeOptions) {
   const publicUrl = options.publicUrl.replace(/\/$/, '')
   const prefix = new URL(publicUrl).pathname
   const resource = options.resource ?? 'https://mcp.api.wajo.ai/fo'
-  const cors = { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true', 'access-control-allow-headers': 'Content-Type, X-Tatada, Authorization', 'access-control-allow-methods': 'GET, POST, PATCH, PUT, OPTIONS', vary: 'Origin' }
+  const cors = { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true', 'access-control-allow-headers': 'Content-Type, X-Tatada, Authorization', 'access-control-allow-methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS', vary: 'Origin' }
   const error = (text: string, status = 503) => Response.json({ error: text }, { status, headers: { ...cors, 'cache-control': 'no-store', 'retry-after': '2' } })
   const intelligence=options.research?new IntelligenceService(options.research):undefined
   const travel=options.travel?new AmadeusTravel(options.travel):undefined

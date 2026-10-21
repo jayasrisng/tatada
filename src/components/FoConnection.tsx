@@ -132,7 +132,7 @@ export function FoConnection() {
     }
   }
 
-  if (browserOnly) return <section className="fo-connection"><h2 className="section-h">Fo · paused</h2><p className="dim">Sign-in and live actions are on hold. Your trips and closet save in this browser. Magic can demonstrate scripted actions without sending messages or bookings.</p></section>
+  if (browserOnly) return <section className="fo-connection"><h2 className="section-h">Fo · connect the live app</h2><p className="dim">This browser-only build saves your trips and closet here. Wajo sign-in and live actions require the connected Tatada backend.</p></section>
 
   if (workspace.storageKey.endsWith(':preview')) return <section className="fo-connection"><h2 className="section-h">Fo preview</h2><p className="dim">This sample workspace uses simulated actions. Return to live Tatada to authorize Fo.</p></section>
 
@@ -154,8 +154,10 @@ export function FoConnection() {
         <p className="dim">Mock Fo: every request goes through the real approval and verification pipeline, but no email is sent. For the local live presentation, run <code>npm run server:fo</code>.</p>
       ) : info.foConnected ? (
         <>
-          <p>Fo is connected.</p>
+          <p>Your Wajo Fo is connected. Chat requests use the email, calendar and calling services available to your Fo account.</p><p className="small dim">Use History in Fo chat to load your Wajo conversations and refresh their transcripts. PDF printing uses the separate Gmail attachment connection.</p>
 
+          <a className="btn btn-ghost" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>Reconnect my Wajo account</a>
+          {info.foAuth==='api_key'&&<p className="small dim">This local session currently uses your private owner key. Reconnecting authorizes Wajo directly for this workspace.</p>}
           <details className="connection-details"><summary>Connection details</summary><ReadOnlyCheck /></details>
           <Btn kind="ghost" disabled={busy} onClick={disconnect}>
             disconnect

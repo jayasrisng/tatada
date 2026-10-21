@@ -2,9 +2,11 @@ import {useEffect,useRef,useState} from 'react'
 import type {Trip} from '../types'
 import {tripCalendarEvents,calendarFile,type CalendarEvent} from '../travel/calendar'
 import {api,useServer} from '../state/server'
+import {useUI} from '../state/ui'
 import {CalendarConnection} from './CalendarConnection'
 interface Preview{events:CalendarEvent[];previewHash:string;notice:string}
 export function TripCalendar({trip}:{trip:Trip}){
+ const {openMagic}=useUI()
  const {info}=useServer(),[connected,setConnected]=useState(false),[preview,setPreview]=useState<Preview>(),[selected,setSelected]=useState<string[]>([]),[reviewed,setReviewed]=useState(false),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[error,setError]=useState(''),generation=useRef(0)
  const events=tripCalendarEvents(trip),signature=JSON.stringify(events),account=info.account?.id
  useEffect(()=>{generation.current++;setPreview(undefined);setSelected([]);setReviewed(false);setMessage('');setError('');setBusy(false)},[signature,account])
@@ -12,6 +14,7 @@ export function TripCalendar({trip}:{trip:Trip}){
  const download=()=>{const url=URL.createObjectURL(new Blob([calendarFile(trip.id,events)],{type:'text/calendar;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='tatada-trip.ics';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
  return <details className="trip-calendar"><summary>Calendar · Google, Apple &amp; Outlook</summary><p>Export up to 100 dated flights, stays and itinerary stops. Entries are all-day, with saved local times in the description. No booking references, private notes or invitations are included.</p><p className="small dim">This is a one-way copy, not automatic sync. Deleting a trip or account in Tatada does not delete events already copied to another calendar. You can remove those in the calendar app.</p>
  <button className="btn" disabled={!events.length} onClick={download}>download calendar file (.ics)</button><p className="small">Import this file into Apple Calendar, Outlook or Google Calendar. Review which calendar you import into.</p>
+ {info.foConnected&&<button className="btn" onClick={()=>openMagic({tripId:trip.id,assistant:true,prefill:'Use the Google Calendar already connected to my Wajo account to help schedule this trip. First check for conflicts and show me the proposed events before adding them. Use the current saved itinerary and ask about anything missing.'})}>Plan my calendar with Wajo Fo</button>}
  <CalendarConnection onConnectionChange={setConnected} returnTo={`/trip/${trip.id}`}/>
  {info.authenticated&&info.provider==='live'&&<button className="btn" disabled={busy||!events.length} onClick={async()=>{const current=++generation.current;setBusy(true);setError('');setReviewed(false);setMessage('');try{const p=await api<Preview>('/api/calendar/preview',{method:'POST',json:{tripId:trip.id}});if(current===generation.current){setPreview(p);setSelected(p.events.slice(0,30).map(e=>e.key))}}catch(e){if(current===generation.current)setError((e as Error).message)}finally{if(current===generation.current)setBusy(false)}}}>review Google Calendar events</button>}
  {!events.length&&<p>No dated flights, stays or itinerary stops are saved yet.</p>}

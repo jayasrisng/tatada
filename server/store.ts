@@ -11,6 +11,7 @@ import type { ServerAction } from './types.ts'
 export interface PendingAuth {
   /** sha256 of the login nonce cookie in the browser that started this login. */
   binding: string
+  accountId?: string
   verifier: string
   redirectUri: string
   createdAt: number
@@ -33,6 +34,9 @@ export interface Session {
 }
 
 export interface Data {
+  foKeyDisabled?:Record<string,boolean>
+  foLoginTickets?:Record<string,{owner:string;clientBinding:string;expiresAt:number}>
+
   calendarWrites?: Record<string,{tripId:string;state:'running'|'uncertain'}>
   calendarLinks?: Record<string,{subject:string;state:'creating'|'ready'|'uncertain';id?:string}>
   calendarExchanges?: Record<string,{owner:string;stateHash:string;payload:string;expiresAt:number}>

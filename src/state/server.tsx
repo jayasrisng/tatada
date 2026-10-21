@@ -50,6 +50,7 @@ export interface ServerInfo {
   authenticated?: boolean
   owner?: boolean
   account?: { id: string; kind: 'wajo' | 'demo' | 'owner' | 'connected'; identitySource?: string; since: number }
+  foAuth?: string
   foConnected?: boolean
   liveRecipients?: string[]
 }

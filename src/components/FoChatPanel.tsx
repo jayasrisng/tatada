@@ -15,7 +15,7 @@ import * as fo from '../state/foChat'
 import { Doodle } from './Doodle'
 import { Btn } from './ui'
 
-const conversationTitle=(chat:fo.FoChat)=>{const first=chat.turns.find(t=>t.role==='me');return (first?.displayText??first?.text.replace(/^(?:Trip context:|Context: Today,)[^\n]*\n\n/,'').replace(/\n\n\(Tatada ref T-[^)]*\)$/,'')??'New conversation').slice(0,70)}
+const conversationTitle=(chat:fo.FoChat)=>{if(chat.title)return chat.title;const first=chat.turns.find(t=>t.role==='me');return (first?.displayText??first?.text.replace(/^(?:Trip context:|Context: Today,)[^\n]*\n\n/,'').replace(/\n\n\(Tatada ref T-[^)]*\)$/,'')??'New conversation').slice(0,70)}
 const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, '0')).join('')
 
 /**
@@ -27,6 +27,7 @@ export function FoChatPanel({ trip, initialText }: { trip?: Trip; initialText?: 
   const { state, dispatch } = useStore(), { closeMagic } = useUI()
   const [status, setStatus] = useState<fo.FoState | 'connecting'>('connecting')
   const [history,setHistory]=useState<fo.FoChat[]>([]),[showHistory,setShowHistory]=useState(false)
+  const [remoteHistory,setRemoteHistory]=useState<fo.WajoConversation[]|null>(null)
   const contextEpoch=useRef(0),drafts=useRef(new Map<string,string>())
   const [chat, setChat] = useState<fo.FoChat | null>(null)
   const [text, setText] = useState(initialText ?? '')
@@ -44,7 +45,7 @@ export function FoChatPanel({ trip, initialText }: { trip?: Trip; initialText?: 
   // Connection check (tools/list) and the latest conversation for this context.
   useEffect(() => {
     let live = true
-    contextEpoch.current++;setHistory([]);setShowHistory(false);drafts.current.clear()
+    contextEpoch.current++;setRemoteHistory(null);setHistory([]);setShowHistory(false);drafts.current.clear()
     setStatus('connecting')
     setChat(null)
     fo.foStatus()
@@ -108,6 +109,14 @@ export function FoChatPanel({ trip, initialText }: { trip?: Trip; initialText?: 
     if(!showHistory)void run(async()=>{const epoch=contextEpoch.current,list=await fo.listChats(trip?.id);if(epoch===contextEpoch.current)setHistory(list)})
   }
 
+  const loadWajoHistory=()=>run(async()=>{const epoch=contextEpoch.current,list=await fo.listWajoConversations();if(epoch===contextEpoch.current)setRemoteHistory(list)})
+  const openWajoHistory=(conversationId:string)=>run(async()=>{
+    const epoch=contextEpoch.current,next=await fo.importWajoConversation(conversationId,trip?.id)
+    if(epoch!==contextEpoch.current)return
+    setChat(next);setText('');setShowHistory(false);setConfirmed([]);key.current=newKey()
+  })
+  const refreshWajo=()=>run(async()=>{if(!chat)return;const epoch=contextEpoch.current,next=await fo.syncWajoConversation(chat.id);if(epoch===contextEpoch.current)setChat(next)})
+
   function saveMoment(note: string, messageKey: string) {
     if (!trip || !keepMoment || savedMoments.current.has(messageKey)) return
     const memory = {id:uid(),day:localToday(),kind:'note' as const,text:note,place:trip.destination}
@@ -159,11 +168,17 @@ export function FoChatPanel({ trip, initialText }: { trip?: Trip; initialText?: 
 
       </div>
 
-      {showHistory&&<nav className="fo-chat-history" aria-label="Conversation history"><p className="small dim">{trip?.destination??'Today'}</p>{history.length?history.map(c=><button type="button" key={c.id} disabled={busy} aria-current={c.id===chat?.id?'true':undefined} aria-label={`Open conversation: ${conversationTitle(c)}`} onClick={()=>void openConversation(c.id)}><span>{conversationTitle(c)}</span><time dateTime={new Date(c.updatedAt).toISOString()}>{new Date(c.updatedAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</time></button>):<p className="small dim">No saved conversations here.</p>}</nav>}
+      {showHistory&&<nav className="fo-chat-history" aria-label="Conversation history"><p className="small dim">{trip?.destination??'Today'} · saved in Tatada</p>{history.length?history.map(c=><button type="button" key={c.id} disabled={busy} aria-current={c.id===chat?.id?'true':undefined} aria-label={`Open conversation: ${conversationTitle(c)}`} onClick={()=>void openConversation(c.id)}><span>{conversationTitle(c)}</span><time dateTime={new Date(c.updatedAt).toISOString()}>{new Date(c.updatedAt).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</time></button>):<p className="small dim">No saved conversations here.</p>}
+        <button className="linkbtn" disabled={busy} onClick={()=>void loadWajoHistory()}>Load history from my Wajo account</button>
+        {remoteHistory&&<><p className="small dim">Your Wajo conversations · choose one to continue here with this trip’s context.</p>{remoteHistory.map(remote=><button type="button" key={remote.conversationId} disabled={busy||working} onClick={()=>void openWajoHistory(remote.conversationId)}><span>{remote.title??'Wajo conversation'}{remote.channel&&` · ${remote.channel}`}</span></button>)}{!remoteHistory.length&&<p>No Wajo conversations returned.</p>}</>}
+      </nav>}
+      {chat?.conversationId&&<div className="small"><button className="linkbtn" disabled={busy||working||!!pending} onClick={()=>void refreshWajo()}>Refresh transcript from Wajo</button>{chat.syncedAt&&<span className="dim"> · synced {new Date(chat.syncedAt).toLocaleTimeString()}</span>}
+      {chat.remoteTranscript&&<details><summary>Wajo transcript &amp; recorded activity</summary><button className="linkbtn" onClick={()=>{const blob=new Blob([chat.remoteTranscript!.map(entry=>`${entry.at??''} ${entry.role}\n${entry.text}`).join('\n\n')],{type:'text/plain;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='wajo-transcript.txt';a.click();window.setTimeout(()=>URL.revokeObjectURL(url),60000)}}>Download transcript</button><p className="dim">These are the entries Wajo returned, including call or tool details when available.</p>{chat.remoteTranscript.map((entry,index)=><div key={index}><strong>{entry.role}</strong><p className="fo-text">{entry.text}</p></div>)}</details>}</div>}
+
 
       {status !== 'connecting' && status.state !== 'connected' && (
         <div className="fo-auth">
-          <p>Tatada needs your permission to use Fo from your Wajo account. You'll approve it on Wajo; the authorization stays on this computer's Tatada server.</p>
+          <p>Tatada needs your permission to use Fo from your Wajo account. You'll approve it on Wajo; the authorization stays on Tatada’s private backend; Fo uses the services connected in your Wajo account.</p>
           <div className="ac-buttons">
             <a className="btn btn-solid" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>
               <span>authorize Fo</span>
@@ -178,7 +193,7 @@ export function FoChatPanel({ trip, initialText }: { trip?: Trip; initialText?: 
         {(!chat || !chat.turns.length) && connected && !pending && (
           <div className="magic-empty">
             <p className="magic-hello">what can Fo help with?</p>
-            <p className="dim small center-text">Messages go to {provider === 'mock' ? 'a simulated Fo for rehearsal' : 'the real Fo'} when you tap send. Actions such as bookings and payments get a separate review.</p>
+            <p className="dim small center-text">Messages go to {provider === 'mock' ? 'a simulated Fo for rehearsal' : 'the real Fo'} when you tap send. Fo can use your existing Wajo connections for supported calls, email and calendar tasks. Requests involving bookings, messages or payments get explicit action approval.</p>
           </div>
         )}
         {chat?.turns.map((t) => (

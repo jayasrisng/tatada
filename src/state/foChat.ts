@@ -26,6 +26,10 @@ export interface FoChat {
   id: string
   tripId?: string
   conversationId?: string
+  title?:string
+  channel?:string
+  syncedAt?:number
+  remoteTranscript?:{role:string;text:string;at?:string}[]
   status: 'idle' | 'sending' | 'send_uncertain' | 'working' | 'needs_input' | 'failed' | 'timeout'
   turns: ChatTurn[]
   progress?: string
@@ -48,3 +52,8 @@ export const discard = async (id: string) => (await api<{ chat: FoChat }>(`/api/
 export const send = async (id: string, hash: string, idempotencyKey: string, confirm: RiskCategory[]) =>
   (await api<{ chat: FoChat }>(`/api/fo/chats/${id}/send`, { method: 'POST', json: { hash, idempotencyKey, confirm } })).chat
 export const checkAgain = async (id: string) => (await api<{ chat: FoChat }>(`/api/fo/chats/${id}/check`, { method: 'POST', json: {} })).chat
+
+export interface WajoConversation {conversationId:string;title?:string;channel?:string;startedAt?:string}
+export const listWajoConversations=()=>api<{conversations:WajoConversation[]}>('/api/fo/conversations').then(r=>r.conversations)
+export const importWajoConversation=(conversationId:string,tripId?:string)=>api<{chat:FoChat}>('/api/fo/conversations/import',{method:'POST',json:{conversationId,tripId}}).then(r=>r.chat)
+export const syncWajoConversation=(id:string)=>api<{chat:FoChat}>(`/api/fo/chats/${id}/sync`,{method:'POST',json:{}}).then(r=>r.chat)

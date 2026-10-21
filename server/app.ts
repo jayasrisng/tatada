@@ -62,7 +62,7 @@ interface Deps {
    */
   owner?: { allowedHosts: string[]; allowedOrigins: string[] }
   /** How live Fo is authorized: per-user OAuth, the local owner's API key, or mock. */
-  foAuth?: string
+  foAuth?: string | (()=>string)
   /** Epson Connect email printing (printer settings and print jobs per account). */
   print?: PrintService
 }
@@ -185,7 +185,7 @@ export function createApp(deps: Deps) {
       owner: !!deps.owner,
       account: account ? { id: userId, kind: account.kind, identitySource: account.identitySource, since: account.createdAt } : undefined,
       foConnected: !account ? false : live ? !!(deps.fo?.connected(userId!) ?? oauth?.connected(userId!)) : true,
-      foAuth: deps.foAuth ?? (live ? 'oauth' : 'mock'),
+      foAuth: (typeof deps.foAuth==='function'?deps.foAuth():deps.foAuth) ?? (live ? 'oauth' : 'mock'),
       liveRecipients: live && account ? actions.liveAllowlist : [],
     }
   }
@@ -253,14 +253,33 @@ export function createApp(deps: Deps) {
         return send(res, 200, status())
       }
 
+      // Bind hosted reconnect to an already authenticated Tatada workspace, without putting a bearer token in a URL.
+      if(path==='/api/auth/wajo/link'&&method==='POST'){
+        if(!userId||!store.data.accounts[userId])return send(res,401,{error:'Sign in before reconnecting Wajo.'})
+        const body=await readBody(req),binding=body.clientBinding
+        if(typeof binding!=='string'||!/^[a-f0-9]{64}$/.test(binding))return send(res,400,{error:'Invalid browser binding.'})
+        const ticket=randomToken(32)
+        store.update(d=>{const tickets=d.foLoginTickets??={};for(const [key,value]of Object.entries(tickets))if(value.expiresAt<=now())delete tickets[key];tickets[sha256(ticket)]={owner:userId,clientBinding:binding,expiresAt:now()+60000}})
+        return send(res,200,{ticket})
+      }
+
       if ((path === '/api/auth/wajo/start' || path === '/api/fo/connect') && method === 'GET') {
         if (!live || !oauth) return redirect(res, `${appUrl}/#/welcome?auth=demo_mode`)
         if (!authLimit.allow(`start:${ip(req)}`)) return redirect(res, `${appUrl}/#/welcome?auth=rate_limited`)
         const clientBinding = url.searchParams.get('client_binding') ?? ''
         if (deps.bearerSessions && !/^[a-f0-9]{64}$/.test(clientBinding)) return redirect(res, `${appUrl}/#/welcome?auth=error&reason=browser_binding`)
+        let reconnectAccount=current?.s.userId
+        const ticket=url.searchParams.get('reconnect')
+        if(ticket){
+          const entry=store.data.foLoginTickets?.[sha256(ticket)]
+          if(!entry||entry.expiresAt<=now()||entry.clientBinding!==clientBinding)return redirect(res,`${appUrl}/#/welcome?auth=error&reason=reconnect_expired`)
+          reconnectAccount=entry.owner;store.update(d=>{delete d.foLoginTickets?.[sha256(ticket)]})
+        }
         const nonce = randomToken(24)
         try {
           const to = await oauth.start(sha256(nonce))
+          const pendingState=new URL(to).searchParams.get('state')!
+          if(reconnectAccount)store.update(d=>{d.pendingAuth[pendingState].accountId=reconnectAccount})
           if (deps.bearerSessions) {
             const state = new URL(to).searchParams.get('state')!
             store.update((d) => {
@@ -279,6 +298,7 @@ export function createApp(deps: Deps) {
         const done = (q: string, cookies: string[] = []) => redirect(res, `${appUrl}/#/${q}`, [clear(LOGIN_COOKIE, loginCookiePath), ...cookies])
         if (!live || !oauth || (!deps.resolveIdentity && !deps.owner)) return done('welcome?auth=demo_mode')
         if (url.searchParams.get('error')) return done(deps.owner ? '?fo=denied' : 'welcome?auth=denied')
+        const reconnectAccount=store.data.pendingAuth[url.searchParams.get('state')??'']?.accountId
         let login
         try {
           login = await oauth.finish(url.searchParams.get('code') ?? '', url.searchParams.get('state') ?? '', sha256(cookie(req, LOGIN_COOKIE) ?? ''))
@@ -289,6 +309,7 @@ export function createApp(deps: Deps) {
         if (deps.owner) {
           oauth.saveFor(OWNER_ID, login.tokens)
           store.update((d) => {
+            ;(d.foKeyDisabled??={})[OWNER_ID]=true
             d.identityObservations.push({ at: now(), source: 'single_owner_local' })
             if (d.identityObservations.length > 20) d.identityObservations.shift()
           })
@@ -310,6 +331,7 @@ export function createApp(deps: Deps) {
         if (!resolved.identity && !deps.browserAccounts) return done('welcome?auth=no_identity')
         const accountId = store.update((d) => {
           if (!resolved.identity) {
+            if(reconnectAccount&&d.accounts[reconnectAccount]?.kind==='connected'){d.accounts[reconnectAccount].lastLoginAt=now();return reconnectAccount}
             const id = randomToken(12)
             d.accounts[id] = { kind: 'connected', createdAt: now(), lastLoginAt: now(), identitySource: 'oauth_connection_session' }
             return id
@@ -345,7 +367,7 @@ export function createApp(deps: Deps) {
       if (path === '/api/auth/logout' && method === 'POST') {
         // Owner mode has no sign-in; "log out" means forgetting the Fo authorization.
         if (deps.owner) {
-          store.update((d) => delete d.tokens[OWNER_ID])
+          store.update((d) => {delete d.tokens[OWNER_ID];(d.foKeyDisabled??={})[OWNER_ID]=true})
           return send(res, 200, status(OWNER_ID))
         }
         if (current) {
@@ -440,12 +462,21 @@ export function createApp(deps: Deps) {
         if (!fo.connected(userId)) return send(res, 200, { state: 'disconnected', provider: fo.mode })
         try {
           const tools = await fo.tools(userId)
-          return send(res, 200, { state: 'connected', provider: fo.mode, auth: deps.foAuth, tools: tools.map((t) => t.name), capabilities: foCapabilities(tools), checkedAt: now() })
+          return send(res, 200, { state: 'connected', provider: fo.mode, auth: typeof deps.foAuth==='function'?deps.foAuth():deps.foAuth, tools: tools.map((t) => t.name), capabilities: foCapabilities(tools), checkedAt: now() })
         } catch (e) {
           return send(res, 200, { state: isNotConnected(e) ? 'disconnected' : 'error', provider: fo.mode, error: (e as Error).message.slice(0, 200) })
         }
       }
 
+      if(path==='/api/fo/conversations'&&method==='GET'){
+        if(!deps.fo?.connected(userId))return send(res,409,{error:'Connect your Wajo account first.'})
+        return send(res,200,{conversations:await deps.fo.conversations(userId)})
+      }
+      if(path==='/api/fo/conversations/import'&&method==='POST'){
+        if(!deps.chats)return send(res,503,{error:'Fo chat is unavailable.'})
+        const body=await readBody(req)
+        return send(res,200,{chat:await deps.chats.importConversation(userId,body.conversationId,body.tripId)})
+      }
       /* ── Fo chat ── */
       if (deps.chats && path === '/api/fo/chats' && method === 'GET') {
         const t = url.searchParams.get('tripId')
@@ -455,7 +486,7 @@ export function createApp(deps: Deps) {
         const body = await readBody(req)
         return send(res, 201, { chat: deps.chats.create(userId, body.tripId ?? undefined) })
       }
-      const cm = deps.chats && path.match(/^\/api\/fo\/chats\/([\w-]{8,40})(?:\/(prepare|send|discard|check))?$/)
+      const cm = deps.chats && path.match(/^\/api\/fo\/chats\/([\w-]{8,40})(?:\/(prepare|send|discard|check|sync))?$/)
       if (deps.chats && cm) {
         const [, id, verb] = cm
         if (!verb && method === 'GET') return send(res, 200, { chat: deps.chats.get(userId, id) })
@@ -465,6 +496,7 @@ export function createApp(deps: Deps) {
             verb === 'prepare' ? deps.chats.prepare(userId, id, body)
             : verb === 'send' ? deps.chats.send(userId, id, body)
             : verb === 'discard' ? deps.chats.discard(userId, id)
+            : verb === 'sync' ? await deps.chats.sync(userId,id)
             : deps.chats.check(userId, id)
           return send(res, 200, { chat })
         }

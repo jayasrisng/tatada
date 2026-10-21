@@ -15,7 +15,7 @@ import { createApp, type ResolveIdentity } from './app.ts'
 import { FoChatService } from './chat.ts'
 import { fromAccessToken, fromFoApi, fromTokenResponse } from './identity.ts'
 import { loadLocalEnv } from './env.ts'
-import { ApiKeyCredentials } from './apikey.ts'
+import { ApiKeyCredentials, PreferredFoCredentials } from './apikey.ts'
 import { OWNER_ID } from './app.ts'
 import { MockPrintDelivery, PrintService } from './print.ts'
 
@@ -75,11 +75,13 @@ if (mode === 'live') {
   const resource = env.WAJO_FO_ENDPOINT ?? env.FO_RESOURCE ?? 'https://mcp.api.wajo.ai/fo'
   oauth = new FoOAuth({ store, sealer: new Sealer(secret()), resource, redirectUri: `${publicUrl}/api/fo/callback` })
   const mcp = new McpClient(resource)
+  // Persist the choice across refresh revocation and process restarts.
+  if(singleOwner&&oauth.connected(OWNER_ID))store.update(d=>{(d.foKeyDisabled??={})[OWNER_ID]=true})
   // The API key stands in for one Wajo account, so it only ever serves the local owner.
-  const apiKey = singleOwner && env.WAJO_FO_API_KEY ? new ApiKeyCredentials(env.WAJO_FO_API_KEY, OWNER_ID) : undefined
+  const apiKey = singleOwner && env.WAJO_FO_API_KEY ? new ApiKeyCredentials(env.WAJO_FO_API_KEY, OWNER_ID,()=>!store.data.foKeyDisabled?.[OWNER_ID]) : undefined
   if (env.WAJO_FO_API_KEY && !singleOwner) console.warn('[tatada] WAJO_FO_API_KEY ignored: a shared key cannot identify individual users; sign-in uses per-user OAuth')
   foAuth = apiKey ? 'api_key' : 'oauth'
-  fo = new LiveFoAdapter(apiKey ?? oauth, mcp, store)
+  fo = new LiveFoAdapter(apiKey ? new PreferredFoCredentials(oauth,apiKey) : oauth, mcp, store)
   // Verified Wajo identity, from Wajo's own responses only (see identity.ts).
   resolveIdentity = async ({ tokens, body, issuer }) => {
     const direct = fromTokenResponse(body, issuer) ?? fromAccessToken(tokens.accessToken, issuer, Date.now())
@@ -116,7 +118,7 @@ const owner = singleOwner
   : undefined
 const intelligenceKey = env.CLAUDE_API_KEY ?? env.ANTHROPIC_API_KEY
 const intelligence = intelligenceKey ? new IntelligenceService({ key: intelligenceKey, model: env.CLAUDE_MODEL }) : undefined
-const handle = createApp({calendar,travel, gmail, intelligence, store, actions, fo, print, oauth: foAuth === 'api_key' ? undefined : oauth, foAuth, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, allowedOrigin: singleOwner ? undefined : appOrigin, secureCookies: publicUrl.startsWith('https://') })
+const handle = createApp({calendar,travel, gmail, intelligence, store, actions, fo, print, oauth, foAuth:()=>oauth?.connected(OWNER_ID)&&singleOwner?'oauth':foAuth, browserAccounts:!singleOwner, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, allowedOrigin: singleOwner ? undefined : appOrigin, secureCookies: publicUrl.startsWith('https://') })
 // Single-owner mode listens on the loopback interface only.
 createServer((req, res) => void handle(req, res)).listen(port, singleOwner ? '127.0.0.1' : undefined, () => {
   console.log(`[tatada] server on ${publicUrl}${singleOwner ? ' · single-owner, localhost only' : ''} · Fo ${mode}${mode === 'live' ? ` (${foAuth})` : ''} · config set: ${configured.join(', ') || 'none'}${mode === 'live' ? ` · live recipients: ${actions.liveAllowlist.join(', ') || 'none (sends blocked)'}` : ''}`)

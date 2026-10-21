@@ -75,6 +75,10 @@ The app in a phone-sized viewport, shown one screen at a time. These sample trip
 
 **Fo:** the operator configures private Wajo credentials on the backend. Open **Profile → Connections** to check the connection. Fo chat shares the trip context you enable; calls use Wajo’s microphone/audio service.
 
+**Wajo-connected services:** Fo chat can delegate supported calls, email and calendar requests to the services already connected in your Wajo account. History → “Load history from my Wajo account” opens provider conversations; “Refresh transcript from Wajo” retrieves current messages and recorded activity. Continuing a conversation reuses its Wajo conversation ID. Availability, timing and whether a channel appears in Wajo’s own UI are provider-controlled; Tatada does not fabricate a call or reservation confirmation.
+
+**PDF attachments:** The currently exposed `ask_fo` schema accepts text and conversation controls, not PDF/file attachments. Printing therefore uses the direct Gmail PDF-attachment service. Connect Gmail once for that route; it is not required for ordinary email/calendar requests delegated through Fo.
+
 **Google:** configure a Google Cloud Web application OAuth client, enable Gmail and Calendar APIs, and register the exact backend callback. Keep `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REDIRECT_URI` private. Add your intended Google account as a test user while the OAuth app is in Testing.
 
 Connect Gmail and Calendar separately in **Profile → Connections**. Gmail authorizes PDF print emails. Calendar authorizes app-created calendars with `calendar.app.created`. Review the event preview before adding anything. Calendar exports are one-way copies; Apple Calendar and Outlook can use the `.ics` download.
@@ -123,9 +127,9 @@ npm run dev:frontend
 
 Type checking and the production build are available in this repository. Private test tooling and owner runbooks stay outside the public snapshot.
 
-**Website deployment is a separate step.** GitHub Pages can serve the frontend; it cannot run the private Node backend or use server secrets. The retained hosted adapter uses per-user Wajo OAuth, while the current shared owner API-key mode is intentionally localhost-only. The same existing Google OAuth client can be reused with its production callback configured, but local connected sessions are not automatically migrated.
+**Website deployment is a separate step.** GitHub Pages can serve the frontend; it cannot run the private Node backend or use server secrets. The hosted adapter uses per-user Wajo OAuth. Local API-key mode remains localhost-only. A newly authorized OAuth connection takes precedence over the local key, and disconnect disables the key fallback. The developer launcher also supports `TATADA_WAJO_LOGIN=1 npm run dev` for per-user OAuth without requiring an owner key. The same existing Google OAuth client can be reused with its production callback configured, but local connected sessions are not automatically migrated.
 
-For the retained hosted shape, configure the backend's persistent store, stable sealing secret, public origin and provider secrets; add `https://<project>.supabase.co/functions/v1/tatada-api/api/gmail/callback` to the Google client. Gmail and Calendar share that callback with separate bound state. Keep `http://127.0.0.1:5180/api/gmail/callback` for this local preview. Connect the intended accounts on the hosted runtime and verify its end-to-end behavior before claiming readiness.
+For the retained hosted shape, configure the backend's persistent store, stable sealing secret, public origin and provider secrets; add `https://<project>.supabase.co/functions/v1/tatada-api/api/gmail/callback` to the Google client. Gmail and Calendar share that callback with separate bound state. Keep `http://127.0.0.1:5180/api/gmail/callback` for this local preview. Connect the intended accounts on the hosted runtime and verify its end-to-end behavior before claiming readiness. Wajo may return an opaque token without a stable user ID: fresh browsers then get isolated workspaces, while authenticated reconnects keep the existing workspace. Hosted Tatada sessions persist in browser storage until sign-out or server expiry; Wajo and Google tokens stay sealed on the backend. Signing in on another device cannot automatically recover an opaque-identity workspace without an additional stable account/recovery mechanism.
 
 ```bash
 # Only after the intended hosted API and account configuration are verified:
