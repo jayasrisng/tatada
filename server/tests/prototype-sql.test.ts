@@ -9,7 +9,7 @@ const schema=readFileSync(new URL('../../supabase/schemas/tatada.sql',import.met
 async function fixture(full=false){const db=new PGlite();await db.exec(`
  create role anon;create role authenticated;create role service_role;create role supabase_auth_admin;
  create schema auth;create schema tatada_private;
- create table auth.users(id uuid primary key,encrypted_password text,raw_app_meta_data jsonb default '{}'::jsonb,raw_user_meta_data jsonb default '{}'::jsonb);
+ create table auth.users(id uuid primary key,encrypted_password text,raw_app_meta_data jsonb default '{}'::jsonb,raw_user_meta_data jsonb default '{}'::jsonb,email_confirmed_at timestamptz);
  create table auth.sessions(id uuid primary key,user_id uuid references auth.users(id),created_at timestamptz default clock_timestamp(),not_after timestamptz);
  grant usage on schema auth to supabase_auth_admin;grant insert,update,select on auth.users to supabase_auth_admin;
  `);await db.exec(full?schema:migration);return db}
@@ -27,6 +27,24 @@ test('PostgreSQL invitation triggers reject self-signup and user metadata; slots
  await db.query("update auth.users set raw_app_meta_data=jsonb_set(raw_app_meta_data,'{tatada_prototype}','false') where id=$1",[first]);assert.equal((await verify(db,first,await session(db,first))).active,false)
  await invite(db);assert.equal((await db.query<{n:number}>('select count(*)::integer n from auth.users')).rows[0].n,11)
  assert.equal((await db.query<{n:number}>('select count(*)::integer n from tatada_private.prototype_invites where slot is not null')).rows[0].n,10)
+ }finally{await db.close()}
+})
+test('deferred signup guard matches the real Supabase Admin transaction: insert, then trusted metadata, then confirmation',async()=>{
+ const db=await fixture();try{
+ const id=randomUUID()
+ await db.exec('set role supabase_auth_admin')
+ await db.transaction(async tx=>{
+  await tx.query('insert into auth.users(id,encrypted_password,raw_app_meta_data)values($1,$2,$3)',[id,'synthetic-initial-hash',{provider:'email',providers:['email']}])
+  await tx.query('update auth.users set raw_app_meta_data=raw_app_meta_data||$2 where id=$1',[id,metadata()])
+  await tx.query('update auth.users set email_confirmed_at=clock_timestamp() where id=$1',[id])
+ })
+ await db.exec('reset role');const sid=await session(db,id);assert.equal((await verify(db,id,sid)).requiresPasswordChange,true)
+ const invalid=randomUUID()
+ await assert.rejects(()=>db.transaction(async tx=>{
+  await tx.query('insert into auth.users(id,encrypted_password)values($1,$2)',[invalid,'synthetic-initial-hash'])
+  await tx.query('update auth.users set raw_user_meta_data=$2 where id=$1',[invalid,metadata()])
+ }),/administrator provisioning/)
+ assert.equal((await db.query('select id from auth.users where id=$1',[invalid])).rows.length,0)
  }finally{await db.close()}
 })
 test('PostgreSQL password gate changes only on actual Auth password updates; reset nonce rejects every prior session',async()=>{

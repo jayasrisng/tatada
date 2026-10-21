@@ -67,21 +67,26 @@ alter table tatada_private.prototype_invites enable row level security;
 revoke all on tatada_private.prototype_invites from public,anon,authenticated;
 grant select on tatada_private.prototype_invites to service_role;
 
--- Only Auth Admin can set app_metadata. Signup user_metadata is ignored.
+-- Auth Admin applies app_metadata AFTER inserting the user in one transaction.
+-- Check the final row at commit, never NEW's initial provider-only metadata.
+-- Public signup cannot supply trusted app_metadata; user_metadata is ignored.
 create function tatada_private.guard_prototype_signup()
-returns trigger language plpgsql security invoker set search_path='' as $$
+returns trigger language plpgsql security definer set search_path='' as $$
+declare account auth.users%rowtype;
 begin
- if new.raw_app_meta_data->>'tatada_prototype' is distinct from 'true'
- or coalesce(new.encrypted_password,'')=''
- or coalesce(new.raw_app_meta_data->>'tatada_password_reset','')!~'^[0-9a-fA-F-]{36}$' then
+ select * into account from auth.users where id=new.id;
+ if not found then return new;end if;
+ if account.raw_app_meta_data->>'tatada_prototype' is distinct from 'true'
+ or coalesce(account.encrypted_password,'')=''
+ or coalesce(account.raw_app_meta_data->>'tatada_password_reset','')!~'^[0-9a-fA-F-]{36}$' then
   raise exception 'Invite-only prototype: administrator provisioning required';
  end if;
  return new;
 end;
 $$;
 revoke all on function tatada_private.guard_prototype_signup() from public,anon,authenticated;
-create trigger tatada_prototype_signup before insert on auth.users
-for each row execute function tatada_private.guard_prototype_signup();
+create constraint trigger tatada_prototype_signup after insert on auth.users
+ deferrable initially deferred for each row execute function tatada_private.guard_prototype_signup();
 
 -- Narrow Auth trigger: trusted administrative marker changes admit/revoke/reset.
 -- Auth updates invalidate old sessions. Only the service completion RPC clears the gate.
@@ -95,7 +100,7 @@ begin
   update tatada_private.prototype_invites set slot=null where user_id=new.id;
   return new;
  end if;
- if coalesce(new.raw_app_meta_data->>'tatada_password_reset','')!~'^[0-9a-fA-F-]{36}$' then
+ if coalesce(new.encrypted_password,'')='' or coalesce(new.raw_app_meta_data->>'tatada_password_reset','')!~'^[0-9a-fA-F-]{36}$' then
   raise exception 'Administrator must supply a fresh password-reset nonce';
  end if;
  if invitation.slot is null then
@@ -156,7 +161,6 @@ returns boolean language sql volatile security invoker set search_path='' as $$
 $$;
 revoke all on function public.tatada_complete_password_change(uuid,uuid,text,timestamptz) from public,anon,authenticated;
 grant execute on function public.tatada_complete_password_change(uuid,uuid,text,timestamptz) to service_role;
-
 revoke all on function tatada_private.auth_session_active(uuid,uuid) from public,anon,authenticated;
 grant execute on function tatada_private.auth_session_active(uuid,uuid) to service_role;
 create or replace function public.tatada_auth_session_active(p_user uuid,p_session uuid)
