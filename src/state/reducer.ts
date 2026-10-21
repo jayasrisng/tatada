@@ -5,6 +5,7 @@ import { outcome } from '../magic/engine'
 import { uid } from './id'
 
 export type Act =
+  | {type:'hydrateProfile';profile:Profile}
   | {type:'appendTripConversation';tripId:string;turns:TripTurn[]}
   | {type:'deleteTrip';tripId:string}
   | {type:'saveTripPlanning';tripId:string;planning:TripPlanning}
@@ -72,6 +73,7 @@ export function reducer(s: AppState, a: Act): AppState {
       try {return undoProposal(s,a.id)} catch {return s}
     case 'reset':
       return a.state
+    case 'hydrateProfile': return {...s,profile:a.profile}
     case 'onboard':
       return { ...s, onboarded: true, profile: a.profile }
     case 'saveResearch':

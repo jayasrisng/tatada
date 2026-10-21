@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { documentBytes, encryptVault, newVault, readVault, unlockVault, validEnvelope, writeVault, type TravelDocument, type VaultEnvelope } from '../privacy/vault'
 import { useStore } from '../state/store'
-import { useUI } from '../state/ui'
 import { Btn } from './ui'
 
 const FIELDS = ['Full name', 'Nationality', 'Date of birth', 'Document number', 'Expiration date', 'Sex / gender as recorded', 'Issuing country', 'Program / visa notes']
 export function DocumentVault() {
-  const { workspace } = useStore(), { openMagic } = useUI()
+  const { workspace } = useStore()
   const [envelope, setEnvelope] = useState<VaultEnvelope | null | undefined>(undefined)
   const [restoring, setRestoring] = useState<VaultEnvelope | null>(null)
   const [key, setKey] = useState<CryptoKey | null>(null), [docs, setDocs] = useState<TravelDocument[]>([])
@@ -65,7 +64,7 @@ export function DocumentVault() {
         <ul className="disclosure-list">{Object.entries(doc.fields).filter(([, value]) => value).map(([field, value]) => { const id = `${doc.id}:${field}`; return <li key={id}><label><input type="checkbox" checked={selected.includes(id)} onChange={(e) => setSelected((all) => e.target.checked ? [...all, id] : all.filter((v) => v !== id))} /> {field}: {value}</label></li> })}</ul>
         <div className="ac-buttons"><button className="linkbtn" onClick={() => setEditing(doc)}>edit fields</button><button className="linkbtn" onClick={() => { const bytes = Uint8Array.from(atob(doc.file), (c) => c.charCodeAt(0)); const url = URL.createObjectURL(new Blob([bytes], { type: doc.mime })); const a = document.createElement('a'); a.href = url; a.download = doc.name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) }}>download original</button><button className="linkbtn danger" disabled={busy} onClick={() => void run(async () => { await save(docs.filter((d) => d.id !== doc.id)); setSelected((all) => all.filter((v) => !v.startsWith(doc.id + ':'))) })}>remove</button></div>
       </details>)}
-      {selected.length > 0 && <><p className="small">Only the checked text fields will be copied into your Fo message draft. Sending that message shares them with Wajo. Original documents stay here.</p><Btn onClick={() => { const fields = docs.flatMap((doc) => Object.entries(doc.fields).filter(([field]) => selected.includes(`${doc.id}:${field}`)).map(([field, value]) => `${field}: ${value}`)); openMagic({ prefill: `I want help with my travel using these reviewed document fields:\n${fields.join('\n')}\nPlease ask what I need before taking any action.`, assistant: true }) }}>review selected fields with Fo</Btn></>}
+      {selected.length > 0 && <p className="small">Document sharing with external providers is disabled in v0.1. The encrypted vault and originals stay on this device.</p>}
     </>}
     {envelope && <button className="linkbtn" onClick={backup}>encrypted backup</button>}
     <button className="linkbtn" disabled={busy} onClick={() => restore.current?.click()}>restore encrypted backup</button>

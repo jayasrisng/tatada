@@ -1,3 +1,4 @@
+import {finishAuthDeletions,SupabaseIdentity} from './account-auth.ts'
 import {readOnlyFo} from './fo.ts'
 import {PrintFiles} from './print-files.ts'
 import {CalendarConnection,CalendarService} from './calendar.ts'
@@ -34,7 +35,7 @@ import { MockPrintDelivery, PrintService } from './print.ts'
  * A local .env is loaded first; variables already set in the shell win.
  */
 
-const configured = loadLocalEnv('.env', ['WAJO_FO_ENDPOINT', 'WAJO_FO_API_KEY', 'TATADA_SECRET'])
+const configured = loadLocalEnv('.env', ['WAJO_FO_ENDPOINT', 'WAJO_FO_API_KEY', 'TATADA_SECRET','SUPABASE_URL','SUPABASE_ANON_KEY','SUPABASE_SERVICE_ROLE_KEY','TATADA_AUTH_MODE'])
 const env = process.env
 const port = Number(env.PORT ?? 8787)
 const appUrl = (env.APP_URL ?? 'http://localhost:5173').replace(/\/$/, '')
@@ -121,7 +122,9 @@ const owner = singleOwner
   : undefined
 const intelligenceKey = env.CLAUDE_API_KEY ?? env.ANTHROPIC_API_KEY
 const intelligence = intelligenceKey ? new IntelligenceService({ key: intelligenceKey, model: env.CLAUDE_MODEL }) : undefined
-const handle = createApp({bearerSessions:env.TATADA_BEARER_SESSIONS==='1',printFiles,calendar,travel, gmail, intelligence, store, actions, fo, print, oauth, foAuth:()=>oauth?.connected(OWNER_ID)&&singleOwner?'oauth':foAuth, browserAccounts:!singleOwner, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, allowedOrigin: singleOwner ? undefined : appOrigin, secureCookies: publicUrl.startsWith('https://') })
+const identity=env.TATADA_AUTH_MODE==='supabase'?new SupabaseIdentity({url:env.SUPABASE_URL!,publicKey:env.SUPABASE_ANON_KEY!,serviceKey:env.SUPABASE_SERVICE_ROLE_KEY!}):undefined
+if(identity&&singleOwner)throw Error('Email account mode cannot use the single-owner bypass')
+const handle = createApp({identity,bearerSessions:env.TATADA_BEARER_SESSIONS==='1',printFiles,calendar,travel, gmail, intelligence, store, actions, fo, print, oauth, foAuth:()=>oauth?.connected(OWNER_ID)&&singleOwner?'oauth':foAuth, browserAccounts:!singleOwner, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, allowedOrigin: singleOwner ? undefined : appOrigin, secureCookies: publicUrl.startsWith('https://') })
 // Single-owner mode listens on the loopback interface only.
 createServer((req, res) => void handle(req, res)).listen(port, env.TATADA_BIND_HOST ?? (singleOwner ? '127.0.0.1' : undefined), () => {
   console.log(`[tatada] server on ${publicUrl}${singleOwner ? ' · single-owner, localhost only' : ''} · Fo ${mode}${mode === 'live' ? ` (${foAuth})` : ''} · config set: ${configured.join(', ') || 'none'}${mode === 'live' ? ` · live recipients: ${actions.liveAllowlist.join(', ') || 'none (sends blocked)'}` : ''}`)
@@ -132,6 +135,7 @@ setInterval(async () => {
   if (busy) return
   busy = true
   try {
+    if(identity)await finishAuthDeletions(store,identity)
     await actions.runDue()
     await chats.runDue()
     await print.runDue()

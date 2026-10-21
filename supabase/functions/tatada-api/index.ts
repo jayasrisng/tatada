@@ -1,3 +1,4 @@
+import {SupabaseIdentity} from '../../../server/account-auth.ts'
 import { createEdgeHandler } from '../../../server/edge.ts'
 import { SupabaseRepository } from '../../../server/supabase.ts'
 
@@ -8,6 +9,7 @@ const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 if (!url || !key) throw new Error('Supabase runtime credentials are missing')
 Deno.serve(createEdgeHandler({
   repository: new SupabaseRepository(url, key),
+  identity:new SupabaseIdentity({url,publicKey:Deno.env.get('SUPABASE_ANON_KEY')??'',serviceKey:key}),
   appUrl: Deno.env.get('TATADA_APP_URL') ?? 'https://jayasrisng.com/tatada',
   publicUrl: `${url}/functions/v1/tatada-api`,
   secret: Deno.env.get('TATADA_SECRET') ?? key,

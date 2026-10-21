@@ -1,7 +1,7 @@
 import { beginSignIn, apiUrl, usesBearer, sessionHeaders, browserOnly } from '../config'
 import { useEffect, useState } from 'react'
 import { useStore } from '../state/store'
-import { useServer } from '../state/server'
+import { api,useServer } from '../state/server'
 import { go, hashQuery } from '../state/ui'
 import { Doodle } from './Doodle'
 import { Btn } from './ui'
@@ -123,7 +123,7 @@ export function FoConnection() {
     setBusy(true)
     setDisconnectError(null)
     try {
-      await logout(false)
+      if(info.authMethod==='supabase'){await api('/api/fo/disconnect',{method:'POST'});await refresh()}else await logout(false)
       go('/welcome')
     } catch (e) {
       setDisconnectError(`Could not disconnect Fo: ${(e as Error).message}`)
@@ -154,7 +154,7 @@ export function FoConnection() {
         <p className="dim">Mock Fo: every request goes through the real approval and verification pipeline, but no email is sent. For the local live presentation, run <code>npm run server:fo</code>.</p>
       ) : info.foConnected ? (
         <>
-          <p>Your Wajo Fo is connected. Chat requests use the email, calendar and calling services available to your Fo account.</p><p className="small dim">Use History in Fo chat to load your Wajo conversations and refresh their transcripts. PDF printing uses the separate Gmail attachment connection.</p>
+          <p>Your Wajo connection is saved under this Tatada account. Existing conversations remain readable; new Fo execution and calls remain restricted.</p><p className="small dim">Use History in Fo chat to load your Wajo conversations and refresh their transcripts. PDF printing uses the separate Gmail attachment connection.</p>
 
           <a className="btn btn-ghost" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>Reconnect my Wajo account</a>
           {info.foAuth==='api_key'&&<p className="small dim">This local session currently uses your private owner key. Reconnecting authorizes Wajo directly for this workspace.</p>}
@@ -167,7 +167,7 @@ export function FoConnection() {
         <>
           <p>Fo is not authorized. Connect your Wajo account to use real Fo; your workspace stays as it is.</p>
           <a className="btn btn-solid" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>
-            <span>{info.owner ? 'authorize Fo' : 'sign in with Wajo'}</span>
+            <span>{info.owner||info.authMethod==='supabase' ? 'connect Wajo' : 'sign in with Wajo'}</span>
           </a>
         </>
       )}

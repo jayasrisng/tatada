@@ -12,6 +12,8 @@ export interface PendingAuth {
   /** sha256 of the login nonce cookie in the browser that started this login. */
   binding: string
   accountId?: string
+  stepUpAt?:number
+  authSessionId?:string
   verifier: string
   redirectUri: string
   createdAt: number
@@ -34,11 +36,19 @@ export interface Session {
 }
 
 export interface Data {
+  authLastSeen?:Record<string,number>
+  authDeletions?:Record<string,{status:'pending'|'done';attempts:number;requestedAt:number;nextAt?:number}>
+  authOwners?:Record<string,{owner:string;linkedAt:number}>
+  authLinkHistory?:{subject:string;from?:string;to:string;at:number}[]
+  authRevokedSessions?:Record<string,number>
+  authRevokedBefore?:Record<string,number>
+  authLocks?:Record<string,number>
+  authDeletedUsers?:Record<string,number>
   /** Hashed limiter keys; persisted under the hosted write lease. */
   rateLimits?: Record<string,{n:number;reset:number}>
   accountRecovery?:Record<string,{owner:string;createdAt:number}>
   foKeyDisabled?:Record<string,boolean>
-  foLoginTickets?:Record<string,{owner:string;clientBinding:string;expiresAt:number}>
+  foLoginTickets?:Record<string,{owner:string;clientBinding:string;expiresAt:number;stepUpAt?:number;authSessionId?:string}>
 
   calendarWrites?: Record<string,{tripId:string;state:'running'|'uncertain'}>
   calendarLinks?: Record<string,{subject:string;state:'creating'|'ready'|'uncertain';id?:string}>

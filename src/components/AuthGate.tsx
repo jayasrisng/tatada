@@ -1,3 +1,4 @@
+import {EmailSignIn} from './EmailSignIn'
 import {AccountRecovery} from './AccountRecovery'
 import {SharedTripView} from './SharedTripView'
 import {useRoute} from '../state/ui'
@@ -214,6 +215,7 @@ const AUTH_MESSAGES: Record<string, string> = {
 const AUTH_REASONS:Record<string,string>={exchange_expired:'This sign-in expired. Start a new sign-in below.',exchange_used:'This sign-in was already used. Start a new sign-in below.',exchange_browser_mismatch:'This sign-in belongs to another browser. Start a new sign-in in this browser.',exchange_invalid:'This sign-in is no longer valid. Start again below.',browser_storage:'Allow site storage in this browser, then start a new sign-in.'}
 
 function SignIn({ onDemo }: { onDemo: () => void }) {
+  const {info}=useServer()
   const q = hashQuery()
   const auth = q.get('auth')
   const reason = q.get('reason')
@@ -235,14 +237,14 @@ function SignIn({ onDemo }: { onDemo: () => void }) {
               {AUTH_REASONS[reason??'']??AUTH_MESSAGES[auth]??AUTH_MESSAGES.error}
             </p>
           )}
-          <a className="btn btn-solid signin-btn" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>
+          {info.authMethod==='supabase'?<EmailSignIn/>:<a className="btn btn-solid signin-btn" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>
             <Doodle name="arrow" size={20} />
             <span>Continue with Wajo</span>
-          </a>
-          <button className="linkbtn" onClick={onDemo}>explore a sample trip first</button><AccountRecovery/>
-          <p className="small dim">Returning on a new device? Restore your existing workspace before reconnecting if Wajo does not provide a verified account identity. A new connection can create a separate workspace; Tatada never merges accounts by a typed email.</p>
+          </a>}
+          <button className="linkbtn" onClick={onDemo}>explore a sample trip first</button>{info.authMethod!=='supabase'&&<AccountRecovery/>}
+          <p className="small dim">{info.authMethod==='supabase'?'Sign in with the same verified email on each device. To migrate an older Wajo workspace, unlock Account security and link its saved recovery key before adding new work.':<>Returning on a new device? Restore your existing workspace before reconnecting if Wajo does not provide a verified account identity. A new connection can create a separate workspace; Tatada never merges accounts by a typed email.</>}</p>
           <p className="dim small signin-fine">
-            Tatada signs you in with your Wajo account. Fo only acts for you after you approve each request. Your Wajo password and tokens never reach this page.
+            {info.authMethod==='supabase'?'Tatada uses verified email codes. Wajo is an optional connection after sign-in.':'Tatada signs you in with your Wajo account. Your Wajo password and tokens never reach this page.'}
           </p>
         </div>
       </main>

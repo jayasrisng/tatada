@@ -1,3 +1,4 @@
+import {authToken} from './state/auth-token'
 import {loginAttempts} from './state/login'
 /** Browser-only builds work offline; backend-enabled builds support Wajo sign-in and connected actions. */
 export const browserOnly = import.meta.env.VITE_ENABLE_BACKEND !== 'true'
@@ -16,13 +17,14 @@ const sessionKey = `tatada:session:${base}`
 const attempts=loginAttempts(base,()=>sessionStorage,()=>localStorage)
 let startingLogin=false
 export const sessionHeaders = (): Record<string, string> => {
+  const verifiedSession=authToken();if(verifiedSession)return {authorization:`Bearer ${verifiedSession}`}
   try {
     const token = usesBearer ? (sessionStorage.getItem(sessionKey) ?? localStorage.getItem(sessionKey)) : null
     return token ? { authorization: `Bearer ${token}` } : {}
   } catch { return {} }
 }
 export const saveSession = (token?: string) => {
-  if (!usesBearer) return
+  if (!usesBearer&&!authToken()) return
   // This is Tatada's revocable session, never Wajo or Google access/refresh tokens.
   for(const getStorage of [()=>sessionStorage,()=>localStorage])try{
     const storage=getStorage();if(token)storage.setItem(sessionKey,token);else storage.removeItem(sessionKey)
@@ -32,7 +34,7 @@ export const saveSession = (token?: string) => {
 export const loginBinding = (attempt?:string) => attempts.binding(attempt)
 export const clearLoginAttempt = (attempt?:string) => attempts.remove(attempt)
 export async function beginSignIn(event?: { preventDefault(): void }) {
-  if (!usesBearer) return
+  if (!usesBearer&&!authToken()) return
   event?.preventDefault()
   if(startingLogin)return
   startingLogin=true

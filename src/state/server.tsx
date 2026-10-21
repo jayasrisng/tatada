@@ -1,3 +1,4 @@
+import {initializeAuth,signOutAuth} from './supabase-auth'
 import {accountKey} from './persistence'
 import {OFFLINE_SELECTED} from '../offline/pack'
 import {fetchWithBackoff} from './retry'
@@ -44,6 +45,7 @@ export interface ServerAction {
 export const ACTIVE: ServerStatus[] = ['approved', 'sending', 'send_uncertain', 'waiting', 'answering', 'verifying']
 
 export interface ServerInfo {
+  authMethod?:'supabase'|'legacy'
   /** False until the first status check finishes. */
   checked: boolean
   available: boolean
@@ -118,15 +120,17 @@ export function ServerProvider({ children }: { children: ReactNode }) {
   const [info, setInfo] = useState<ServerInfo>({ checked: false, available: false })
   const [actions, setActions] = useState<Record<string, ServerAction>>({})
   const tracked = useRef(new Set<string>())
-  const refreshing = useRef(false)
+  const refreshing = useRef(false),refreshQueued=useRef(false),authRevision=useRef(0)
 
   const put = (list: ServerAction[]) => setActions((prev) => ({ ...prev, ...Object.fromEntries(list.map((a) => [a.id, a])) }))
 
-  const refresh = useCallback(async () => {
+  const refresh:()=>Promise<void> = useCallback(async () => {
     if (browserOnly) return setInfo({ checked: true, available: false })
-    if (refreshing.current) return
+    if (refreshing.current){refreshQueued.current=true;return}
     refreshing.current = true
+    const revision=authRevision.current
     try {
+      await initializeAuth()
       const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
       const code = params.get('auth_exchange')
       if (usesBearer && code) {
@@ -143,13 +147,15 @@ export function ServerProvider({ children }: { children: ReactNode }) {
         }
       }
       const s = await api<Omit<ServerInfo, 'available' | 'checked'> & { sessionToken?: string }>('/api/session', { method: 'POST' })
+      if(revision!==authRevision.current)return
       if (s.sessionToken) saveSession(s.sessionToken)
       setInfo({ checked: true, available: true, ...s })
     } catch {
-      setInfo({ checked: true, available: false })
-    } finally { refreshing.current = false }
+      if(revision===authRevision.current)setInfo({ checked: true, available: false })
+    } finally { refreshing.current = false;if(refreshQueued.current){refreshQueued.current=false;setTimeout(()=>void refresh(),0)} }
   }, [])
 
+  useEffect(()=>{const changed=()=>{authRevision.current++;void refresh()};window.addEventListener('tatada-auth-changed',changed);return()=>window.removeEventListener('tatada-auth-changed',changed)},[refresh])
   useEffect(() => {
     void refresh()
   }, [refresh])
@@ -184,10 +190,8 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     logout: async (everywhere = false) => {
       await api('/api/auth/logout', { method: 'POST', json: { everywhere } })
       if(info.account?.id)try{const prefix=`${accountKey(info.account.id)}:offline:`;for(const k of Object.keys(localStorage))if(k.startsWith(prefix))localStorage.removeItem(k);if(localStorage.getItem(OFFLINE_SELECTED)?.startsWith(prefix))localStorage.removeItem(OFFLINE_SELECTED)}catch{/* Device storage may be unavailable. */}
-      saveSession()
-      tracked.current.clear()
-      setActions({})
-      await refresh()
+      authRevision.current++;setInfo(i=>({...i,authenticated:false,account:undefined,foConnected:false}));saveSession()
+      try{await signOutAuth(everywhere)}finally{tracked.current.clear();setActions({});await refresh()}
     },
     loadWorkspace: () => api<{ version: number; state: unknown }>('/api/workspace'),
     saveWorkspace: async (baseVersion, state) => {

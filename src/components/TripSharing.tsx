@@ -1,3 +1,4 @@
+import {SecurityGate} from './SecurityGate'
 import {useEffect} from 'react'
 import {api,useServer} from '../state/server'
 import { useRef, useState } from 'react'
@@ -8,7 +9,7 @@ import { go } from '../state/ui'
 import type { Trip } from '../types'
 import { Btn } from './ui'
 
-export function TripSharing({ trip }: { trip: Trip }) {
+function TripSharingContent({ trip }: { trip: Trip }) {
   const [notes, setNotes] = useState(false), [message, setMessage] = useState(''), [busy, setBusy] = useState(false)
   const {info}=useServer()
   const [reviewed,setReviewed]=useState(false),[link,setLink]=useState(''),[links,setLinks]=useState<{id:string;expiresAt:number;revokedAt?:number}[]>([])
@@ -16,7 +17,7 @@ export function TripSharing({ trip }: { trip: Trip }) {
   const reloadLinks=()=>api<{links:typeof links}>(`/api/shares?tripId=${encodeURIComponent(trip.id)}`).then(r=>setLinks(r.links))
   useEffect(()=>{if(info.available&&info.authenticated)void reloadLinks().catch(()=>setMessage('Share links could not load. Reconnect to manage them.'))},[trip.id,info.available,info.authenticated])
   useEffect(()=>{setReviewed(false);setLink('')},[trip,notes])
-  return <details className="share-panel"><summary>Share with a friend</summary>
+  return <div>
     <p className="small">Share the route, dates and daily plan. Choose an independent file or a view-only link that you can revoke.</p>
     <p className="small dim">Booking codes, documents and profile details stay private. Check the preview before sharing.</p>
     <label><input type="checkbox" checked={notes} onChange={(e) => setNotes(e.target.checked)} /> Include written journal notes</label>
@@ -35,7 +36,7 @@ export function TripSharing({ trip }: { trip: Trip }) {
       } catch (e) { if ((e as Error).name !== 'AbortError') setMessage('Could not share. Try downloading from a browser that supports file downloads.') } finally { setBusy(false) }
     }}>share trip file</Btn>
     {message && <p role="status" className="small">{message}</p>}
-  </details>
+  </div>
 }
 export function SharedTripImport() {
   const { dispatch } = useStore(), input = useRef<HTMLInputElement>(null)
@@ -50,3 +51,5 @@ export function SharedTripImport() {
     {error && <p role="alert">{error}</p>}
   </section>
 }
+
+export function TripSharing(props:{trip:Trip}){return <details className="share-panel"><summary>Share with a friend</summary><SecurityGate><TripSharingContent {...props}/></SecurityGate></details>}

@@ -1,3 +1,4 @@
+import {finishAuthDeletions,freshMfa,principalAllowed,ownerFor,linkOwner,workspaceView,profileChanged,hiddenProfile,hasPaymentData,MFA_WINDOW,type IdentityGateway,type Principal} from './account-auth.ts'
 import type {PrintFiles} from './print-files.ts'
 import type {CalendarService} from './calendar.ts'
 import {withoutTrip} from '../src/travel/delete.ts'
@@ -36,6 +37,7 @@ import type { TokenSet } from './types.ts'
 export type ResolveIdentity = (a: { tokens: TokenSet; body: Json; issuer: string }) => Promise<{ identity: WajoIdentity | null; foShape?: unknown }>
 
 interface Deps {
+  identity?:IdentityGateway
   printFiles?:PrintFiles
   travel?:AmadeusTravel
   calendar?: CalendarService
@@ -184,6 +186,7 @@ export function createApp(deps: Deps) {
   const status = (userId?: string) => {
     const account = userId ? store.data.accounts[userId] : undefined
     return {
+      authMethod:deps.identity?'supabase':'legacy',
       provider: actions.provider,
       demo: !live,
       authenticated: !!account,
@@ -234,7 +237,10 @@ export function createApp(deps: Deps) {
         if (method !== 'GET' && (!origin || !deps.owner.allowedOrigins.includes(origin))) return send(res, 403, { error: 'Request origin not allowed' })
         if (!store.data.accounts[OWNER_ID]) store.update((d) => (d.accounts[OWNER_ID] = { kind: 'owner', createdAt: now(), lastLoginAt: now() }))
       }
-      if (deps.bearerSessions && path === '/api/auth/exchange' && method === 'POST') {
+      if(deps.identity&&path==='/api/auth/config'&&method==='GET')return send(res,200,deps.identity.publicConfig)
+      if(!deps.identity&&path==='/api/auth/config'&&method==='GET')return send(res,200,{mode:'legacy'})
+      if(/^\/api\/payments?(?:\/|$)/.test(path))return send(res,403,{error:'Payment functionality is disabled in Tatada v0.1.'})
+      if (!deps.identity && deps.bearerSessions && path === '/api/auth/exchange' && method === 'POST') {
         const body = await readBody(req)
         const code = typeof body.code === 'string' ? body.code : ''
         const binding = typeof body.binding === 'string' ? sha256(body.binding) : ''
@@ -244,13 +250,26 @@ export function createApp(deps: Deps) {
         store.update(() => {entry!.usedAt=now();entry!.expiresAt=Math.min(entry!.expiresAt,now())}) // older servers also reject consumed tombstones
         return send(res, 200, { sessionToken: newSession(entry!.userId) })
       }
-      const current = deps.owner ? undefined : sessionOf(req)
-      const userId = deps.owner ? OWNER_ID : current?.s.userId
+      const current = deps.owner||deps.identity ? undefined : sessionOf(req)
+      let principal:Principal|undefined
+      if(deps.identity){const header=String(req.headers.authorization??'');const token=header.startsWith('Bearer ')?header.slice(7):'';const verified=token?await deps.identity.verify(token):null;if(verified&&principalAllowed(store,verified,now()))principal=verified}
+      if(principal&&method!=='GET')store.update(d=>{(d.authLastSeen??={})[principal!.sessionId]=now()})
+      let userId = deps.owner ? OWNER_ID : deps.identity?(principal?ownerFor(store,principal,now(),path==='/api/session'&&method==='POST'):undefined):current?.s.userId
+      const unlocked=!deps.identity||freshMfa(store,principal,now())
+      const needMfa=()=>{if(deps.identity&&!freshMfa(store,principal,now()))throw new ActionError(403,'Unlock sensitive access with a recent authenticator code.')}
+      if(deps.identity&&path==='/api/auth/exchange')return send(res,410,{error:'Sign in with a verified email code.'})
+      if(deps.identity&&path==='/api/security/status')return principal?send(res,200,{unlocked,expiresAt:unlocked?principal.mfaAt!+MFA_WINDOW:0,hasTotp:principal.hasTotp}):send(res,401,{error:'Sign in with your email first.'})
+      if(deps.identity&&path==='/api/security/lock'&&method==='POST'){if(!principal)return send(res,401,{error:'Sign in first.'});store.update(d=>{(d.authLocks??={})[principal!.sessionId]=now()});return send(res,200,{unlocked:false})}
+      if(deps.identity&&path==='/api/account/link'&&method==='POST'){if(!principal)return send(res,401,{error:'Verify your email first.'});needMfa();if(!authLimit.allow(`link:${principal.id}`))return send(res,429,{error:'Too many linking attempts. Try later.'});const body=await readBody(req);userId=linkOwner(store,principal,typeof body.key==='string'?body.key:'',now());await store.flush();return send(res,200,{linked:true})}
+      if(deps.identity&&(/^\/api\/(print|gmail|calendar|account\/(?:export|delete|recovery-key)|shares)(?:\/|$)/.test(path))&&path!=='/api/gmail/callback'){if(!principal)return send(res,401,{error:'Verify your email first.'});needMfa()}
+      if(deps.identity&&(path==='/api/auth/wajo/link'||/^\/api\/fo\/(?:disconnect|test-refresh|diagnostics|oauth-observations|trace)$/.test(path)))needMfa()
+      if(deps.identity&&path==='/api/auth/logout'&&method==='POST'){if(principal){const body=await readBody(req);store.update(d=>{(d.authRevokedSessions??={})[principal!.sessionId]=now();if(body.everywhere===true)(d.authRevokedBefore??={})[principal!.id]=now();for(const [k,v]of Object.entries(d.pendingAuth))if(v.authSessionId===principal!.sessionId||body.everywhere===true&&v.accountId===userId){delete d.pendingAuth[k];delete d.loginBindings?.[k];delete d.loginAttempts?.[k]};for(const [k,v]of Object.entries(d.foLoginTickets??{}))if(v.authSessionId===principal!.sessionId||body.everywhere===true&&v.owner===userId)delete d.foLoginTickets![k]})}return send(res,200,{authenticated:false,authMethod:'supabase'})}
 
       /* ── session & sign-in ── */
 
       if (path === '/api/session' && method === 'POST') {
         if (userId) return send(res, 200, status(userId))
+        if(deps.identity)return send(res,200,status())
         // Demo accounts exist only in mock mode, and say so.
         if (!live) {
           const id = randomToken(12)
@@ -267,11 +286,12 @@ export function createApp(deps: Deps) {
         const body=await readBody(req),binding=body.clientBinding
         if(typeof binding!=='string'||!/^[a-f0-9]{64}$/.test(binding))return send(res,400,{error:'Invalid browser binding.'})
         const ticket=randomToken(32)
-        store.update(d=>{const tickets=d.foLoginTickets??={};for(const [key,value]of Object.entries(tickets))if(value.expiresAt<=now())delete tickets[key];tickets[sha256(ticket)]={owner:userId,clientBinding:binding,expiresAt:now()+60000}})
+        store.update(d=>{const tickets=d.foLoginTickets??={};for(const [key,value]of Object.entries(tickets))if(value.expiresAt<=now())delete tickets[key];tickets[sha256(ticket)]={owner:userId,clientBinding:binding,expiresAt:now()+60000,stepUpAt:principal?.mfaAt,authSessionId:principal?.sessionId}})
         return send(res,200,{ticket})
       }
 
       if(path==='/api/auth/recover'&&method==='POST'){
+        if(deps.identity)return send(res,403,{error:'Verify your email and use Account security → Link existing workspace.'})
         if(!authLimit.allow(`recovery:${ip(req)}`))return send(res,429,{error:'Too many recovery attempts. Try again later.'})
         const body=await readBody(req),key=typeof body.key==='string'?body.key.trim():''
         const hash=sha256(key),entry=store.data.accountRecovery?.[hash]
@@ -293,18 +313,19 @@ export function createApp(deps: Deps) {
         const attempt=url.searchParams.get('attempt')??''
         if(attempt&&!/^[a-f0-9]{32}$/.test(attempt))return redirect(res,`${appUrl}/#/welcome?auth=error&reason=browser_binding`)
         if (deps.bearerSessions && !/^[a-f0-9]{64}$/.test(clientBinding)) return redirect(res, `${appUrl}/#/welcome?auth=error&reason=browser_binding`)
-        let reconnectAccount=current?.s.userId
+        let reconnectAccount=current?.s.userId,stepUpAt:number|undefined,authSessionId:string|undefined
         const ticket=url.searchParams.get('reconnect')
         if(ticket){
           const entry=store.data.foLoginTickets?.[sha256(ticket)]
           if(!entry||entry.expiresAt<=now()||entry.clientBinding!==clientBinding)return redirect(res,`${appUrl}/#/welcome?auth=error&reason=reconnect_expired`)
-          reconnectAccount=entry.owner;store.update(d=>{delete d.foLoginTickets?.[sha256(ticket)]})
+          reconnectAccount=entry.owner;stepUpAt=entry.stepUpAt;authSessionId=entry.authSessionId;store.update(d=>{delete d.foLoginTickets?.[sha256(ticket)]})
         }
+        if(deps.identity&&!reconnectAccount)return redirect(res,`${appUrl}/#/welcome?fo=signin_required`)
         const nonce = randomToken(24)
         try {
           const to = await oauth.start(sha256(nonce))
           const pendingState=new URL(to).searchParams.get('state')!
-          if(reconnectAccount)store.update(d=>{d.pendingAuth[pendingState].accountId=reconnectAccount})
+          if(reconnectAccount)store.update(d=>{Object.assign(d.pendingAuth[pendingState],{accountId:reconnectAccount,stepUpAt,authSessionId})})
           if (deps.bearerSessions) {
             const state = new URL(to).searchParams.get('state')!
             store.update((d) => {
@@ -324,15 +345,17 @@ export function createApp(deps: Deps) {
         const stateCookie=`${LOGIN_COOKIE}_${sha256(url.searchParams.get('state')??'').slice(0,20)}`
         const activeCookie=cookie(req,stateCookie)?stateCookie:LOGIN_COOKIE // pre-release pending attempts remain valid
         const done = (q: string, cookies: string[] = []) => redirect(res, `${appUrl}/#/${q}`, [clear(activeCookie, loginCookiePath), ...cookies])
-        if (!live || !oauth || (!deps.resolveIdentity && !deps.owner)) return done('welcome?auth=demo_mode')
+        if (!live || !oauth || (!deps.identity && !deps.resolveIdentity && !deps.owner)) return done('welcome?auth=demo_mode')
         if (url.searchParams.get('error')) return done(deps.owner ? '?fo=denied' : 'welcome?auth=denied')
-        const reconnectAccount=store.data.pendingAuth[url.searchParams.get('state')??'']?.accountId
+        const pending=store.data.pendingAuth[url.searchParams.get('state')??''],reconnectAccount=pending?.accountId
+        if(deps.identity&&(!pending?.stepUpAt||now()-pending.stepUpAt>=MFA_WINDOW)){store.update(d=>{delete d.pendingAuth[url.searchParams.get('state')??'']});return done('welcome?fo=reconnect_expired')}
         let login
         try {
           login = await oauth.finish(url.searchParams.get('code') ?? '', url.searchParams.get('state') ?? '', sha256(cookie(req, activeCookie) ?? ''))
         } catch (e) {
           return done(`welcome?auth=error&reason=${encodeURIComponent(e instanceof OAuthError ? e.code : 'error')}`)
         }
+        if(deps.identity){if(!reconnectAccount||!store.data.accounts[reconnectAccount])return done('welcome?fo=connection_expired');oauth.saveFor(reconnectAccount,login.tokens);return done('welcome?fo=connected')}
         // Owner mode: Fo is authorized for the one local owner. No Wajo identity is claimed or needed.
         if (deps.owner) {
           oauth.saveFor(OWNER_ID, login.tokens)
@@ -420,9 +443,15 @@ export function createApp(deps: Deps) {
       const publicShare=path.match(/^\/api\/shared\/([\w-]{40,60})$/)
       if(publicShare&&method==='GET')return send(res,200,{trip:shares.view(publicShare[1])},{'referrer-policy':'no-referrer'})
 
-      if (!userId) return send(res, 401, { error: live ? 'Sign in with Wajo' : 'No session' })
+      if (!userId) return send(res, 401, { error: deps.identity?'Verify your email to sign in.':live ? 'Sign in with Wajo' : 'No session' })
       if (method !== 'GET' && !writeLimit.allow(`w:${userId}`)) return send(res, 429, { error: 'Too many requests. Slow down a little.' })
 
+      if(deps.identity&&path==='/api/fo/disconnect'&&method==='POST'){
+        const active=Object.values(store.data.actions).some(a=>a.ownerId===userId&&['approved','sending','send_uncertain','waiting','answering','verifying'].includes(a.status))||(deps.chats?.list(userId)??[]).some(c=>['sending','send_uncertain','working'].includes(c.status))
+        if(active)return send(res,409,{error:'Resolve active or uncertain Fo requests before disconnecting.'})
+        store.update(d=>{delete d.tokens[userId];(d.foKeyDisabled??={})[userId]=true;for(const [k,v]of Object.entries(d.foLoginTickets??{}))if(v.owner===userId)delete d.foLoginTickets![k];for(const [k,v]of Object.entries(d.pendingAuth))if(v.accountId===userId){delete d.pendingAuth[k];delete d.loginBindings?.[k];delete d.loginAttempts?.[k]}})
+        return send(res,200,{connected:false})
+      }
       if(path==='/api/calendar/status'&&method==='GET')return send(res,200,deps.calendar?.connection.status(userId)??{configured:false,connected:false})
       if(path==='/api/calendar/prepare'&&method==='POST'){
         const b=await readBody(req);if(!deps.calendar||typeof b.binding!=='string'||!/^[a-f0-9]{64}$/.test(b.binding))return send(res,400,{error:'Calendar setup or browser binding is missing.'})
@@ -575,18 +604,20 @@ export function createApp(deps: Deps) {
           for(const table of [d.foChats,d.shares])if(table)for(const [key,value] of Object.entries(table)){const v=value as {ownerId?:string;owner?:string;tripId?:string};if((v.ownerId===userId||v.owner===userId)&&v.tripId===body.tripId)delete table[key]}
           for(const job of tripPrints)delete d.printJobs![(job as {id:string}).id]
         })
-        await store.flush();return send(res,200,next)
+        await store.flush();return send(res,200,{...next,state:workspaceView(next.state,!deps.identity||freshMfa(store,principal,now()))})
       }
 
       if(path==='/api/account/export'&&method==='GET')return send(res,200,{format:'tatada-account-data',version:1,exportedAt:new Date(now()).toISOString(),workspace:store.data.workspaces[userId]?.state??null,chats:deps.chats?.list(userId)??[],actions:actions.list(userId),shares:shares.list(userId),printer:store.data.printers?.[userId]??null,printJobs:Object.values(store.data.printJobs??{}).filter(value=>(value as {ownerId?:string}).ownerId===userId).map(value=>{const j=value as {id?:string;status?:string;pdf?:string;createdAt?:number;updatedAt?:number};return {id:j.id,status:j.status,pdf:j.pdf,createdAt:j.createdAt,updatedAt:j.updatedAt}})})
       if(path==='/api/account/delete'&&method==='POST'){
         const body=await readBody(req)
+        needMfa()
         if(body.confirm!=='DELETE')return send(res,400,{error:'Type DELETE to confirm account data deletion.'})
         const activeActions=Object.values(store.data.actions).some(a=>a.ownerId===userId&&['approved','sending','send_uncertain','waiting','answering','verifying'].includes(a.status))
         const activeChats=(deps.chats?.list(userId)??[]).some(c=>['sending','send_uncertain','working'].includes(c.status))
         const activePrint=Object.values(store.data.printJobs??{}).some(value=>{const j=value as {ownerId?:string;status?:string};return j.ownerId===userId&&['sending','send_uncertain'].includes(j.status??'')})
         if(store.data.calendarWrites?.[userId]||activeActions||activeChats||activePrint)return send(res,409,{error:'A provider request is still active or uncertain. Resolve it before deleting so it cannot recreate data or hide an external action.'})
         store.update(d=>{
+          if(principal){(d.authDeletedUsers??={})[principal.id]=now();(d.authDeletions??={})[principal.id]={status:'pending',attempts:0,requestedAt:now()};delete d.authOwners?.[principal.id]}
           for(const table of [d.actions,d.foChats,d.printJobs,d.shares,d.accountRecovery,d.foLoginTickets])if(table)for(const [k,v] of Object.entries(table))if((v as {ownerId?:string;owner?:string}).ownerId===userId||(v as {owner?:string}).owner===userId)delete table[k]
           for(const table of [d.sessions,d.sessionExchanges])if(table)for(const [k,v] of Object.entries(table))if(v.userId===userId)delete table[k]
           for(const table of [d.calendarExchanges,d.calendarPending])if(table)for(const [k,v] of Object.entries(table))if(v.owner===userId)delete table[k]
@@ -596,7 +627,8 @@ export function createApp(deps: Deps) {
           for(const table of [d.workspaces,d.tokens,d.calendarWrites,d.calendarLinks,d.calendarTokens,d.calendarEpochs,d.gmailTokens,d.gmailEpochs,d.printers,d.foTrace,d.users,d.accounts])if(table)delete table[userId]
         })
         await store.flush()
-        return send(res,200,{deleted:true,retention:'Active Tatada records and stored authorization removed. Device copies and owner-managed backups require separate removal. Provider histories and already downloaded copies remain outside Tatada.'},{'set-cookie':clear(COOKIE)})
+        if(deps.identity){await finishAuthDeletions(store,deps.identity,now());await store.flush()}
+        return send(res,200,{deleted:true,identityDeletionPending:principal?store.data.authDeletions?.[principal.id]?.status!=='done':false,retention:'Active Tatada records and stored authorization removed. Device copies and owner-managed backups require separate removal. Provider histories and already downloaded copies remain outside Tatada.'},{'set-cookie':clear(COOKIE)})
       }
 
       if(path==='/api/travel/capabilities'&&method==='GET')return send(res,200,deps.travel?.capabilities()??{configured:false,flightStatus:false,inventory:false,booking:false,checkIn:false,loyalty:false})
@@ -620,16 +652,18 @@ export function createApp(deps: Deps) {
 
       if (path === '/api/workspace' && method === 'GET') {
         const w = store.data.workspaces[userId]
-        return send(res, 200, { version: w?.version ?? 0, updatedAt: w?.updatedAt, state: w?.state ?? null })
+        return send(res, 200, { version: w?.version ?? 0, updatedAt: w?.updatedAt, state: workspaceView(w?.state??null,unlocked) })
       }
       if (path === '/api/workspace' && method === 'PUT') {
         const body = await readBody(req, MAX_WORKSPACE)
         const st = body.state as Record<string, unknown> | undefined
+        if(hasPaymentData(st))return send(res,400,{error:'Payment data is not accepted.'})
+        if(deps.identity&&!freshMfa(store,principal,now())&&st){const prior=store.data.workspaces[userId]?.state;if(profileChanged(prior,st)&&JSON.stringify(st.profile)!==JSON.stringify(hiddenProfile))return send(res,403,{error:'Unlock sensitive access before changing your profile.'});st.profile=(prior as {profile?:unknown}|undefined)?.profile??hiddenProfile}
         if (!Number.isSafeInteger(body.baseVersion) || Number(body.baseVersion)<0 || !validateWorkspace(st)) {
           return send(res, 400, { error: 'Invalid workspace' })
         }
         const cur = store.data.workspaces[userId]
-        if ((cur?.version ?? 0) !== body.baseVersion) return send(res, 409, { error: 'Workspace changed elsewhere', version: cur?.version ?? 0, state: cur?.state ?? null })
+        if ((cur?.version ?? 0) !== body.baseVersion) return send(res, 409, { error: 'Workspace changed elsewhere', version: cur?.version ?? 0, state: workspaceView(cur?.state??null,unlocked) })
         const next = { version: (cur?.version ?? 0) + 1, updatedAt: now(), state: st }
         store.update((d) => (d.workspaces[userId] = next))
         return send(res, 200, { version: next.version, updatedAt: next.updatedAt })
@@ -655,7 +689,7 @@ export function createApp(deps: Deps) {
         out.identity = store.data.identityObservations.at(-1) ?? null
         return send(res, 200, out)
       }
-      if (path === '/api/fo/oauth-observations' && method === 'GET') return send(res, 200, { observations: oauth?.observations() ?? [], identity: store.data.identityObservations })
+      if (path === '/api/fo/oauth-observations' && method === 'GET') return send(res, 200, { observations: deps.identity?[]:oauth?.observations() ?? [], identity: deps.identity?[]:store.data.identityObservations })
       if (path === '/api/fo/test-refresh' && method === 'POST') {
         if (!oauth) return send(res, 409, { error: 'Demo mode has no Wajo session.' })
         try {

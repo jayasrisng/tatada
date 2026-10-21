@@ -1,3 +1,4 @@
+import {SecurityGate} from './SecurityGate'
 import {printDraft} from '../print/draft'
 import {useEffect,useMemo,useRef,useState} from 'react'
 import {browserOnly} from '../config'
@@ -9,7 +10,7 @@ import {packingList} from '../style/looks'
 import {garmentImage} from '../style/images'
 import {ConfirmationDialog} from './ConfirmationDialog'
 import {TODAY} from './ui'
-export function PrintPanel({id,doc}:{id:string;doc?:string}){
+function PrintPanelContent({id,doc}:{id:string;doc?:string}){
  const {state,workspace}=useStore(),trip=state.trips.find(t=>t.id===id)
  const [printer,setPrinter]=useState<PrinterProfile|null>(),[request,setRequest]=useState<PrintRequest>(),[job,setJob]=useState<PrintJob>(),[previous,setPrevious]=useState<PrintJob[]>([]),[problem,setProblem]=useState(''),[busy,setBusy]=useState(false),[preview,setPreview]=useState('')
  const preparedVersion=useRef(''),sending=useRef(false),previewRef=useRef(''),mounted=useRef(true)
@@ -50,3 +51,5 @@ export function PrintPanel({id,doc}:{id:string;doc?:string}){
   </>}{problem&&<p role="alert">{problem}</p>}
  </ConfirmationDialog></div>
 }
+
+export function PrintPanel(props:{id:string;doc?:string}){return <SecurityGate><PrintPanelContent {...props}/></SecurityGate>}

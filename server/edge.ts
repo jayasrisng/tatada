@@ -1,3 +1,4 @@
+import {finishAuthDeletions,type IdentityGateway} from './account-auth.ts'
 import {readOnlyFo} from './fo.ts'
 import {PrintFiles} from './print-files.ts'
 import {CalendarConnection,CalendarService} from './calendar.ts'
@@ -23,6 +24,7 @@ export interface EdgeRepository {
   release(token: string): Promise<void>
 }
 export interface EdgeOptions {
+  identity?:IdentityGateway
   repository: EdgeRepository
   appUrl: string
   publicUrl: string
@@ -81,7 +83,7 @@ export function createEdgeHandler(options: EdgeOptions) {
     const calendar=options.gmail?new CalendarService(store,new CalendarConnection({store,sealer:new Sealer(options.secret),...options.gmail,redirectUri:options.gmail.redirectUri??`${publicUrl}/api/gmail/callback`})):undefined
     const printFiles=new PrintFiles(store,options.secret,publicUrl)
     const print = new PrintService({ store, delivery: options.mode === 'mock' ? new MockPrintDelivery(store) : new GmailPrintDelivery(gmail) })
-    const handle = createApp({ printFiles,store, fo, actions, chats, print, calendar, gmail, intelligence, travel, oauth: options.mode === 'mock' ? undefined : oauth, appUrl, secureCookies: true, allowedOrigin: origin, bearerSessions: true, browserAccounts: true, loginCookiePath: `${prefix}/`,
+    const handle = createApp({identity:options.identity, printFiles,store, fo, actions, chats, print, calendar, gmail, intelligence, travel, oauth: options.mode === 'mock' ? undefined : oauth, appUrl, secureCookies: true, allowedOrigin: origin, bearerSessions: true, browserAccounts: true, loginCookiePath: `${prefix}/`,
       resolveIdentity: async ({ body, tokens, issuer }) => {
         const identity = fromTokenResponse(body, issuer) ?? fromAccessToken(tokens.accessToken, issuer, Date.now())
         return identity ? { identity } : fromFoApi(mcp, tokens.accessToken, issuer)
@@ -99,6 +101,7 @@ export function createEdgeHandler(options: EdgeOptions) {
     let committed = false
     try {
       if (lease.recovered) { actions.recover(); chats.recover(); print.recover() }
+      if(options.identity)await finishAuthDeletions(store,options.identity)
       await actions.runDue(1)
       await chats.runDue(1)
       await print.runDue(1)
@@ -150,7 +153,8 @@ export function createEdgeHandler(options: EdgeOptions) {
       await store.flush()
       committed = true
       if (token) { await repository.release(token); token = undefined }
-      const pending=Object.values(store.data.actions).some(a=>['approved','sending','send_uncertain','waiting','answering','verifying'].includes(a.status))||Object.values(store.data.foChats??{}).some(value=>['sending','send_uncertain','working'].includes((value as {status:string}).status))||Object.values(store.data.printJobs??{}).some(value=>{const j=value as {sender?:{kind:string};status:string;createdAt:number};return j.sender?.kind==='fo'&&j.status==='send_uncertain'&&Date.now()-j.createdAt<30*60_000})
+      const deletionPending=Object.values(store.data.authDeletions??{}).some(j=>j.status==='pending'&&j.attempts<5)
+      const pending=deletionPending||Object.values(store.data.actions).some(a=>['approved','sending','send_uncertain','waiting','answering','verifying'].includes(a.status))||Object.values(store.data.foChats??{}).some(value=>['sending','send_uncertain','working'].includes((value as {status:string}).status))||Object.values(store.data.printJobs??{}).some(value=>{const j=value as {sender?:{kind:string};status:string;createdAt:number};return j.sender?.kind==='fo'&&j.status==='send_uncertain'&&Date.now()-j.createdAt<30*60_000})
       if ((snapshot || response.ok)&&pending) kick()
       return response
     } catch {

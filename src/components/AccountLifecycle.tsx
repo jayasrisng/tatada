@@ -1,3 +1,4 @@
+import {signOutAuth} from '../state/supabase-auth'
 import {ConfirmationDialog} from './ConfirmationDialog'
 import {OriginalLibrary} from './OriginalLibrary'
 import { useState } from 'react'
@@ -25,7 +26,7 @@ export function AccountLifecycle({exportOnly=false,deleteOnly=false}:{exportOnly
       const selected=localStorage.getItem(OFFLINE_SELECTED)
       if(selected?.startsWith(workspace.storageKey+':offline:'))localStorage.removeItem(OFFLINE_SELECTED)
       const keys=Object.keys(localStorage).filter(k=>k===workspace.storageKey||k===workspace.storageKey+':recovery'||k===workspace.storageKey+':sync'||k.startsWith(workspace.storageKey+':offline:'))
-      keys.forEach(k=>localStorage.removeItem(k));localStorage.setItem(workspace.storageKey+':deleted','1');sessionStorage.removeItem(`${workspace.storageKey}:trip-mode`);if(connected)saveSession()
+      keys.forEach(k=>localStorage.removeItem(k));localStorage.setItem(workspace.storageKey+':deleted','1');sessionStorage.removeItem(`${workspace.storageKey}:trip-mode`);if(connected){saveSession();await signOutAuth().catch(()=>{})}
       location.replace(`${location.pathname}#/welcome`);location.reload()
     }catch(e){if(!removedServer)resume?.();setMessage(`Deletion needs attention: ${(e as Error).message}. Successfully removed records stay removed; retry remaining device cleanup.`);setBusy(false)}}}>confirm and delete account</Btn>
     <p className="small dim">Tatada retains active records until deletion. Local operator backups and hosting backups follow the retention policy in docs; deleting active data cannot erase already exported files or provider records.</p>{message&&<p role="status">{message}</p>}
