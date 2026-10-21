@@ -138,6 +138,24 @@ returns jsonb language sql stable security definer set search_path='' as $$
  else '{"active":false}'::jsonb end;
 $$;
 
+revoke all on function tatada_private.auth_session_active(uuid,uuid) from public,anon,authenticated;
+grant execute on function tatada_private.auth_session_active(uuid,uuid) to service_role;
+
+-- Old API builds do not understand the password gate. Fail closed through their
+-- old RPC while the candidate is verified, and if an old API is rolled back.
+create or replace function public.tatada_auth_session_active(p_user uuid,p_session uuid)
+returns jsonb language sql stable security invoker set search_path='' as $$
+ select '{"active":false}'::jsonb;
+$$;
+revoke all on function public.tatada_auth_session_active(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.tatada_auth_session_active(uuid,uuid) to service_role;
+create function public.tatada_prototype_session_active(p_user uuid,p_session uuid)
+returns jsonb language sql stable security invoker set search_path='' as $$
+ select tatada_private.auth_session_active(p_user,p_session);
+$$;
+revoke all on function public.tatada_prototype_session_active(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.tatada_prototype_session_active(uuid,uuid) to service_role;
+
 -- Called only after the backend receives a successful Auth updateUser response.
 -- A login-time encryption rewrite, direct client update or changed reset nonce
 -- cannot complete this step. No password/hash is copied or exposed by the RPC.
@@ -161,11 +179,3 @@ returns boolean language sql volatile security invoker set search_path='' as $$
 $$;
 revoke all on function public.tatada_complete_password_change(uuid,uuid,text,timestamptz) from public,anon,authenticated;
 grant execute on function public.tatada_complete_password_change(uuid,uuid,text,timestamptz) to service_role;
-revoke all on function tatada_private.auth_session_active(uuid,uuid) from public,anon,authenticated;
-grant execute on function tatada_private.auth_session_active(uuid,uuid) to service_role;
-create or replace function public.tatada_auth_session_active(p_user uuid,p_session uuid)
-returns jsonb language sql stable security invoker set search_path='' as $$
- select tatada_private.auth_session_active(p_user,p_session);
-$$;
-revoke all on function public.tatada_auth_session_active(uuid,uuid) from public,anon,authenticated;
-grant execute on function public.tatada_auth_session_active(uuid,uuid) to service_role;

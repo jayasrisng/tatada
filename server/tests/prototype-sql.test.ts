@@ -69,7 +69,8 @@ test('PostgreSQL password gate changes only on actual Auth password updates; res
 test('declarative schema agrees with migration and browser roles cannot read invitations or call the service-only session helper',async()=>{
  const db=await fixture(true);try{
  const id=await invite(db),sid=await session(db,id);assert.equal((await verify(db,id,sid)).requiresPasswordChange,true)
- for(const role of ['anon','authenticated']){await db.exec(`set role ${role}`);await assert.rejects(()=>db.query('select * from tatada_private.prototype_invites'),/permission denied/);await assert.rejects(()=>db.query('select public.tatada_auth_session_active($1,$2)',[id,sid]),/permission denied/);await assert.rejects(()=>db.query('select public.tatada_complete_password_change($1,$2,$3,null)',[id,sid,'untrusted']),/permission denied/);await db.exec('reset role')}
+ assert.deepEqual((await db.query('select public.tatada_auth_session_active($1,$2) v',[id,sid])).rows[0],{v:{active:false}})
+ for(const role of ['anon','authenticated']){await db.exec(`set role ${role}`);await assert.rejects(()=>db.query('select * from tatada_private.prototype_invites'),/permission denied/);await assert.rejects(()=>db.query('select public.tatada_auth_session_active($1,$2)',[id,sid]),/permission denied/);await assert.rejects(()=>db.query('select public.tatada_prototype_session_active($1,$2)',[id,sid]),/permission denied/);await assert.rejects(()=>db.query('select public.tatada_complete_password_change($1,$2,$3,null)',[id,sid,'untrusted']),/permission denied/);await db.exec('reset role')}
  await db.query("select set_config('request.jwt.claims',$1,false)",[JSON.stringify({role:'anon'})]);assert.deepEqual((await db.query('select tatada_private.auth_session_active($1,$2) v',[id,sid])).rows[0],{v:{active:false}})
  }finally{await db.close()}
 })

@@ -33,7 +33,7 @@ export class SupabaseIdentity implements IdentityGateway {
   let claims:Record<string,unknown>;try{claims=JSON.parse(Buffer.from(token.split('.')[1],'base64url').toString())}catch{return null}
   if(claims.aud!=='authenticated'&&!(Array.isArray(claims.aud)&&claims.aud.includes('authenticated')))return null
   if(!user.id||!UUID.test(user.id)||!user.email_confirmed_at||claims.sub!==user.id||claims.iss!==`${this.publicConfig.url}/auth/v1`||claims.role!=='authenticated'||typeof claims.exp!=='number'||claims.exp*1000<=Date.now()||typeof claims.session_id!=='string'||!UUID.test(claims.session_id))return null
-  const active=await this.request(`${this.publicConfig.url}/rest/v1/rpc/tatada_auth_session_active`,{method:'POST',headers:{apikey:this.key,authorization:`Bearer ${this.key}`,'content-type':'application/json'},body:JSON.stringify({p_user:user.id,p_session:claims.session_id}),signal:AbortSignal.timeout(10000)})
+  const active=await this.request(`${this.publicConfig.url}/rest/v1/rpc/tatada_prototype_session_active`,{method:'POST',headers:{apikey:this.key,authorization:`Bearer ${this.key}`,'content-type':'application/json'},body:JSON.stringify({p_user:user.id,p_session:claims.session_id}),signal:AbortSignal.timeout(10000)})
   if(!active.ok)throw new ActionError(503,'Authentication session checks need server configuration.')
   const session=await active.json() as {active?:boolean;invited?:boolean;requiresPasswordChange?:boolean;resetNonce?:string;passwordChangedAt?:string|null;createdAt?:number}
   if(session.active!==true||session.invited!==true||typeof session.requiresPasswordChange!=='boolean'||typeof session.createdAt!=='number'||!Number.isFinite(session.createdAt))return null
