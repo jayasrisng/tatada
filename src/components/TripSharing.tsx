@@ -52,4 +52,4 @@ export function SharedTripImport() {
   </section>
 }
 
-export function TripSharing(props:{trip:Trip}){return <details className="share-panel"><summary>Share with a friend</summary><SecurityGate><TripSharingContent {...props}/></SecurityGate></details>}
+export function TripSharing(props:{trip:Trip}){const {info}=useServer();if(info.prototype)return <p className="small">Public share links are disabled for this private prototype.</p>;return <details className="share-panel"><summary>Share with a friend</summary><SecurityGate><TripSharingContent {...props}/></SecurityGate></details>}

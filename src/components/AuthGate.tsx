@@ -1,3 +1,4 @@
+import {ChangePassword} from './ChangePassword'
 import {EmailSignIn} from './EmailSignIn'
 import {AccountRecovery} from './AccountRecovery'
 import {SharedTripView} from './SharedTripView'
@@ -141,6 +142,7 @@ export function AuthGate() {
     return <Mount workspace={{ kind: 'local-demo', storageKey: STORAGE_KEY }} initialState={personalize(bestLocalCopy() ?? seed())} banner="Tatada server offline · simulated mode · nothing real can happen" />
   }
 
+  if(info.passwordChangeRequired)return <ChangePassword/>
   if (!info.authenticated || !accountId) return <SignIn onDemo={() => setPreview(true)} />
   if (!loaded || loaded.accountId !== accountId) return <Splash />
 
@@ -238,14 +240,15 @@ function SignIn({ onDemo }: { onDemo: () => void }) {
             </p>
           )}
           {new URLSearchParams(location.hash.split('?')[1]??'').get('account_deleted')==='1'&&<p role="status">Active Tatada account data was deleted. {new URLSearchParams(location.hash.split('?')[1]??'').get('identity_cleanup')==='pending'?'Identity cleanup is queued and may need operator follow-up. ':''}Other-device copies and backups have separate removal controls.</p>}
+          {new URLSearchParams(location.hash.split('?')[1]??'').get('password_changed')==='1'&&<p role="status">Password changed. Sign in with your new password.</p>}
           {info.authMethod==='supabase'?<EmailSignIn/>:<a className="btn btn-solid signin-btn" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>
             <Doodle name="arrow" size={20} />
             <span>Continue with Wajo</span>
           </a>}
           <button className="linkbtn" onClick={onDemo}>explore a sample trip first</button>{info.authMethod!=='supabase'&&<AccountRecovery/>}
-          <p className="small dim">{info.authMethod==='supabase'?'Sign in with the same verified email on each device. To migrate an older Wajo workspace, unlock Account security and link its saved recovery key before adding new work.':<>Returning on a new device? Restore your existing workspace before reconnecting if Wajo does not provide a verified account identity. A new connection can create a separate workspace; Tatada never merges accounts by a typed email.</>}</p>
+          <p className="small dim">{info.authMethod==='supabase'?'Sign in with the same invited email account on each device. To migrate an older Wajo workspace, unlock Account security and link its saved recovery key before adding new work.':<>Returning on a new device? Restore your existing workspace before reconnecting if Wajo does not provide a verified account identity. A new connection can create a separate workspace; Tatada never merges accounts by a typed email.</>}</p>
           <p className="dim small signin-fine">
-            {info.authMethod==='supabase'?'Tatada uses verified email codes. Wajo is an optional connection after sign-in.':'Tatada signs you in with your Wajo account. Your Wajo password and tokens never reach this page.'}
+            {info.authMethod==='supabase'?'Tatada uses administrator-provisioned email and password accounts. Wajo is an optional connection after sign-in.':'Tatada signs you in with your Wajo account. Your Wajo password and tokens never reach this page.'}
           </p>
         </div>
       </main>

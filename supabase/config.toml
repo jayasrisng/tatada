@@ -7,3 +7,14 @@ verify_jwt = false
 entrypoint = "./functions/tatada-events/index.ts"
 [db.migrations]
 schema_paths = ["./schemas/*.sql"]
+
+# Mirrors the manual hosted settings for the private ten-tester prototype.
+[auth]
+enable_signup = false
+minimum_password_length = 12
+[auth.email]
+enable_signup = false
+enable_confirmations = true
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true

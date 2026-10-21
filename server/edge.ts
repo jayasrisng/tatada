@@ -104,7 +104,7 @@ export function createEdgeHandler(options: EdgeOptions) {
       if(options.identity)await finishAuthDeletions(store,options.identity)
       await actions.runDue(1)
       await chats.runDue(1)
-      await print.runDue(1)
+      if(!options.identity?.publicConfig.prototype)await print.runDue(1)
       await store.flush()
       committed = true
     } finally {

@@ -28,3 +28,5 @@ supabase/.temp
 /test-results/
 
 !/scripts/e2e-server.mjs
+
+!/scripts/prototype-admin.mjs

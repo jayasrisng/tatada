@@ -187,6 +187,7 @@ export function createApp(deps: Deps) {
     const account = userId ? store.data.accounts[userId] : undefined
     return {
       authMethod:deps.identity?'supabase':'legacy',
+      prototype:deps.identity?.publicConfig.prototype===true,
       provider: actions.provider,
       demo: !live,
       authenticated: !!account,
@@ -207,6 +208,8 @@ export function createApp(deps: Deps) {
     try {
       if (!path.startsWith('/api/')) return send(res, 404, { error: 'Not found' })
       const file=method==='GET'&&path.match(/^\/api\/print\/file\/([\w-]{8,40})$/)
+      if(deps.identity?.publicConfig.prototype&&path.startsWith('/api/shared/'))return send(res,403,{error:'Public sharing is disabled for this private prototype.'});
+      if(file&&deps.identity?.publicConfig.prototype)return send(res,403,{error:'Public print delivery is disabled for this prototype.'});
       if(file&&deps.printFiles){const pdf=deps.printFiles.read(file[1],url.searchParams.get('expires'),url.searchParams.get('token'));res.writeHead(200,{'content-type':'application/pdf','content-disposition':'attachment; filename=tatada-print.pdf','content-length':pdf.length,'cache-control':'private, no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff'});return res.end(pdf)}
       if (deps.allowedOrigin) {
         res.setHeader('vary', 'Origin')
@@ -253,15 +256,28 @@ export function createApp(deps: Deps) {
       const current = deps.owner||deps.identity ? undefined : sessionOf(req)
       let principal:Principal|undefined
       if(deps.identity){const header=String(req.headers.authorization??'');const token=header.startsWith('Bearer ')?header.slice(7):'';const verified=token?await deps.identity.verify(token):null;if(verified&&principalAllowed(store,verified,now()))principal=verified}
+      if(deps.identity&&path==='/api/auth/password'&&method==='POST'){
+        if(!principal?.passwordChangeRequired||!deps.identity.changePassword)return send(res,403,{error:'A verified temporary-password session is required.'})
+        if(principal.hasTotp&&!freshMfa(store,principal,now()))return send(res,403,{error:'Verify your authenticator before changing this password.'})
+        if(!authLimit.allow(`password:${principal.id}`))return send(res,429,{error:'Too many password-change attempts. Try again later.'})
+        const body=await readBody(req)
+        await deps.identity.changePassword(String(req.headers.authorization).slice(7),principal,typeof body.currentPassword==='string'?body.currentPassword:'',typeof body.password==='string'?body.password:'')
+        return send(res,200,{changed:true,signInAgain:true})
+      }
+      if(deps.identity&&principal?.passwordChangeRequired){
+        if(path==='/api/session'&&method==='POST')return send(res,200,{authMethod:'supabase',prototype:true,authenticated:true,passwordChangeRequired:true,foConnected:false})
+        if(path!=='/api/auth/logout')return send(res,403,{error:'Change your temporary password and sign in again before using Tatada.',code:'PASSWORD_CHANGE_REQUIRED'})
+      }
       if(principal&&method!=='GET')store.update(d=>{(d.authLastSeen??={})[principal!.sessionId]=now()})
       let userId = deps.owner ? OWNER_ID : deps.identity?(principal?ownerFor(store,principal,now(),path==='/api/session'&&method==='POST'):undefined):current?.s.userId
       const unlocked=!deps.identity||freshMfa(store,principal,now())
       const needMfa=()=>{if(deps.identity&&!freshMfa(store,principal,now()))throw new ActionError(403,'Unlock sensitive access with a recent authenticator code.')}
-      if(deps.identity&&path==='/api/auth/exchange')return send(res,410,{error:'Sign in with a verified email code.'})
+      if(deps.identity?.publicConfig.prototype&&((/^\/api\/(?:gmail|calendar|shares)(?:\/|$)/.test(path))||(path.startsWith('/api/print/jobs/')&&path.endsWith('/approve'))||path==='/api/print/jobs'&&method==='POST'))return send(res,403,{error:'Cloud delivery and Google connections are disabled for this prototype. Download the PDF instead.'})
+      if(deps.identity&&path==='/api/auth/exchange')return send(res,410,{error:'Sign in with your invited email and password.'})
       if(deps.identity&&path==='/api/security/status')return principal?send(res,200,{unlocked,expiresAt:unlocked?principal.mfaAt!+MFA_WINDOW:0,hasTotp:principal.hasTotp}):send(res,401,{error:'Sign in with your email first.'})
       if(deps.identity&&path==='/api/security/lock'&&method==='POST'){if(!principal)return send(res,401,{error:'Sign in first.'});store.update(d=>{(d.authLocks??={})[principal!.sessionId]=now()});return send(res,200,{unlocked:false})}
-      if(deps.identity&&path==='/api/account/link'&&method==='POST'){if(!principal)return send(res,401,{error:'Verify your email first.'});needMfa();if(!authLimit.allow(`link:${principal.id}`))return send(res,429,{error:'Too many linking attempts. Try later.'});const body=await readBody(req);userId=linkOwner(store,principal,typeof body.key==='string'?body.key:'',now());await store.flush();return send(res,200,{linked:true})}
-      if(deps.identity&&(/^\/api\/(print|gmail|calendar|account\/(?:export|delete|recovery-key)|shares)(?:\/|$)/.test(path))&&path!=='/api/gmail/callback'){if(!principal)return send(res,401,{error:'Verify your email first.'});needMfa()}
+      if(deps.identity&&path==='/api/account/link'&&method==='POST'){if(!principal)return send(res,401,{error:'Sign in with your invited account first.'});needMfa();if(!authLimit.allow(`link:${principal.id}`))return send(res,429,{error:'Too many linking attempts. Try later.'});const body=await readBody(req);userId=linkOwner(store,principal,typeof body.key==='string'?body.key:'',now());await store.flush();return send(res,200,{linked:true})}
+      if(deps.identity&&(/^\/api\/(print|gmail|calendar|account\/(?:export|delete|recovery-key)|shares)(?:\/|$)/.test(path))&&path!=='/api/gmail/callback'){if(!principal)return send(res,401,{error:'Sign in with your invited account first.'});needMfa()}
       if(deps.identity&&(path==='/api/auth/wajo/link'||/^\/api\/fo\/(?:disconnect|test-refresh|diagnostics|oauth-observations|trace)$/.test(path)))needMfa()
       if(deps.identity&&path==='/api/auth/logout'&&method==='POST'){if(principal){const body=await readBody(req);store.update(d=>{(d.authRevokedSessions??={})[principal!.sessionId]=now();if(body.everywhere===true)(d.authRevokedBefore??={})[principal!.id]=now();for(const [k,v]of Object.entries(d.pendingAuth))if(v.authSessionId===principal!.sessionId||body.everywhere===true&&v.accountId===userId){delete d.pendingAuth[k];delete d.loginBindings?.[k];delete d.loginAttempts?.[k]};for(const [k,v]of Object.entries(d.foLoginTickets??{}))if(v.authSessionId===principal!.sessionId||body.everywhere===true&&v.owner===userId)delete d.foLoginTickets![k]})}return send(res,200,{authenticated:false,authMethod:'supabase'})}
 

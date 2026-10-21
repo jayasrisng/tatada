@@ -138,7 +138,7 @@ setInterval(async () => {
     if(identity)await finishAuthDeletions(store,identity)
     await actions.runDue()
     await chats.runDue()
-    await print.runDue()
+    if(!identity?.publicConfig.prototype)await print.runDue()
   } catch {
     console.error('[tatada] worker failed')
   } finally {

@@ -1,3 +1,4 @@
+import {useServer} from '../state/server'
 import {SecurityGate} from './SecurityGate'
 import {printDraft} from '../print/draft'
 import {useEffect,useMemo,useRef,useState} from 'react'
@@ -52,4 +53,4 @@ function PrintPanelContent({id,doc}:{id:string;doc?:string}){
  </ConfirmationDialog></div>
 }
 
-export function PrintPanel(props:{id:string;doc?:string}){return <SecurityGate><PrintPanelContent {...props}/></SecurityGate>}
+export function PrintPanel(props:{id:string;doc?:string}){const {info}=useServer();return <SecurityGate>{info.prototype?<div className="screen"><h1>PDF printing</h1><p>Cloud delivery is disabled for this prototype. Download the PDF and print it yourself.</p><button className="btn" onClick={()=>go(`/trip/${props.id}/print${props.doc?`/${props.doc}`:''}?preview=1`)}>Open PDF download</button></div>:<PrintPanelContent {...props}/>}</SecurityGate>}
