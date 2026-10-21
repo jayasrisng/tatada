@@ -30,6 +30,7 @@ try{
  // Supabase CLI does not yet expose this GoTrue option in its TOML config.
  const container=`supabase_auth_${project}`,original=JSON.parse(exec('docker',['inspect',container]))[0],network=Object.keys(original.NetworkSettings.Networks)[0]
  const args=['run','-d','--name',container,'--network',network]
+ for(const alias of original.NetworkSettings.Networks[network].Aliases??[])args.push('--network-alias',alias)
  for(const [key,value]of Object.entries(original.Config.Labels??{}))args.push('--label',`${key}=${value}`)
  for(const value of original.Config.Env??[])if(!/^GOTRUE_SECURITY_UPDATE_PASSWORD_REQUIRE_(?:CURRENT_PASSWORD|REAUTHENTICATION)=/.test(value))args.push('-e',value)
  args.push('-e','GOTRUE_SECURITY_UPDATE_PASSWORD_REQUIRE_CURRENT_PASSWORD=true','-e','GOTRUE_SECURITY_UPDATE_PASSWORD_REQUIRE_REAUTHENTICATION=false')
@@ -37,7 +38,7 @@ try{
  if(original.Config.User)args.push('--user',original.Config.User)
  if(original.Config.Entrypoint?.length)args.push('--entrypoint',original.Config.Entrypoint[0])
  args.push(original.Config.Image,...(original.Config.Entrypoint?.slice(1)??[]),...(original.Config.Cmd??[]));exec('docker',['stop',container]);exec('docker',['rm',container]);exec('docker',args);exec('docker',['restart',`supabase_kong_${project}`])
- let healthy=false;for(let n=0;n<300;n++){try{healthy=(await fetch(url+'/auth/v1/health',{headers:{apikey:publicKey}})).ok}catch{}if(healthy)break;await new Promise(r=>setTimeout(r,300))}check(healthy,'Isolated Auth policy restart failed')
+ let healthy=false;for(let n=0;n<100;n++){try{healthy=(await fetch(url+'/auth/v1/health',{headers:{apikey:publicKey},signal:AbortSignal.timeout(1500)})).ok}catch{}if(healthy)break;await new Promise(r=>setTimeout(r,300))}if(!healthy){console.error('Disposable Auth status: '+exec('docker',['inspect','--format','{{.State.Status}} {{.State.ExitCode}}',container]).trim())};check(healthy,'Isolated Auth policy restart failed')
 
  sql(readFileSync(new URL('../supabase/schemas/tatada.sql',import.meta.url),'utf8')+"\nnotify pgrst,'reload schema';")
  await new Promise(r=>setTimeout(r,1500))
