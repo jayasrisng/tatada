@@ -7,6 +7,7 @@ async function sample(page:Page){
  const enter=page.getByRole('button',{name:/^explore a sample trip/})
  await Promise.race([enter.waitFor({state:'visible'}),page.getByRole('button',{name:'Home',exact:true}).waitFor({state:'visible'})])
  if(await enter.isVisible())await enter.click()
+ await expect(page.locator('main.app')).not.toHaveAttribute('inert','')
  await expect(page.getByRole('button',{name:'Home',exact:true})).toBeVisible()
 }
 async function reopen(page:Page){
@@ -14,6 +15,7 @@ async function reopen(page:Page){
  const enter=page.getByRole('button',{name:/^explore a sample trip/})
  await Promise.race([enter.waitFor({state:'visible'}),page.locator('main.app:not(.chromeless)').waitFor({state:'visible'})])
  if(await enter.isVisible())await enter.click()
+ await expect(page.locator('main.app')).not.toHaveAttribute('inert','')
 }
 async function route(page:Page,path:string){await page.evaluate(p=>{location.hash=p},path)}
 test.beforeEach(async({page},testInfo)=>{
