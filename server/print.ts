@@ -144,6 +144,7 @@ export class PrintService {
     if (pageCount % draft.repeat) throw new PrintError(400, 'The page count doesn\'t match the requested copies.')
     const plan = planPrint(request, printer, choices, pageCount / draft.repeat)
     if (plan.questions.length) throw new PrintError(400, 'Answer the open print questions first.', 'questions')
+    if(plan.lines.some(line=>line.how==='not_possible'&&line.setting!=='sides'))throw new PrintError(400,'This printer cannot support the requested setting. Change the setting before approval.')
     // The PDF must really be what the plan says (paper size), not just claim it.
     const [ew, eh] = plan.pageSize === 'a4' ? [595.28, 841.89] : [612, 792]
     if (!parsed.getPages().every((p) => Math.abs(p.getWidth() - ew) < 2 && Math.abs(p.getHeight() - eh) < 2)) throw new PrintError(400, `The PDF pages aren't ${plan.pageSize === 'a4' ? 'A4' : 'Letter'} as planned.`)
@@ -255,9 +256,9 @@ export class PrintService {
 
   /** After a restart, anything caught mid-send is uncertain, not retried. */
   recover() {
-    const stuck = Object.values(this.jobs).filter((j) => j.status === 'sending')
+    const stuck = Object.values(this.jobs).filter((j) => j.status === 'sending'||(j.sender.kind==='fo'&&j.status==='submitted'))
     if (!stuck.length) return
-    this.store.update(() => { for (const j of stuck) { j.status = 'send_uncertain'; j.updatedAt = this.now(); j.events.push({ at: j.updatedAt, text: 'Tatada restarted during sending. Not resent; check before trying again.' }) } })
+    this.store.update(() => { for (const j of stuck) { j.status = 'send_uncertain'; j.updatedAt = this.now(); j.events.push({ at: j.updatedAt, text: j.sender.kind==='fo'?'Legacy Wajo status has no independently verified Gmail receipt. Delivery is uncertain; not resent.':'Tatada restarted during sending. Not resent; check before trying again.' }) } })
   }
 }
 
@@ -268,6 +269,7 @@ function cleanRequest(v: unknown): PrintRequest {
   if (r.color === 'color' || r.color === 'grayscale') out.color = r.color
   if (r.size === 'letter' || r.size === 'a4' || r.size === '4x6') out.size = r.size
   if (typeof r.duplex === 'boolean') out.duplex = r.duplex
+  if(r.copies!==undefined&&(typeof r.copies!=='number'||!Number.isInteger(r.copies)))throw new PrintError(400,'Copies must be a whole number from 1–10.')
   if (typeof r.copies === 'number' && Number.isInteger(r.copies)) { if (r.copies < 1 || r.copies > 10) throw new PrintError(400, 'Copies must be 1–10.'); out.copies = r.copies }
   if (r.document === 'card' || r.document === 'journal' || r.document === 'flights' || r.document === 'hotels' || r.document === 'packing' || r.document === 'all') out.document = r.document
   return out

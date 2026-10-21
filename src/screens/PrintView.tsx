@@ -21,7 +21,7 @@ const UNKNOWN_PRINTER: Omit<PrinterProfile, 'email' | 'updatedAt'> = { plainPape
  * Print opens focused settings; previewing and decorating never authorize delivery.
  */
 function PrintPreview({ id, doc, inline = false }: { id: string; doc?: string; inline?: boolean }) {
-  const { state } = useStore()
+  const { state,workspace } = useStore()
   const trip = state.trips.find((t) => t.id === id)
   const packing = useMemo(()=>Object.values(packingList(state.wardrobe??[],state.looks??[],id).groups).flat().map(g=>({name:g.name,category:g.category,image:garmentImage(g.image)})),[state.wardrobe,state.looks,id])
   const packingOutfits = useMemo(()=>(state.looks??[]).filter(l=>l.tripId===id&&l.verdict==='keep').map((l,i)=>({name:l.day ? `Outfit ${i+1} / ${l.day}` : `Outfit ${i+1}`,pieces:l.garmentIds.flatMap(gid=>{const g=(state.wardrobe??[]).find(g=>g.id===gid);return g?[{name:g.name,image:garmentImage(g.image)}]:[]})})),[state.looks,state.wardrobe,id])
@@ -112,7 +112,7 @@ function PrintPreview({ id, doc, inline = false }: { id: string; doc?: string; i
       <div className="chips" role="group" aria-label="Document">{([['card','trip notebook','book'],['flights','flights','plane'],['hotels','stay','bed'],['packing','packing','suitcase'],['journal','journal','book'],['all','all','layers']] as const).map(([value,label,icon])=><Chip key={value} on={kind===value} onClick={()=>setKind(value)} icon={icon}>{label}</Chip>)}</div>
       <div className="print-design-header"><h2>Print &amp; decorate</h2>      <div className="print-final-actions">
         <a className="iconbtn" href={previewUrl||undefined} aria-disabled={!previewUrl} onClick={e=>{if(!previewUrl)e.preventDefault()}} download={`${trip.destination.toLowerCase().replace(/\W+/g,'-')}-${kind}.pdf`} aria-label="Download PDF"><Doodle name="download" size={26}/></a>
-        <Btn kind="solid" disabled={!!busy||mailPending||printer===undefined||job?.status==='sending'||job?.status==='send_uncertain'} onClick={()=>{savePrintDraft({id,kind,stickers,caption});go(printRoute(id,kind,text))}}>Print</Btn>
+        <Btn kind="solid" disabled={!!busy||mailPending||printer===undefined||job?.status==='sending'||job?.status==='send_uncertain'} onClick={()=>{savePrintDraft({account:workspace.storageKey,id,kind,stickers,caption});go(printRoute(id,kind,text))}}>Print</Btn>
       </div></div>
       {busy&&<p role="status" aria-live="polite">{busy}</p>}
       {job?.status==='submitted'&&<p role="status">{job.sender.kind==='mock'?'Demo delivery recorded. No real email was sent.':job.sender.kind==='fo'?'Wajo reports the email sent and returned a matching Gmail receipt. Paper completion is unconfirmed.':'Submitted to printer email. Paper completion is unconfirmed.'}</p>}

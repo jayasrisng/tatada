@@ -1,12 +1,13 @@
 import {test,expect} from '@playwright/test'
 import {seed} from '../src/data/seed'
+test.skip(!!process.env.TATADA_E2E_URL,'Controlled API fixtures run only against the local candidate')
 test.use({baseURL:'http://127.0.0.1:5200/'})
 test('controlled API: profile defaults persist; opening, previewing and reloading never approve; explicit double click submits once',async({page})=>{
  let approvals=0,prepared=0,pdf='',printer:any={email:'fixture-printer@print.epsonconnect.com',senderEmail:'fixture@example.test',printingConsent:true,plainPaper:'letter',colorInk:'yes',autoDuplex:'yes',bodyPrintingOff:'yes',senderApproved:'yes',updatedAt:1,defaults:{color:'grayscale',duplex:false,copies:2,size:'letter'}},jobs:any[]=[]
  const sender={kind:'gmail',verified:true,label:'fixture@example.test',ok:true}
  await page.route('**/api/**',async route=>{const request=route.request(),path=new URL(request.url()).pathname,body=request.postDataJSON(),respond=(data:any)=>route.fulfill({json:data})
   if(path==='/api/session')return respond({authenticated:true,provider:'live',foConnected:true,account:{id:'browser-fixture-account',kind:'connected'},printDelivery:'gmail'})
-  if(path==='/api/workspace')return respond({state:seed,version:1,updatedAt:1})
+  if(path==='/api/workspace')return respond({state:seed(),version:1,updatedAt:1})
   if(path==='/api/print/printer'){if(request.method()==='PUT')printer={...body,updatedAt:Date.now()};return respond({printer})}
   if(path==='/api/print/sender')return respond({delivery:'gmail',sender})
   if(path==='/api/gmail/status')return respond({configured:true,connected:true,email:'fixture@example.test'})

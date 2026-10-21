@@ -43,7 +43,7 @@ test('create a disposable trip and preserve it across refresh',async({page})=>{
  const hash=await page.evaluate(()=>location.hash);await reopen(page);await expect(page.getByRole('heading',{name:'QA Disposable Kyoto',exact:true})).toBeVisible();expect(await page.evaluate(()=>location.hash)).toBe(hash)
 })
 test('tasks add, edit, complete and persist',async({page})=>{
- await route(page,'/tasks');const add=page.getByLabel('Add to prepare');await add.pressSequentially('QA disposable task');await add.press('Enter')
+ await route(page,'/tasks');const add=page.getByLabel('Add to prepare');await add.fill('QA disposable task');await add.press('Enter')
  await page.getByRole('button',{name:'Edit: QA disposable task',exact:true}).click();await page.getByLabel('Edit item',{exact:true}).fill('QA edited task');await page.getByLabel('Edit item',{exact:true}).press('Enter')
  await page.getByRole('checkbox',{name:'QA edited task',exact:true}).click();await page.getByRole('button',{name:/^show \d+ done$/}).click();await expect(page.locator('.crow.done').filter({hasText:'QA edited task'})).toBeVisible()
  await reopen(page);await page.getByRole('button',{name:/^show \d+ done$/}).click();await expect(page.locator('.crow.done').filter({hasText:'QA edited task'})).toBeVisible()
@@ -54,7 +54,7 @@ test('itinerary completion is editable and persists; Calendar file is a sample',
  await page.getByText('Calendar · Google, Apple & Outlook',{exact:true}).click();const download=page.waitForEvent('download');await page.getByRole('button',{name:'download calendar file (.ics)',exact:true}).click();const d=await download;const text=await readFile((await d.path())!,'utf8');expect(text).toContain('BEGIN:VCALENDAR');expect(text).toContain('BEGIN:VEVENT');expect(text).toContain('[Sample]')
 })
 test('journal create, edit, reload and PDF preview preserve the content',async({page})=>{
- await route(page,'/trip/lisbon/journal');await page.getByLabel('Moment note').pressSequentially('QA synthetic journal memory');await page.getByRole('button',{name:'save moment',exact:true}).click()
+ await route(page,'/trip/lisbon/journal');await page.getByLabel('Moment note').fill('QA synthetic journal memory');await page.getByRole('button',{name:'save moment',exact:true}).click()
  const moment=page.getByRole('article').filter({hasText:'QA synthetic journal memory'});await moment.getByRole('button',{name:'edit moment'}).click();await moment.getByPlaceholder('Write your memory here…').fill('QA edited journal memory');await moment.getByRole('button',{name:'save moment'}).click()
  await reopen(page);await expect(page.getByText('QA edited journal memory',{exact:true})).toBeVisible()
  // Direct preview route has no one-use send intent and never approves a job.

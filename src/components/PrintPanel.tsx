@@ -10,11 +10,11 @@ import {garmentImage} from '../style/images'
 import {ConfirmationDialog} from './ConfirmationDialog'
 import {TODAY} from './ui'
 export function PrintPanel({id,doc}:{id:string;doc?:string}){
- const {state}=useStore(),trip=state.trips.find(t=>t.id===id)
+ const {state,workspace}=useStore(),trip=state.trips.find(t=>t.id===id)
  const [printer,setPrinter]=useState<PrinterProfile|null>(),[request,setRequest]=useState<PrintRequest>(),[job,setJob]=useState<PrintJob>(),[previous,setPrevious]=useState<PrintJob[]>([]),[problem,setProblem]=useState(''),[busy,setBusy]=useState(false),[preview,setPreview]=useState('')
  const preparedVersion=useRef(''),sending=useRef(false),previewRef=useRef(''),mounted=useRef(true)
  const kind:PrintJob['document']['kind']=['journal','flights','hotels','packing','all'].includes(doc??'')?doc as PrintJob['document']['kind']:'card'
- const draft=printDraft(id,kind)
+ const draft=printDraft(workspace.storageKey,id,kind)
  const ask=hashQuery().get('ask')??''
  const close=()=>go(`/trip/${id}`)
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;if(previewRef.current)URL.revokeObjectURL(previewRef.current)}},[])
@@ -40,12 +40,12 @@ export function PrintPanel({id,doc}:{id:string;doc?:string}){
    <p className="small">Paper: {printer.plainPaper==='a4'?'A4':printer.plainPaper==='letter'?'Letter':'check Epson settings'} (printer setting). Copies repeat PDF pages.</p>
    <label>Special instructions<textarea maxLength={500} value={request?.instructions??''} onChange={e=>setRequest({...request,instructions:e.target.value})}/></label>
    </fieldset>{request?.instructions&&<p className="small">Instructions are saved as job notes. Email printing cannot execute arbitrary printer commands.</p>}
-   {plan?.limitations.map(text=><p className="small" key={text}>{text}</p>)}{plan?.questions.map(q=><p role="alert" key={q.key}>{q.text} Change the setting above before approving.</p>)}
+   {(job?.plan??plan)?.lines.filter(line=>line.how==='not_possible').map(line=><p role="alert" key={line.setting}>{line.result}</p>)}{plan?.limitations.map(text=><p className="small" key={text}>{text}</p>)}{plan?.questions.map(q=><p role="alert" key={q.key}>{q.text} Change the setting above before approving.</p>)}
    {job?.blocker&&<p role="alert">{job.blocker} <a href="#/welcome?printing=1">Open Profile → Printing</a></p>}
    {twin&&<p role="status">{uncertain?'An earlier send is still uncertain. Check sent mail and the printer; Tatada will not resend it.':'Previously submitted. Approve & Send authorizes one new copy.'}</p>}
    <button className="linkbtn" disabled={!job||busy} onClick={()=>void showPreview()}>Optional preview</button>
    {preview&&<iframe title="Exact print PDF preview" src={preview} style={{width:'100%',height:260}}/>}
-   <button className="btn solid" disabled={busy||!job||!!job.blocker||uncertain||job.status!=='awaiting_approval'} onClick={()=>void approve()}>Approve &amp; Send</button>
+   <button className="btn solid" disabled={busy||!job||!!job.blocker||uncertain||!!plan?.lines.some(line=>line.how==='not_possible'&&line.setting!=='sides')||job.status!=='awaiting_approval'} onClick={()=>void approve()}>Approve &amp; Send</button>
    <p role="status">{busy?'Preparing…':job?.status==='submitted'?'Email submitted. Physical printing is not verified.':job?.status==='send_uncertain'?'Delivery is uncertain. Not resent. Check sent mail and your printer.':job?.status==='blocked'||job?.status==='failed'?job.error:'Nothing is sent until you approve.'}</p>
   </>}{problem&&<p role="alert">{problem}</p>}
  </ConfirmationDialog></div>

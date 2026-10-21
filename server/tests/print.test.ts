@@ -283,3 +283,4 @@ test('ongoing consent, defaults and instructions are account-scoped and invalida
  const job=await service.prepare('a',body(await pdf(),{request:{instructions:'Keep this private'}}));assert.equal(job.request.instructions,'Keep this private');assert.equal(sends,0)
  service.setPrinter('a',{...service.printer('a'),printingConsent:false});await assert.rejects(service.approve('a',job.id,{contentHash:job.contentHash,idempotencyKey:'consent-was-revoked'}),/settings changed/);assert.equal(sends,0)
 })
+test('fractional or malformed copy counts are rejected rather than silently changing an approval',async()=>{const s=make();s.service.setPrinter('a',PRINTER);for(const copies of [1.5,'2',null])await assert.rejects(s.service.prepare('a',body(await pdf(),{request:{copies}})),/whole number/)})

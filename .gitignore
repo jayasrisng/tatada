@@ -26,3 +26,5 @@ supabase/.temp
 !/scripts/test.mjs
 /playwright-report/
 /test-results/
+
+!/scripts/e2e-server.mjs
