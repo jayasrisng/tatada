@@ -14,10 +14,15 @@ supabase/.temp
 # Private owner notes and verification stay local, including future additions.
 /.local/
 /docs/
-/tests/
-/server/tests/
-/.github/workflows/ci.yml
-# Publish only the launch/build scripts used by the app.
+# Publish only the launch/build and release validation scripts used by the app.
 /scripts/*
 !/scripts/dev.mjs
 !/scripts/offline-plugin.ts
+
+# Private launch audit evidence.
+/test-artifacts/
+
+# Release validation scripts are public and reproducible.
+!/scripts/test.mjs
+/playwright-report/
+/test-results/

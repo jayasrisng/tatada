@@ -1,5 +1,6 @@
 import {accountKey} from './persistence'
 import {OFFLINE_SELECTED} from '../offline/pack'
+import {fetchWithBackoff} from './retry'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { EmailDraft, Profile, Trip } from '../types'
 import { apiUrl, usesBearer, sessionHeaders, saveSession, loginBinding, browserOnly } from '../config'
@@ -65,13 +66,13 @@ export class ApiError extends Error {
 
 export async function api<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
   if (browserOnly) throw new Error('Fo is paused. This workspace saves in your browser.')
-  const res = await fetch(apiUrl(path), {
+  const res = await fetchWithBackoff(apiUrl(path), {
     ...init,
     signal: init.signal ?? AbortSignal.timeout(15000),
     credentials: usesBearer ? 'omit' : 'include',
     headers: { ...sessionHeaders(), ...(init.method && init.method !== 'GET' ? { 'x-tatada': '1' } : {}), ...(init.json !== undefined ? { 'content-type': 'application/json' } : {}) },
     body: init.json !== undefined ? JSON.stringify(init.json) : undefined,
-  })
+  }, path)
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new ApiError(res.status, body.error ?? `Server error (${res.status})`)
   return body as T

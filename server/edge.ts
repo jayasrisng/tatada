@@ -34,6 +34,8 @@ export interface EdgeOptions {
   gmail?: {clientId:string;clientSecret:string;redirectUri?:string}
   travel?: {clientId:string;clientSecret:string;environment:'test'|'production'}
   waitUntil?: (promise: Promise<unknown>) => void
+  /** Only retry lease acquisition, before executing any handler or side effect. */
+  leaseWaitMs?: number
 }
 
 /** One database lease coordinates writes and side effects across edge instances.
@@ -47,6 +49,16 @@ export function createEdgeHandler(options: EdgeOptions) {
   const publicUrl = options.publicUrl.replace(/\/$/, '')
   const prefix = new URL(publicUrl).pathname
   const resource = options.resource ?? 'https://mcp.api.wajo.ai/fo'
+  const acquire = async (token: string, signal: AbortSignal) => {
+    const deadline = Date.now() + (options.leaseWaitMs ?? 2000)
+    let lease = await repository.acquire(token)
+    while (lease.busy && !signal.aborted && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, Math.min(25 + Math.random() * 50, deadline - Date.now())))
+      if (signal.aborted) break
+      lease = await repository.acquire(token)
+    }
+    return lease
+  }
   const cors = { 'access-control-allow-origin': origin, 'access-control-allow-credentials': 'true', 'access-control-allow-headers': 'Content-Type, X-Tatada, Authorization', 'access-control-allow-methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS', vary: 'Origin' }
   const error = (text: string, status = 503) => Response.json({ error: text }, { status, headers: { ...cors, 'cache-control': 'no-store', 'retry-after': '2' } })
   const intelligence=options.research?new IntelligenceService(options.research):undefined
@@ -98,7 +110,7 @@ export function createEdgeHandler(options: EdgeOptions) {
     }
   }
   const kick = () => {
-    const task = worker().catch((e) => console.error('[tatada worker]', e instanceof Error ? e.message : 'worker failed'))
+    const task = worker().catch(() => console.error('[tatada worker] background work failed; retry after lease recovery'))
     if (options.waitUntil) options.waitUntil(task)
     else void task
   }
@@ -112,7 +124,11 @@ export function createEdgeHandler(options: EdgeOptions) {
     if (request.method !== 'GET' && from !== origin) return error('Request origin not allowed', 403)
     if (path === '/api/health') return Response.json({ ok: true, provider: options.mode ?? 'live', storage: 'supabase' }, { headers: cors })
     // These routes only expose an authenticated committed snapshot; no provider I/O.
-    const snapshot = (path==='/api/intelligence'&&request.method==='POST') || request.method === 'GET' && (/^\/api\/(print\/(?:file\/[\w-]+|jobs(?:\/[\w-]+(?:\/pdf)?)?)|status|workspace|actions(?:\/[\w-]+)?|fo\/chats(?:\/[\w-]+)?)$/.test(path))
+    // Anonymous live startup only reads status. Authenticated requests may refresh
+    // session expiry tracking; mock mode creates accounts. Both retain the lease.
+    const sessionSnapshot = options.mode !== 'mock' && path === '/api/session' && request.method === 'POST'
+      && !request.headers.has('authorization') && !request.headers.has('cookie')
+    const snapshot = sessionSnapshot || (path==='/api/intelligence'&&request.method==='POST') || request.method === 'GET' && (/^\/api\/(print\/(?:file\/[\w-]+|jobs(?:\/[\w-]+(?:\/pdf)?)?)|status|workspace|actions(?:\/[\w-]+)?|fo\/chats(?:\/[\w-]+)?)$/.test(path))
     let token: string | undefined
     let committed = false
     try {
@@ -121,7 +137,7 @@ export function createEdgeHandler(options: EdgeOptions) {
       if (snapshot) data = await repository.read()
       else {
         token = crypto.randomUUID()
-        const lease = await repository.acquire(token)
+        const lease = await acquire(token, request.signal)
         if (lease.busy) return error('A request is in progress. Please try again in a moment.')
         data = lease.state ?? {}
         recovered = !!lease.recovered

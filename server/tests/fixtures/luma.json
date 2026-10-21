@@ -1,0 +1,214 @@
+{
+ "entries": [
+  {
+   "api_id": "evt-EVHkb8qzlsvDhBt",
+   "event": {
+    "api_id": "evt-EVHkb8qzlsvDhBt",
+    "name": "Arm + ExecuTorch: Edge AI Challenge",
+    "start_at": "2026-10-17T16:00:00.000Z",
+    "end_at": "2026-10-19T04:00:00.000Z",
+    "timezone": "America/Los_Angeles",
+    "url": "lu5xqt42",
+    "visibility": "public",
+    "location_type": "offline",
+    "geo_address_info": {
+     "mode": "obfuscated",
+     "city": "San Francisco",
+     "city_state": "San Francisco, CA",
+     "sublocality": "Parkmerced",
+     "country": "United States",
+     "country_code": "US",
+     "region": "California",
+     "region_short": "CA"
+    },
+    "coordinate": {
+     "latitude": 37.72804464569634,
+     "longitude": -122.48265152901705
+    }
+   },
+   "calendar": {
+    "name": "Arm Developer Events"
+   },
+   "start_at": "2026-10-17T16:00:00.000Z",
+   "ticket_info": {
+    "price": null,
+    "is_free": true,
+    "max_price": null,
+    "is_sold_out": false,
+    "spots_remaining": 170,
+    "is_near_capacity": false,
+    "require_approval": false
+   }
+  },
+  {
+   "api_id": "evt-PpZR93q4mCqG43f",
+   "event": {
+    "api_id": "evt-PpZR93q4mCqG43f",
+    "name": "Best In The Bay: Music Showcase & Entertainment Industry Night",
+    "start_at": "2026-10-18T02:00:00.000Z",
+    "end_at": "2026-10-18T08:00:00.000Z",
+    "timezone": "America/Los_Angeles",
+    "url": "nox89ee4",
+    "visibility": "public",
+    "location_type": "offline",
+    "geo_address_info": {
+     "city": "San Francisco",
+     "type": "google",
+     "region": "California",
+     "address": "Boom Boom Room",
+     "country": "United States",
+     "place_id": "ChIJB4gZTbiAhYAR3rdrtW61BYs",
+     "localized": null,
+     "city_state": "San Francisco, CA",
+     "description": "",
+     "sublocality": "Lower Pacific Heights",
+     "country_code": "US",
+     "full_address": "Boom Boom Room, 1601 Fillmore St, San Francisco, CA 94115, USA",
+     "region_short": "CA",
+     "short_address": "1601 Fillmore St, San Francisco",
+     "place_coordinate": {
+      "latitude": 37.784606499999995,
+      "longitude": -122.43323740000001
+     },
+     "apple_maps_place_id": "I432F2637135B23AB",
+     "mode": "shown"
+    },
+    "coordinate": {
+     "longitude": -122.43323740000001,
+     "latitude": 37.784606499999995
+    }
+   },
+   "calendar": {
+    "name": "Best In The Bay"
+   },
+   "start_at": "2026-10-18T02:00:00.000Z",
+   "ticket_info": {
+    "price": {
+     "cents": 2000,
+     "currency": "usd",
+     "is_flexible": false
+    },
+    "is_free": false,
+    "max_price": null,
+    "is_sold_out": false,
+    "spots_remaining": 121,
+    "is_near_capacity": false,
+    "require_approval": false
+   }
+  },
+  {
+   "api_id": "evt-qjxZ0DdkwGZCED1",
+   "event": {
+    "api_id": "evt-qjxZ0DdkwGZCED1",
+    "name": "Noisebridge 18th Birthday Party: Fairly Legal! (SATURDAY)",
+    "start_at": "2026-10-18T02:00:00.000Z",
+    "end_at": "2026-10-18T10:00:00.000Z",
+    "timezone": "America/Los_Angeles",
+    "url": "ceeotcql",
+    "visibility": "public",
+    "location_type": "offline",
+    "geo_address_info": {
+     "city": "San Francisco",
+     "type": "google",
+     "region": "California",
+     "address": "Noisebridge",
+     "country": "United States",
+     "place_id": "ChIJ37GiuiN-j4ARBI37UqITuYE",
+     "localized": null,
+     "city_state": "San Francisco, CA",
+     "description": "",
+     "sublocality": "Mission District",
+     "country_code": "US",
+     "full_address": "Noisebridge, 272 Capp St, San Francisco, CA 94110, USA",
+     "region_short": "CA",
+     "short_address": "272 Capp St, San Francisco",
+     "place_coordinate": {
+      "latitude": 37.7624302,
+      "longitude": -122.4185361
+     },
+     "apple_maps_place_id": "I991E66B81304E3CE",
+     "mode": "shown"
+    },
+    "coordinate": {
+     "longitude": -122.4185361,
+     "latitude": 37.7624302
+    }
+   },
+   "calendar": {
+    "name": "Noisebridge events"
+   },
+   "start_at": "2026-10-18T02:00:00.000Z",
+   "ticket_info": {
+    "price": {
+     "cents": 3200,
+     "currency": "usd",
+     "min_cents": 0,
+     "is_flexible": true
+    },
+    "is_free": false,
+    "max_price": {
+     "cents": 25600,
+     "currency": "usd"
+    },
+    "is_sold_out": false,
+    "spots_remaining": null,
+    "is_near_capacity": false,
+    "require_approval": false
+   }
+  },
+  {
+   "api_id": "evt-rjIOnNUgFFnDKOE",
+   "event": {
+    "api_id": "evt-rjIOnNUgFFnDKOE",
+    "name": "Financial Literacy & Crafts Workshop: Let's Glow Up Financially! ⭐",
+    "start_at": "2026-10-18T17:30:00.000Z",
+    "end_at": "2026-10-18T19:30:00.000Z",
+    "timezone": "America/Los_Angeles",
+    "url": "lyuggem0",
+    "visibility": "public",
+    "location_type": "offline",
+    "geo_address_info": {
+     "city": "Oakland",
+     "type": "google",
+     "region": "California",
+     "address": "Oakland Bloom",
+     "country": "United States",
+     "place_id": "ChIJgaN4QcKAhYAR_uBmgUH0Plc",
+     "localized": null,
+     "city_state": "Oakland, CA",
+     "description": "",
+     "sublocality": "Old Oakland",
+     "country_code": "US",
+     "full_address": "Oakland Bloom, 528 8th St, Oakland, CA 94607, USA",
+     "region_short": "CA",
+     "short_address": "528 8th St, Oakland",
+     "place_coordinate": {
+      "latitude": 37.801156999999996,
+      "longitude": -122.27552999999999
+     },
+     "apple_maps_place_id": "IABB80ABB0F2F1C20",
+     "mode": "shown"
+    },
+    "coordinate": {
+     "longitude": -122.27552999999999,
+     "latitude": 37.801156999999996
+    }
+   },
+   "calendar": {
+    "name": "Personal"
+   },
+   "start_at": "2026-10-18T17:30:00.000Z",
+   "ticket_info": {
+    "price": null,
+    "is_free": false,
+    "max_price": null,
+    "is_sold_out": true,
+    "spots_remaining": 0,
+    "is_near_capacity": false,
+    "require_approval": false
+   }
+  }
+ ],
+ "has_more": false,
+ "next_cursor": null
+}

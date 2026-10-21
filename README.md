@@ -99,7 +99,7 @@ Read **Terms & conditions** and **Privacy** in the app. AI suggestions need your
 
 `src/` contains the app; `server/` the private API and integrations; `shared/` shared validation; `supabase/` hosted backend setup; `public/` app assets; `assets/screenshots/` README images; `scripts/` launch/build support.
 
-Private review notes, runbooks and test tooling are ignored and archived locally. Previously committed copies remain in earlier Git history.
+Private review notes and owner runbooks are ignored and archived locally. Deterministic release tests and CI are tracked; previously committed owner notes remain in earlier Git history.
 
 Map data: [OpenStreetMap / ODbL](https://www.openstreetmap.org/copyright), [Natural Earth](https://www.naturalearthdata.com/about/terms-of-use/). Weather: [Open-Meteo](https://open-meteo.com/).
 
@@ -125,7 +125,7 @@ npm run build
 npm run dev:frontend
 ```
 
-Type checking and the production build are available in this repository. Private test tooling and owner runbooks stay outside the public snapshot.
+Type checking, the production build, deterministic unit/integration tests and the sample browser suite are available in this repository. Owner runbooks and private evidence stay outside the public snapshot.
 
 **Website deployment is a separate step.** GitHub Pages can serve the frontend; it cannot run the private Node backend or use server secrets. The hosted adapter uses per-user Wajo OAuth. Local API-key mode remains localhost-only. A newly authorized OAuth connection takes precedence over the local key, and disconnect disables the key fallback. The developer launcher also supports `TATADA_WAJO_LOGIN=1 npm run dev` for per-user OAuth without requiring an owner key. The same existing Google OAuth client can be reused with its production callback configured, but local connected sessions are not automatically migrated.
 
@@ -137,3 +137,32 @@ VITE_ENABLE_BACKEND=true npm run build:website
 ```
 
 Publish only the reviewed frontend output. Never publish `.env`, `.data`, private archives, API keys, OAuth tokens, passport files or personal confirmation documents. The hosted build enables the backend explicitly. Automated checks cover recovery and the durable print flow; a real hosted Wajo sign-in and physical printer output remain separate operational checks.
+
+## Release validation
+
+Use Node 22.22+ (CI pins Node 24.19.0). `npm ci`, `npm run typecheck`,
+`npm run build`, `npm test`, and `npm run test:e2e` are required release checks.
+Install the browser once with `npx playwright install chromium` (Linux CI also
+uses `--with-deps`). Unit and backend integration tests can be run separately
+with `npm run test:unit` and `npm run test:integration`.
+
+The tracked GitHub Actions **Release validation** job runs these checks on pushes
+and pull requests. Repository administrators must require that check in branch
+protection and keep deployment gated on it; adding a workflow alone cannot
+configure those repository settings. CI does not publish test traces or private logs.
+
+Browser tests use fresh contexts at 1440×900 and 390×844. The default local
+server exercises the real sample UI and browser persistence without provider
+access. `TATADA_E2E_URL=https://jayasrisng.com/tatada/ npm run test:e2e` exercises
+the deployed public sample separately. These checks do not verify live OAuth,
+Fo responses, server synchronization or Calendar writes. Live-provider release
+validation requires disposable accounts and explicit approval for each external write.
+
+Hosted writers retry acquisition of the shared runtime lease for up to two
+seconds before returning `503` with `Retry-After: 2`. Only acquisition is retried;
+request handlers and external sends are not replayed. Conflicting workspace
+versions return `409` for user review. Reads use committed snapshots. A busy
+long-running provider operation can still reject new writes after the wait limit.
+Recovery keys do not expire with time: they remain valid until used, replaced,
+or the account is deleted. They are stored as hashes, grant workspace access,
+and must be kept privately. They do not recover an on-device vault passphrase.

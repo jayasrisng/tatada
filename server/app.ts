@@ -78,26 +78,29 @@ const MAX_WORKSPACE = 1024 * 1024
 export const SESSION_TTL = 30 * 24 * 3600_000
 export const SESSION_IDLE = 14 * 24 * 3600_000
 
-/** Fixed-window rate limiter, in memory (single process). */
+/** Write-lease requests persist counters across edge handler recreation. */
 class Limiter {
-  private hits = new Map<string, { n: number; reset: number }>()
   private limit: number
   private windowMs: number
   private now: () => number
-  constructor(limit: number, windowMs: number, now: () => number) {
+  private store: Store
+  private scope: string
+  constructor(limit: number, windowMs: number, now: () => number, store: Store, scope: string) {
     this.limit = limit
     this.windowMs = windowMs
     this.now = now
+    this.store = store
+    this.scope = scope
   }
   allow(key: string) {
     const t = this.now()
-    const h = this.hits.get(key)
-    if (!h || h.reset <= t) {
-      this.hits.set(key, { n: 1, reset: t + this.windowMs })
-      if (this.hits.size > 10_000) for (const [k, v] of this.hits) if (v.reset <= t) this.hits.delete(k)
-      return true
-    }
-    return ++h.n <= this.limit
+    const id = sha256(`${this.scope}:${key}`)
+    return this.store.update(d => {
+      const hits = d.rateLimits ??= {}
+      for (const [k,v] of Object.entries(hits)) if(v.reset <= t)delete hits[k]
+      const h = hits[id] ??= {n:0,reset:t+this.windowMs}
+      return ++h.n <= this.limit
+    })
   }
 }
 
@@ -106,8 +109,8 @@ export function createApp(deps: Deps) {
   const now = deps.now ?? Date.now
   const shares = new ShareService(store,now)
   const live = actions.provider === 'live'
-  const authLimit = new Limiter(10, 10 * 60_000, now)
-  const writeLimit = new Limiter(120, 60_000, now)
+  const authLimit = new Limiter(10, 10 * 60_000, now, store, 'auth')
+  const writeLimit = new Limiter(120, 60_000, now, store, 'write')
   const secure = deps.secureCookies ? '; Secure' : ''
   const loginCookiePath = deps.loginCookiePath ?? '/api/'
 

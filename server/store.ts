@@ -34,6 +34,8 @@ export interface Session {
 }
 
 export interface Data {
+  /** Hashed limiter keys; persisted under the hosted write lease. */
+  rateLimits?: Record<string,{n:number;reset:number}>
   accountRecovery?:Record<string,{owner:string;createdAt:number}>
   foKeyDisabled?:Record<string,boolean>
   foLoginTickets?:Record<string,{owner:string;clientBinding:string;expiresAt:number}>

@@ -1,6 +1,7 @@
 import { drawNotebookPaper, drawTravelDoodle, stopDoodle, tripMapUrl, notebookDay, notebookTime } from './notebook'
 import { flightNotes } from './flight'
 import {humanWhen} from '../travel/display'
+import {isIsoDate} from '../magic/dates'
 /*
  * Clean printable PDFs for a trip: white paper, readable Helvetica, half-inch
  * margins, no app navigation or blackboard. The same bytes are uploaded,
@@ -36,7 +37,11 @@ export interface PrintSticker {id:string;image:string;label:string;x:number;y:nu
 export interface PrintDoc { kind: 'card' | 'journal' | 'flights' | 'hotels' | 'packing' | 'all'; trip: Trip; items: ChecklistItem[]; profile: Profile; packing?: {name:string;category:string;image?:string}[]; packingOutfits?: {name:string;pieces:{name:string;image?:string}[]}[]; stickers?:PrintSticker[]; decoration?: 'star'|'sun'|'heart'; caption?: string; printedOn: string }
 export interface BuiltPdf { bytes: Uint8Array; pageCount: number; lossyText: boolean; title: string }
 
-const fmt = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+// Legacy journal entries can contain labels such as "Oct 12". Preserve those
+// instead of guessing a year or rendering an invalid JavaScript Date.
+const fmt = (iso: string) => isIsoDate(iso)
+  ? new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+  : iso || 'Date not saved'
 
 function content(doc: PrintDoc): { title: string; subtitle: string; sections: { heading: string; lines: string[]; tiles?: {name:string;image?:string}[]; images?: {image?: string; illustration?: 'sydney-harbour'|'sydney-lunch'; caption: string}[] }[] } {
   const t = doc.trip
