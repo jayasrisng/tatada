@@ -1,3 +1,4 @@
+import {BETA_VERSION} from '../shared/release.ts'
 import {finishAuthDeletions,type IdentityGateway} from './account-auth.ts'
 import {readOnlyFo} from './fo.ts'
 import {PrintFiles} from './print-files.ts'
@@ -125,7 +126,7 @@ export function createEdgeHandler(options: EdgeOptions) {
     if (from && from !== origin) return new Response('Origin not allowed', { status: 403 })
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors })
     if (request.method !== 'GET' && from !== origin) return error('Request origin not allowed', 403)
-    if (path === '/api/health') return Response.json({ ok: true, provider: options.mode ?? 'live', storage: 'supabase' }, { headers: cors })
+    if (path === '/api/health') return Response.json({ ok: true, provider: options.mode ?? 'live', storage: 'supabase',version:BETA_VERSION }, { headers: cors })
     // These routes only expose an authenticated committed snapshot; no provider I/O.
     // Anonymous live startup only reads status. Authenticated requests may refresh
     // session expiry tracking; mock mode creates accounts. Both retain the lease.
