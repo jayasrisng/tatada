@@ -6,20 +6,21 @@ Candidate version: **0.1.0-beta.1**, built on validated `1143819` on `melon/v0.1
 
 ## 1. Verify the backup first — no paid services
 
-The project is on Supabase Free. Do not assume a daily managed backup exists. Docker Desktop was not found during inspection. Install/start Docker Desktop locally; do not purchase a Supabase upgrade or create another cloud project. Keep Docker available until the restore check finishes.
+The project is on Supabase Free. No Docker installation, paid resource or permanent local database service is required. The release backup was exported read-only through the existing Supabase connection, encrypted before transport to disk, and verified with the signed official portable Postgres.app PostgreSQL **17.11** binaries in a temporary location.
 
-In your own private, non-recorded terminal, from this repository, using Node 24:
+**Actual result, 2026-10-21:** all current Tatada application data was restored into native PostgreSQL, dumped with `pg_dump`, then restored into a second independent database using `pg_restore`. The complete runtime-row checksum and state checksum matched. RLS still denied direct access to `anon` and `authenticated`. Production was not modified by this check. The temporary database process was stopped afterward.
+
+The inspected source had one application table, one legacy account/workspace, **zero Auth users and zero Storage objects**. The backup therefore covers all current Tatada application records and stored functions. It does **not** reconstruct the entire managed Supabase platform/Auth service or its provider/environment configuration. This distinction matters for a future full-project disaster recovery; it must not be presented as a verified full Supabase rebuild. Once Auth users or Storage files exist, they require an expanded backup, and the native verifier deliberately refuses to certify this original narrow export as sufficient.
+
+Private files are retained outside Git at `~/Documents/Tatada-private-backups/2026-10-21-native/`, including `verified-application.dump`, encrypted source metadata, its private restore key and `verified.json`. Directory/file permissions are 0700/0600. Keep an independent secure copy and preserve the existing sealing/service/provider secrets privately; never rotate them as part of this deployment. No tester passwords were created or stored by this backup procedure.
+
+Codex can repeat the connected export and native verification without asking you to administer another service. To repeat only the existing private export's verification while those temporary PostgreSQL binaries are available:
 
 ```sh
-npm ci
-node scripts/backup-verify.mjs "$HOME/Documents/Tatada-private-backups"
+node scripts/backup-verify.mjs "$HOME/Documents/Tatada-private-backups/2026-10-21-native"
 ```
 
-The tool asks privately for a Supabase personal access token and the **existing database password**. Never paste either into Codex. It also requires you to confirm that the existing sealing secret/service key and provider secrets are retained privately. Do not reset the database password or rotate any encryption/provider key merely to run this check. If you cannot recover those existing secrets, stop and identify that as a recovery blocker.
-
-The pinned Supabase CLI exports roles, application schemas, data and custom Auth/storage schema changes from a separate empty work directory. Source queries only read table counts/checksums. An independent local Supabase PostgreSQL 17 stack is created, restored and compared with the source; a second source manifest detects changes during export. The tool stops its own disposable local stack afterward. It never restores into production or provisions a paid resource. If source Storage objects exist, it stops because their files require separate backup. Platform migration ledgers are excluded from row comparison/import; all application/Auth/storage table data is checked.
-
-Dumps contain private information and Auth records. They are created outside the repository with private file permissions; use an encrypted disk and keep an independent secure copy. Keep `verified.json` privately. A successful export without the successful restore/comparison message is **not verified**. Report only success or the generic error—not dump contents or credentials. This new automation still requires its first real Docker execution; no real restore has been claimed.
+`TATADA_POSTGRES_BIN` can point to an existing PostgreSQL 17 binary directory. No database password or Supabase service key is required to verify that already encrypted local export. A successful export alone is not a verified restore. The existing Docker-based draft was replaced by this native procedure.
 
 ## 2. Prepare the compatible backend and verify Auth
 

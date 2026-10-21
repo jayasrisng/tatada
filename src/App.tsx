@@ -77,14 +77,13 @@ export function App() {
       {arriving && <Arrival name={state.profile.name} onDone={finishArrival} />}
       {storageWarning && <p className="storage-warning" role="status">{storageWarning}</p>}
       {/* While Magic is open, the rest of the app is inert: no focus, no clicks, hidden from screen readers. */}
-      <main className={`app ${chromeless ? 'chromeless' : ''}`} inert={!!magic || arriving}>{screen}</main>
+      <main className={`app ${chromeless ? 'chromeless' : ''}`} inert={!!magic || arriving}>{screen}<BetaFeedback/></main>
       {!chromeless && (
         <div inert={!!magic || arriving}>
           <TabBar current={current} tripId={root === 'trip' ? id : undefined} />
         </div>
       )}
       <MagicSheet />
-      <BetaFeedback/>
     </div>
   )
 }
