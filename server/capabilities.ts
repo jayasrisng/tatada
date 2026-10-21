@@ -17,6 +17,6 @@ export function foCapabilities(tools: ToolInfo[]): FoCapabilities {
   const senderVisible = tools.some((t) => /account|sender|mailbox|integration/i.test(t.name))
   return {
     attachments, senderVisible, askFoInputs: inputs,
-    reason: !ask ? 'Fo did not list ask_fo.' : !attachments ? `ask_fo accepts only ${inputs.join(', ') || 'unknown arguments'}${ask.closedInputs ? ' and rejects anything else' : ''}; there is no way to hand Fo a PDF.` : undefined,
+    reason: !ask ? 'Fo did not list ask_fo.' : !attachments ? `ask_fo accepts only ${inputs.join(', ') || 'unknown arguments'}${ask.closedInputs ? ' and rejects anything else' : ''}; there is no binary upload field. Hosted PDFs can be handed off through signed HTTPS links.` : undefined,
   }
 }

@@ -1,3 +1,4 @@
+import type {PrintFiles} from './print-files.ts'
 import type {CalendarService} from './calendar.ts'
 import {withoutTrip} from '../src/travel/delete.ts'
 import type {AppState} from '../src/types.ts'
@@ -23,9 +24,9 @@ import type { TokenSet } from './types.ts'
 /*
  * HTTP API.
  *
- * Accounts: in live mode the only way in is "Continue with Wajo". An account is
- * created or found only for a verified Wajo identity (see identity.ts); without
- * one, login is refused. Mock mode creates a clearly labeled demo account.
+ * Accounts: Wajo OAuth authorizes each connection. Verified provider identities
+ * find stable accounts; opaque identities get isolated workspaces. A one-use
+ * recovery key can restore an existing workspace. Mock mode labels demo accounts.
  *
  * Sessions: random 256-bit id in an HttpOnly, SameSite=Lax cookie; only its
  * hash is stored. 30-day absolute and 14-day idle expiry; rotated on login.
@@ -35,6 +36,7 @@ import type { TokenSet } from './types.ts'
 export type ResolveIdentity = (a: { tokens: TokenSet; body: Json; issuer: string }) => Promise<{ identity: WajoIdentity | null; foShape?: unknown }>
 
 interface Deps {
+  printFiles?:PrintFiles
   travel?:AmadeusTravel
   calendar?: CalendarService
   gmail?: GmailConnection
@@ -198,6 +200,8 @@ export function createApp(deps: Deps) {
     const method = req.method ?? 'GET'
     try {
       if (!path.startsWith('/api/')) return send(res, 404, { error: 'Not found' })
+      const file=method==='GET'&&path.match(/^\/api\/print\/file\/([\w-]{8,40})$/)
+      if(file&&deps.printFiles){const pdf=deps.printFiles.read(file[1],url.searchParams.get('expires'),url.searchParams.get('token'));res.writeHead(200,{'content-type':'application/pdf','content-disposition':'attachment; filename=tatada-print.pdf','content-length':pdf.length,'cache-control':'private, no-store','referrer-policy':'no-referrer','x-content-type-options':'nosniff'});return res.end(pdf)}
       if (deps.allowedOrigin) {
         res.setHeader('vary', 'Origin')
         const origin = req.headers.origin
@@ -210,7 +214,7 @@ export function createApp(deps: Deps) {
           if (origin !== deps.allowedOrigin) return send(res, 403, { error: 'Request origin not allowed' })
           const headers = String(req.headers['access-control-request-headers'] ?? '').toLowerCase().split(',').map((h) => h.trim()).filter(Boolean)
           if (headers.some((h) => !['content-type', 'x-tatada', 'authorization'].includes(h))) return send(res, 403, { error: 'Request headers not allowed' })
-          res.setHeader('access-control-allow-methods', 'GET, POST, PUT, PATCH, OPTIONS')
+          res.setHeader('access-control-allow-methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
           res.setHeader('access-control-allow-headers', 'Content-Type, X-Tatada, Authorization')
           res.writeHead(204)
           return res.end()
@@ -263,6 +267,21 @@ export function createApp(deps: Deps) {
         return send(res,200,{ticket})
       }
 
+      if(path==='/api/auth/recover'&&method==='POST'){
+        if(!authLimit.allow(`recovery:${ip(req)}`))return send(res,429,{error:'Too many recovery attempts. Try again later.'})
+        const body=await readBody(req),key=typeof body.key==='string'?body.key.trim():''
+        const hash=sha256(key),entry=store.data.accountRecovery?.[hash]
+        if(!/^tatada-recovery_[\w-]{43}$/.test(key)||!entry||!store.data.accounts[entry.owner]||store.data.accounts[entry.owner].kind==='owner')return send(res,401,{error:'Recovery key invalid or already used.'})
+        store.update(d=>{delete d.accountRecovery?.[hash]})
+        const sid=newSession(entry.owner,current?.key)
+        return send(res,200,{...status(entry.owner),...(deps.bearerSessions?{sessionToken:sid}:{})},{'set-cookie':sessionCookie(sid)})
+      }
+      if(path==='/api/account/recovery-key'&&method==='POST'){
+        if(!userId||!store.data.accounts[userId]||deps.owner)return send(res,401,{error:'Sign in to your hosted Tatada account first.'})
+        const key=`tatada-recovery_${randomToken(32)}`
+        store.update(d=>{const records=d.accountRecovery??={};for(const [k,v]of Object.entries(records))if(v.owner===userId)delete records[k];records[sha256(key)]={owner:userId,createdAt:now()}})
+        return send(res,200,{key,notice:'One-use recovery key. Keep it privately; it grants access to your Tatada workspace. Generating another invalidates this key.'})
+      }
       if ((path === '/api/auth/wajo/start' || path === '/api/fo/connect') && method === 'GET') {
         if (!live || !oauth) return redirect(res, `${appUrl}/#/welcome?auth=demo_mode`)
         if (!authLimit.allow(`start:${ip(req)}`)) return redirect(res, `${appUrl}/#/welcome?auth=rate_limited`)
@@ -557,7 +576,7 @@ export function createApp(deps: Deps) {
         const activePrint=Object.values(store.data.printJobs??{}).some(value=>{const j=value as {ownerId?:string;status?:string};return j.ownerId===userId&&['sending','send_uncertain'].includes(j.status??'')})
         if(store.data.calendarWrites?.[userId]||activeActions||activeChats||activePrint)return send(res,409,{error:'A provider request is still active or uncertain. Resolve it before deleting so it cannot recreate data or hide an external action.'})
         store.update(d=>{
-          for(const table of [d.actions,d.foChats,d.printJobs,d.shares])if(table)for(const [k,v] of Object.entries(table))if((v as {ownerId?:string;owner?:string}).ownerId===userId||(v as {owner?:string}).owner===userId)delete table[k]
+          for(const table of [d.actions,d.foChats,d.printJobs,d.shares,d.accountRecovery,d.foLoginTickets])if(table)for(const [k,v] of Object.entries(table))if((v as {ownerId?:string;owner?:string}).ownerId===userId||(v as {owner?:string}).owner===userId)delete table[k]
           for(const table of [d.sessions,d.sessionExchanges])if(table)for(const [k,v] of Object.entries(table))if(v.userId===userId)delete table[k]
           for(const table of [d.calendarExchanges,d.calendarPending])if(table)for(const [k,v] of Object.entries(table))if(v.owner===userId)delete table[k]
           if(d.gmailExchanges)for(const [k,v] of Object.entries(d.gmailExchanges))if(v.owner===userId)delete d.gmailExchanges[k]

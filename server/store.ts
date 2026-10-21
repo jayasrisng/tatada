@@ -34,6 +34,7 @@ export interface Session {
 }
 
 export interface Data {
+  accountRecovery?:Record<string,{owner:string;createdAt:number}>
   foKeyDisabled?:Record<string,boolean>
   foLoginTickets?:Record<string,{owner:string;clientBinding:string;expiresAt:number}>
 

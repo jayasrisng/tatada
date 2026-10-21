@@ -1,3 +1,4 @@
+import {AccountRecovery} from './AccountRecovery'
 import {SharedTripView} from './SharedTripView'
 import {useRoute} from '../state/ui'
 import {OfflineTrip,loadSelectedPack} from './OfflineTrip'
@@ -238,7 +239,7 @@ function SignIn({ onDemo }: { onDemo: () => void }) {
             <Doodle name="arrow" size={20} />
             <span>Continue with Wajo</span>
           </a>
-          <button className="linkbtn" onClick={onDemo}>explore a sample trip first</button>
+          <button className="linkbtn" onClick={onDemo}>explore a sample trip first</button><AccountRecovery/>
           <p className="dim small signin-fine">
             Tatada signs you in with your Wajo account. Fo only acts for you after you approve each request. Your Wajo password and tokens never reach this page.
           </p>

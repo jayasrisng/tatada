@@ -13,7 +13,7 @@
     "server:fo": "TATADA_FO_MODE=live TATADA_SINGLE_OWNER=1 node server/index.ts",
     "events": "node server/events/serve.ts",
     "dev:lan": "vite --host",
-    "build:website": "VITE_BASE_PATH=/tatada/ VITE_API_URL=https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-api VITE_EVENTS_URL=https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-events npm run build",
+    "build:website": "VITE_ENABLE_BACKEND=true VITE_BASE_PATH=/tatada/ VITE_API_URL=https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-api VITE_EVENTS_URL=https://utmbjcgttsjvdpghiqkf.supabase.co/functions/v1/tatada-events npm run build",
     "dev:frontend": "vite --host 127.0.0.1",
     "dev:offline": "TATADA_PREVIEW_BUILD=1 node scripts/dev.mjs"
   },

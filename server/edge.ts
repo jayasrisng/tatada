@@ -1,6 +1,8 @@
+import {PrintFiles} from './print-files.ts'
+import {WajoPrintDelivery} from './fo-print.ts'
 import {CalendarConnection,CalendarService} from './calendar.ts'
 import {IntelligenceService} from './intelligence.ts'
-import {GmailConnection,GmailPrintDelivery} from './gmail.ts'
+import {GmailConnection} from './gmail.ts'
 import {AmadeusTravel} from './travel.ts'
 import { createApp } from './app.ts'
 import { Store, type Data } from './store.ts'
@@ -12,7 +14,7 @@ import { McpClient } from './mcp.ts'
 import { LiveFoAdapter, MockFoAdapter, type FoAdapter } from './fo.ts'
 import { fromAccessToken, fromFoApi, fromTokenResponse } from './identity.ts'
 import { webRequest } from './web.ts'
-import { FoPrintDelivery, MockPrintDelivery, PrintService } from './print.ts'
+import { MockPrintDelivery, PrintService } from './print.ts'
 
 export interface EdgeRepository {
   read(): Promise<Partial<Data>>
@@ -65,8 +67,9 @@ export function createEdgeHandler(options: EdgeOptions) {
     const chats = new FoChatService({ store, fo, pollWaitSeconds: 1 })
     const gmail=options.gmail?new GmailConnection({store,sealer:new Sealer(options.secret),...options.gmail,redirectUri:options.gmail.redirectUri??`${publicUrl}/api/gmail/callback`}):undefined
     const calendar=options.gmail?new CalendarService(store,new CalendarConnection({store,sealer:new Sealer(options.secret),...options.gmail,redirectUri:options.gmail.redirectUri??`${publicUrl}/api/gmail/callback`})):undefined
-    const print = new PrintService({ store, delivery: options.mode === 'mock' ? new MockPrintDelivery(store) : gmail?new GmailPrintDelivery(gmail):new FoPrintDelivery(fo) })
-    const handle = createApp({ store, fo, actions, chats, print, calendar, gmail, intelligence, travel, oauth: options.mode === 'mock' ? undefined : oauth, appUrl, secureCookies: true, allowedOrigin: origin, bearerSessions: true, browserAccounts: true, loginCookiePath: `${prefix}/`,
+    const printFiles=new PrintFiles(store,options.secret,publicUrl)
+    const print = new PrintService({ store, delivery: options.mode === 'mock' ? new MockPrintDelivery(store) : new WajoPrintDelivery({store,fo,chats,files:printFiles}) })
+    const handle = createApp({ printFiles,store, fo, actions, chats, print, calendar, gmail, intelligence, travel, oauth: options.mode === 'mock' ? undefined : oauth, appUrl, secureCookies: true, allowedOrigin: origin, bearerSessions: true, browserAccounts: true, loginCookiePath: `${prefix}/`,
       resolveIdentity: async ({ body, tokens, issuer }) => {
         const identity = fromTokenResponse(body, issuer) ?? fromAccessToken(tokens.accessToken, issuer, Date.now())
         return identity ? { identity } : fromFoApi(mcp, tokens.accessToken, issuer)
@@ -86,6 +89,7 @@ export function createEdgeHandler(options: EdgeOptions) {
       if (lease.recovered) { actions.recover(); chats.recover(); print.recover() }
       await actions.runDue(1)
       await chats.runDue(1)
+      await print.runDue(1)
       await store.flush()
       committed = true
     } finally {
@@ -108,7 +112,7 @@ export function createEdgeHandler(options: EdgeOptions) {
     if (request.method !== 'GET' && from !== origin) return error('Request origin not allowed', 403)
     if (path === '/api/health') return Response.json({ ok: true, provider: options.mode ?? 'live', storage: 'supabase' }, { headers: cors })
     // These routes only expose an authenticated committed snapshot; no provider I/O.
-    const snapshot = (path==='/api/intelligence'&&request.method==='POST') || request.method === 'GET' && (/^\/api\/(status|workspace|actions(?:\/[\w-]+)?|fo\/chats(?:\/[\w-]+)?)$/.test(path))
+    const snapshot = (path==='/api/intelligence'&&request.method==='POST') || request.method === 'GET' && (/^\/api\/(print\/(?:file\/[\w-]+|jobs(?:\/[\w-]+(?:\/pdf)?)?)|status|workspace|actions(?:\/[\w-]+)?|fo\/chats(?:\/[\w-]+)?)$/.test(path))
     let token: string | undefined
     let committed = false
     try {
@@ -130,7 +134,8 @@ export function createEdgeHandler(options: EdgeOptions) {
       await store.flush()
       committed = true
       if (token) { await repository.release(token); token = undefined }
-      if (snapshot || response.ok) kick()
+      const pending=Object.values(store.data.actions).some(a=>['approved','sending','send_uncertain','waiting','answering','verifying'].includes(a.status))||Object.values(store.data.foChats??{}).some(value=>['sending','send_uncertain','working'].includes((value as {status:string}).status))||Object.values(store.data.printJobs??{}).some(value=>{const j=value as {sender?:{kind:string};status:string;createdAt:number};return j.sender?.kind==='fo'&&j.status==='send_uncertain'&&Date.now()-j.createdAt<30*60_000})
+      if ((snapshot || response.ok)&&pending) kick()
       return response
     } catch {
       console.error('[tatada edge] request failed')

@@ -2,8 +2,6 @@ import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
 import { PDFDocument } from 'pdf-lib'
 import { canonical, randomToken, sha256 } from './crypto.ts'
-import { foCapabilities } from './capabilities.ts'
-import type { FoAdapter } from './fo.ts'
 import type { Store } from './store.ts'
 import { EPSON_EMAIL, planPrint, printerAddress, type Answer, type PrintChoices, type PrintPlan, type PrintRequest, type PrinterProfile } from '../src/print/plan.ts'
 
@@ -30,6 +28,9 @@ export interface Sender { kind: 'mock' | 'fo' | 'gmail'; verified: boolean; labe
 export interface SenderCheck extends Sender { ok: boolean; reason?: string }
 
 export interface PrintJob {
+  preferredSenderEmail?:string
+  foChatId?:string
+  foDownloadExpires?:number
   id: string
   ownerId: string
   createdAt: number
@@ -45,7 +46,7 @@ export interface PrintJob {
   printer: string
   address: string
   sender: Sender
-  /** Why this job can't be sent (e.g. Fo can't attach files). Approval is refused while set. */
+  /** Why this job cannot be sent. Approval is refused while set. */
   blocker?: string
   contentHash: string
   dedupeKey: string
@@ -71,7 +72,7 @@ export interface PrintDelivery {
   sender(userId: string): Promise<SenderCheck>
   /** Definite failures return ok:false; anything that might have sent throws PrintUncertain. */
   send(userId: string, job: PrintJob, pdf: Buffer): Promise<{ ok: true; ref: string } | { ok: false; reason: string; blocked?: boolean }>
-  reconcile?(userId: string, job: PrintJob): Promise<'submitted' | 'unknown'>
+  reconcile?(userId: string, job: PrintJob): Promise<'submitted' | 'unknown' | 'failed'>
 }
 
 const MAX_PDF_BYTES = 4_000_000, MAX_PAGES = 60, DUPLICATE_WINDOW = 15 * 60_000, KEEP_JOBS = 20, KEEP_PDFS = 5
@@ -151,12 +152,12 @@ export class PrintService {
     const sender: Sender = { kind: check.kind, verified: check.verified, label: check.label }
     const address = printerAddress(printer.email, plan.suffix)
     const copies = request.copies ?? 1
-    const contentHash = sha256(canonical({ pdfHash, address, sender, plan, copies }))
+    const contentHash = sha256(canonical({ pdfHash, address, sender, plan, copies,preferredSenderEmail:printer.senderEmail }))
     const t = this.now()
     const job: PrintJob = {
       id: randomToken(12), ownerId: userId, createdAt: t, updatedAt: t,
       document: { kind: doc.kind, title: doc.title, tripId: typeof doc.tripId === 'string' ? doc.tripId.slice(0, 100) : undefined },
-      pdf: b64, pdfHash, bytes: bytes.length, pageCount, request, choices, plan, printer: printer.email, address, sender,
+      preferredSenderEmail:printer.senderEmail,pdf: b64, pdfHash, bytes: bytes.length, pageCount, request, choices, plan, printer: printer.email, address, sender,
       blocker: check.ok ? (printer.senderEmail&&check.kind==='gmail'&&printer.senderEmail.toLowerCase()!==check.label.toLowerCase()?`Connect ${printer.senderEmail} in print settings.`:undefined) : check.reason ?? 'Sending isn\'t available.',
       contentHash, dedupeKey: sha256(`${pdfHash}|${address}`), ref: randomToken(5), status: 'awaiting_approval', attempts: 0,
       events: [{ at: t, text: 'Prepared. Waiting for your approval.' }],
@@ -194,6 +195,7 @@ export class PrintService {
     if (job.approval?.idempotencyKey === key) return this.view(job)
     if (job.status !== 'awaiting_approval' && !(resend && job.status === 'send_uncertain')) throw new PrintError(409, 'This print job is already being handled.', 'changed')
     const printer = this.printer(userId)
+    if(printer&&printer.senderEmail!==job.preferredSenderEmail)throw new PrintError(409,'The preferred sending account changed. Prepare the print again.','changed')
     if (!printer || printerAddress(printer.email, job.plan.suffix) !== job.address ||
       canonical(planPrint(job.request, printer, job.choices, job.pageCount / job.plan.repeat)) !== canonical(job.plan)) {
       throw new PrintError(409, 'Your printer settings changed since this preview. Prepare it again.', 'changed')
@@ -240,9 +242,13 @@ export class PrintService {
     if (job.status !== 'send_uncertain' || !this.delivery.reconcile) return this.view(job)
     const attempt = job.attempts
     const found = await this.delivery.reconcile(userId, job)
-    if (found === 'submitted' && job.status === 'send_uncertain' && job.attempts === attempt) this.store.update(() => { job.status = 'submitted'; job.updatedAt = this.now(); job.events.push({ at: job.updatedAt, text: 'Found the earlier send: the email was submitted.' }) })
+    if (found === 'failed' && job.status === 'send_uncertain' && job.attempts === attempt) this.store.update(()=>{job.status='failed';job.updatedAt=this.now();job.events.push({at:job.updatedAt,text:job.error??'Wajo reports the email was not sent.'})})
+    if (found === 'submitted' && job.status === 'send_uncertain' && job.attempts === attempt) this.store.update(() => { job.status = 'submitted'; job.updatedAt = this.now(); job.events.push({ at: job.updatedAt, text: job.sender.kind==='fo'?'Wajo reports the email submitted and returned a matching Gmail message receipt. Physical printing is not verified.':'Found the earlier send: the email was submitted.' }) })
     return this.view(job)
   }
+
+  private checking=new Set<string>()
+  async runDue(limit=1){for(const job of Object.values(this.jobs).filter(j=>j.sender.kind==='fo'&&j.foChatId&&j.status==='send_uncertain'&&this.now()-j.createdAt<30*60_000).slice(0,limit)){if(this.checking.has(job.id))continue;this.checking.add(job.id);try{await this.check(job.ownerId,job.id)}finally{this.checking.delete(job.id)}}}
 
   /** After a restart, anything caught mid-send is uncertain, not retried. */
   recover() {
@@ -289,27 +295,4 @@ export class MockPrintDelivery implements PrintDelivery {
     return { ok: true as const, ref: `mock-${job.ref}` }
   }
   async reconcile(_userId: string, job: PrintJob) { return this.mock.printOutbox?.[job.ref] ? 'submitted' as const : 'unknown' as const }
-}
-
-/**
- * Fo delivery. Sends only if Fo's own tool schema shows a way to attach a file.
- * Today ask_fo accepts text only, so this reports that blocker and sends nothing.
- */
-export class FoPrintDelivery implements PrintDelivery {
-  readonly mode = 'fo' as const
-  private fo: FoAdapter
-  constructor(fo: FoAdapter) { this.fo = fo }
-  async sender(userId: string): Promise<SenderCheck> {
-    if (!this.fo.connected(userId)) return { kind: 'fo', verified: false, label: 'Fo not connected', ok: false, reason: 'Connect Fo for this account first.' }
-    try {
-      const caps = foCapabilities(await this.fo.tools(userId))
-      const label = caps.senderVisible ? 'Fo-connected email account' : 'the email account connected to your Wajo account (Tatada can\'t see which)'
-      return { kind: 'fo', verified: false, label, ok: caps.attachments, reason: caps.attachments ? undefined : `Fo can't attach files yet: ${caps.reason}` }
-    } catch (e) { return { kind: 'fo', verified: false, label: 'Fo unavailable', ok: false, reason: `Couldn't check Fo: ${(e as Error).message.slice(0, 120)}` } }
-  }
-  async send(userId: string) {
-    const check = await this.sender(userId)
-    // Even if a future schema allows files, Tatada doesn't send until that path is built and verified.
-    return { ok: false as const, blocked: true, reason: check.reason ?? 'Fo attachment delivery isn\'t implemented in Tatada yet.' }
-  }
 }
