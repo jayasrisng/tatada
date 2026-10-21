@@ -10,7 +10,7 @@ async function fixture(page:Page,firstLogin=false,withFactor=false){
  const token=()=>[Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url'),Buffer.from(JSON.stringify({sub:id,session_id:factor,aal:elevated?'aal2':'aal1',exp:Math.floor(Date.now()/1000)+3600,iat:Math.floor(Date.now()/1000),amr:[]})).toString('base64url'),Buffer.from('synthetic-fixture-signature').toString('base64url')].join('.')
  const session=()=>({access_token:token(),refresh_token:'synthetic-fixture-refresh',token_type:'bearer',expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600,user:user()})
  await page.route('https://auth.fixture/**',async route=>{const r=route.request(),path=new URL(r.url()).pathname,body=r.postDataJSON(),ok=(json:unknown)=>route.fulfill({json})
-  if(path.endsWith('/token')){if(body.password!==currentPassword)return route.fulfill({status:400,json:{msg:'Invalid synthetic credentials',error_code:'invalid_credentials'}});revoked=false;return ok(session())}
+  if(path.endsWith('/token')){if(body.password!==currentPassword)return route.fulfill({status:400,json:{msg:'Invalid synthetic credentials',error_code:'invalid_credentials'}});revoked=false;elevated=false;return ok(session())}
   if(path.endsWith('/user')&&r.method()==='PUT'){if(body.current_password!==currentPassword||body.password===currentPassword)return route.fulfill({status:400,json:{msg:'Invalid synthetic password change'}});currentPassword=body.password;required=false;revoked=true;return ok(user())}
   if(path.endsWith('/user'))return ok(user())
   if(path.endsWith('/factors'))return ok({id:factor,type:'totp',totp:{qr_code:'<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><text y="40">Fixture only</text></svg>',secret:'SYNTHETICFIXTURE'}})
