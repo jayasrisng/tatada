@@ -57,7 +57,7 @@ test('itinerary completion is editable and persists; Calendar file is a sample',
 })
 test('journal create, edit, reload and PDF preview preserve the content',async({page})=>{
  await route(page,'/trip/lisbon/journal');await page.getByLabel('Moment note').fill('QA synthetic journal memory');await page.getByRole('button',{name:'save moment',exact:true}).click()
- const moment=page.getByRole('article').filter({hasText:'QA synthetic journal memory'});await moment.getByRole('button',{name:'edit moment'}).click();await moment.getByPlaceholder('Write your memory here…').fill('QA edited journal memory');await moment.getByRole('button',{name:'save moment'}).click()
+ const moment=page.getByRole('article').filter({hasText:'QA synthetic journal memory'});await moment.getByRole('button',{name:'edit moment'}).click();const editor=page.getByRole('article').filter({has:page.getByPlaceholder('Write your memory here…')});await editor.getByPlaceholder('Write your memory here…').fill('QA edited journal memory');await editor.getByRole('button',{name:'save moment'}).click()
  await reopen(page);await expect(page.getByText('QA edited journal memory',{exact:true})).toBeVisible()
  // Direct preview route has no one-use send intent and never approves a job.
  await route(page,'/trip/lisbon/print/journal?preview=1');const link=page.getByRole('link',{name:'Download PDF',exact:true});await expect(link).toHaveAttribute('href',/^blob:/)
