@@ -73,15 +73,13 @@ The app in a phone-sized viewport, shown one screen at a time. These sample trip
 
 ## Connect your accounts
 
-**Fo:** the operator configures private Wajo credentials on the backend. Open **Profile → Connections** to check the connection. Fo chat shares the trip context you enable; calls use Wajo’s microphone/audio service.
+**Fo:** sign in with your own Wajo account. Existing conversations and transcripts remain readable. Tatada v0.1 restricts live free-form Fo execution and calls because the available agent interface cannot enforce an action allowlist. A prompt or approval checkbox is not a provider permission boundary. Separately authorized Gmail and Calendar operations remain available.
 
-**Wajo-connected services:** Fo chat can delegate supported calls, email and calendar requests to the services already connected in your Wajo account. History → “Load history from my Wajo account” opens provider conversations; “Refresh transcript from Wajo” retrieves current messages and recorded activity. Continuing a conversation reuses its Wajo conversation ID. Availability, timing and whether a channel appears in Wajo’s own UI are provider-controlled; Tatada does not fabricate a call or reservation confirmation.
-
-**PDF attachments:** Hosted printing uses Fo and the Gmail already connected in Wajo. An approved PDF gets a 30-minute, document-specific download link. Tatada queues one durable Fo request and checks for a receipt matching its job, recipient, PDF hash, sending account and Gmail message ID. Reloads and timeouts do not automatically send it again. This is Wajo’s reported email submission, not proof of physical printing. Localhost printing retains optional direct Gmail because Wajo cannot fetch a localhost PDF. A live unsent-draft trial independently verified Wajo’s actual PDF attachments in Gmail.
+**Printing:** configure **Profile → Printing** with your sender preference, Epson address, defaults and ongoing connection consent. Connect the matching Google mailbox with `gmail.send`; a typed sender address never grants permission. Print opens focused settings. Only **Approve & Send** can submit the exact stored PDF, settings, copies, verified sender and destination. Previews, reloads and route links never send. Profile changes invalidate prepared approvals; duplicate keys return the same job and uncertain sends are not replayed. Gmail's response message ID verifies email submission, never physical printing. Wajo conversational receipts are not accepted as Gmail evidence. Copies repeat pages in the PDF; physical paper size remains an Epson setting.
 
 **Google:** configure a Google Cloud Web application OAuth client, enable Gmail and Calendar APIs, and register the exact backend callback. Keep `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_REDIRECT_URI` private. Add your intended Google account as a test user while the OAuth app is in Testing.
 
-Separate Google connections are optional under **Profile → Wajo connection → Optional direct Google connections**. Gmail authorizes PDF print emails. Calendar authorizes app-created calendars with `calendar.app.created`. Review the event preview before adding anything. Calendar exports are one-way copies; Apple Calendar and Outlook can use the `.ics` download.
+Google connections are separate and optional: Gmail under **Profile → Printing**, Calendar under **Profile → Wajo connection → Optional direct Google connections**. Gmail authorizes PDF print emails. Calendar authorizes app-created calendars with `calendar.app.created`. Review the event preview before adding anything. Calendar exports are one-way copies; Apple Calendar and Outlook can use the `.ics` download.
 
 ## Privacy, security and terms
 
@@ -166,3 +164,11 @@ long-running provider operation can still reject new writes after the wait limit
 Recovery keys do not expire with time: they remain valid until used, replaced,
 or the account is deleted. They are stored as hashes, grant workspace access,
 and must be kept privately. They do not recover an on-device vault passphrase.
+
+### Release gates and rollback
+
+The release branch must pass typecheck, build, deterministic tests, dependency audit and desktop/mobile Playwright. Browser coverage distinguishes sample journeys and controlled API fixtures from live provider evidence. A real Wajo login must succeed through the bearer exchange and survive refresh. Opaque Wajo identities require the existing single-use recovery key on another device; never merge by typed email.
+
+Before promotion, verify the Google OAuth application's publishing/test-user status and exact redirect URIs, actual Supabase backup availability and a restore drill in an isolated target. Application export or an in-memory repository test does not prove database backups. Keep the existing sealing secret and runtime row unchanged; these changes add optional JSON fields without replacing account IDs or recovery records. Do not deploy while a required gate is unresolved.
+
+Record the previous frontend artifact and edge function bundle before promotion. Roll back both artifacts together while retaining the runtime row and sealing key. Existing pending sign-ins using the legacy CSRF cookie and browser binding remain supported; prepared jobs require fresh approval after printing-profile changes. Never restore an older database snapshot over production as a code rollback.

@@ -50,7 +50,7 @@ export function TripWorkspace({ id, tab = 'plan' }: { id: string; tab?: string }
       <TopBar
         back="/trips"
         right={tab === 'notebook' ? undefined :
-          <div className="ac-buttons"><button className="iconbtn" aria-label="Preview and decorate print" title="Preview & decorate" onClick={()=>go(`/trip/${trip.id}/print${tab==='journal'?'/journal':''}`)}><Doodle name="pencil" size={24}/></button><button className="iconbtn" onClick={() => go(printRoute(trip.id, tab === 'journal' ? 'journal' : 'card'))} aria-label="Print">
+          <div className="ac-buttons"><button className="iconbtn" aria-label="Preview and decorate print" title="Preview & decorate" onClick={()=>go(`/trip/${trip.id}/print${tab==='journal'?'/journal':''}?preview=1`)}><Doodle name="pencil" size={24}/></button><button className="iconbtn" onClick={() => go(printRoute(trip.id, tab === 'journal' ? 'journal' : 'card'))} aria-label="Print">
             <Doodle name="printer" size={26} />
           </button></div>
         }
@@ -168,7 +168,7 @@ function Journal({ trip }: { trip: Trip }) {
       </div>
 
       {trip.memories.length > 0 && (
-        <Btn kind="solid" icon="book" onClick={() => go(`/trip/${trip.id}/print/journal`)}>
+        <Btn kind="solid" icon="book" onClick={() => go(`/trip/${trip.id}/print/journal?preview=1`)}>
           see journal page
         </Btn>
       )}

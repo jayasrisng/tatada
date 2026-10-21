@@ -1,5 +1,5 @@
+import {readOnlyFo} from './fo.ts'
 import {PrintFiles} from './print-files.ts'
-import {WajoPrintDelivery} from './fo-print.ts'
 import {CalendarConnection,CalendarService} from './calendar.ts'
 import {AmadeusTravel} from './travel.ts'
 import { GmailConnection, GmailPrintDelivery } from './gmail.ts'
@@ -83,7 +83,7 @@ if (mode === 'live') {
   const apiKey = singleOwner && env.WAJO_FO_API_KEY ? new ApiKeyCredentials(env.WAJO_FO_API_KEY, OWNER_ID,()=>!store.data.foKeyDisabled?.[OWNER_ID]) : undefined
   if (env.WAJO_FO_API_KEY && !singleOwner) console.warn('[tatada] WAJO_FO_API_KEY ignored: a shared key cannot identify individual users; sign-in uses per-user OAuth')
   foAuth = apiKey ? 'api_key' : 'oauth'
-  fo = new LiveFoAdapter(apiKey ? new PreferredFoCredentials(oauth,apiKey) : oauth, mcp, store)
+  fo = readOnlyFo(new LiveFoAdapter(apiKey ? new PreferredFoCredentials(oauth,apiKey) : oauth, mcp, store))
   // Verified Wajo identity, from Wajo's own responses only (see identity.ts).
   resolveIdentity = async ({ tokens, body, issuer }) => {
     const direct = fromTokenResponse(body, issuer) ?? fromAccessToken(tokens.accessToken, issuer, Date.now())
@@ -109,7 +109,7 @@ chats.recover()
 const gmail = new GmailConnection({store,sealer:new Sealer(secret()),clientId:env.GOOGLE_CLIENT_ID,clientSecret:env.GOOGLE_CLIENT_SECRET,redirectUri:env.GOOGLE_REDIRECT_URI ?? `${appUrl}/api/gmail/callback`})
 const calendar=new CalendarService(store,new CalendarConnection({store,sealer:new Sealer(secret()),clientId:env.GOOGLE_CLIENT_ID,clientSecret:env.GOOGLE_CLIENT_SECRET,redirectUri:env.GOOGLE_REDIRECT_URI??`${appUrl}/api/gmail/callback`}))
 const printFiles=new PrintFiles(store,secret(),publicUrl)
-const print = new PrintService({ store, delivery: mode === 'live' ? (printFiles.reachable?new WajoPrintDelivery({store,fo,chats,files:printFiles}):new GmailPrintDelivery(gmail)) : new MockPrintDelivery(store) })
+const print = new PrintService({ store, delivery: mode === 'live' ? new GmailPrintDelivery(gmail) : new MockPrintDelivery(store) })
 print.recover()
 const travel=env.AMADEUS_CLIENT_ID&&env.AMADEUS_CLIENT_SECRET?new AmadeusTravel({clientId:env.AMADEUS_CLIENT_ID,clientSecret:env.AMADEUS_CLIENT_SECRET,environment:env.AMADEUS_ENV==='production'?'production':'test'}):undefined
 const appPort = new URL(appUrl).port
@@ -121,9 +121,9 @@ const owner = singleOwner
   : undefined
 const intelligenceKey = env.CLAUDE_API_KEY ?? env.ANTHROPIC_API_KEY
 const intelligence = intelligenceKey ? new IntelligenceService({ key: intelligenceKey, model: env.CLAUDE_MODEL }) : undefined
-const handle = createApp({printFiles,calendar,travel, gmail, intelligence, store, actions, fo, print, oauth, foAuth:()=>oauth?.connected(OWNER_ID)&&singleOwner?'oauth':foAuth, browserAccounts:!singleOwner, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, allowedOrigin: singleOwner ? undefined : appOrigin, secureCookies: publicUrl.startsWith('https://') })
+const handle = createApp({bearerSessions:env.TATADA_BEARER_SESSIONS==='1',printFiles,calendar,travel, gmail, intelligence, store, actions, fo, print, oauth, foAuth:()=>oauth?.connected(OWNER_ID)&&singleOwner?'oauth':foAuth, browserAccounts:!singleOwner, resolveIdentity: singleOwner ? undefined : resolveIdentity, chats, owner, appUrl, allowedOrigin: singleOwner ? undefined : appOrigin, secureCookies: publicUrl.startsWith('https://') })
 // Single-owner mode listens on the loopback interface only.
-createServer((req, res) => void handle(req, res)).listen(port, singleOwner ? '127.0.0.1' : undefined, () => {
+createServer((req, res) => void handle(req, res)).listen(port, env.TATADA_BIND_HOST ?? (singleOwner ? '127.0.0.1' : undefined), () => {
   console.log(`[tatada] server on ${publicUrl}${singleOwner ? ' · single-owner, localhost only' : ''} · Fo ${mode}${mode === 'live' ? ` (${foAuth})` : ''} · config set: ${configured.join(', ') || 'none'}${mode === 'live' ? ` · live recipients: ${actions.liveAllowlist.join(', ') || 'none (sends blocked)'}` : ''}`)
 })
 

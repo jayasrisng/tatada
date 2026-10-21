@@ -1,8 +1,8 @@
+import {readOnlyFo} from './fo.ts'
 import {PrintFiles} from './print-files.ts'
-import {WajoPrintDelivery} from './fo-print.ts'
 import {CalendarConnection,CalendarService} from './calendar.ts'
 import {IntelligenceService} from './intelligence.ts'
-import {GmailConnection} from './gmail.ts'
+import {GmailConnection,GmailPrintDelivery} from './gmail.ts'
 import {AmadeusTravel} from './travel.ts'
 import { createApp } from './app.ts'
 import { Store, type Data } from './store.ts'
@@ -66,7 +66,7 @@ export function createEdgeHandler(options: EdgeOptions) {
   const configure = (store: Store) => {
     const mcp = new McpClient(resource, { timeoutMs: 15000 })
     const oauth = new FoOAuth({ store, sealer: new Sealer(options.secret), resource, redirectUri: `${publicUrl}/api/fo/callback`, fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(15000) }) })
-    const inner: FoAdapter = options.mode === 'mock' ? new MockFoAdapter(store) : new LiveFoAdapter(oauth, mcp, store)
+    const inner: FoAdapter = readOnlyFo(options.mode === 'mock' ? new MockFoAdapter(store) : new LiveFoAdapter(oauth, mcp, store))
     // Flush the saved sending/answering record before any provider side effect.
     const fo = new Proxy(inner, {
       get(target, property) {
@@ -77,10 +77,10 @@ export function createEdgeHandler(options: EdgeOptions) {
     }) as FoAdapter
     const actions = new ActionService({ store, fo, pollWaitSeconds: 1, liveRecipients: options.liveRecipients })
     const chats = new FoChatService({ store, fo, pollWaitSeconds: 1 })
-    const gmail=options.gmail?new GmailConnection({store,sealer:new Sealer(options.secret),...options.gmail,redirectUri:options.gmail.redirectUri??`${publicUrl}/api/gmail/callback`}):undefined
+    const gmail=new GmailConnection({store,sealer:new Sealer(options.secret),...options.gmail,redirectUri:options.gmail?.redirectUri??`${publicUrl}/api/gmail/callback`})
     const calendar=options.gmail?new CalendarService(store,new CalendarConnection({store,sealer:new Sealer(options.secret),...options.gmail,redirectUri:options.gmail.redirectUri??`${publicUrl}/api/gmail/callback`})):undefined
     const printFiles=new PrintFiles(store,options.secret,publicUrl)
-    const print = new PrintService({ store, delivery: options.mode === 'mock' ? new MockPrintDelivery(store) : new WajoPrintDelivery({store,fo,chats,files:printFiles}) })
+    const print = new PrintService({ store, delivery: options.mode === 'mock' ? new MockPrintDelivery(store) : new GmailPrintDelivery(gmail) })
     const handle = createApp({ printFiles,store, fo, actions, chats, print, calendar, gmail, intelligence, travel, oauth: options.mode === 'mock' ? undefined : oauth, appUrl, secureCookies: true, allowedOrigin: origin, bearerSessions: true, browserAccounts: true, loginCookiePath: `${prefix}/`,
       resolveIdentity: async ({ body, tokens, issuer }) => {
         const identity = fromTokenResponse(body, issuer) ?? fromAccessToken(tokens.accessToken, issuer, Date.now())

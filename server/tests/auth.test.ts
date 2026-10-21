@@ -97,10 +97,10 @@ test('Continue with Wajo creates one account per verified Wajo identity; tokens 
     const b = t.browser()
     const start = await b.call('/api/auth/wajo/start')
     assert.match(start.location, /^https:\/\/wajo\.test\/authorize\?/)
-    assert.ok(b.jar.has('tatada_login'), 'login is bound to this browser')
+    assert.ok([...b.jar.keys()].some(k=>k.startsWith('tatada_login_')), 'login is bound to this browser')
     const cb = await b.call(`/api/fo/callback?code=good&state=${new URL(start.location).searchParams.get('state')}`)
     assert.equal(cb.location, 'http://app.test/#/?auth=signed_in')
-    assert.ok(b.jar.has('tatada_sid') && !b.jar.has('tatada_login'))
+    assert.ok(b.jar.has('tatada_sid') && ![...b.jar.keys()].some(k=>k.startsWith('tatada_login_')))
     const st = await b.call('/api/status')
     assert.equal(st.body.authenticated, true)
     assert.equal(st.body.account.kind, 'wajo')
@@ -288,5 +288,23 @@ test('hosted reconnect ticket requires the existing session and the same browser
   const final=await a.call('/api/auth/exchange',{method:'POST',json:{code:recode,binding}})
   assert.equal(t.store.data.sessions[sha256(final.body.sessionToken)].userId,id)
   assert.match((await a.call(`/api/auth/wajo/start?client_binding=${hash}&reconnect=${linked.body.ticket}`)).location,/reconnect_expired/)
+ }finally{t.server.close()}
+})
+
+test('parallel OAuth attempts keep separate CSRF cookies and exchange bindings; diagnostics retain one-use semantics',async()=>{
+ const t=await boot({bearer:true})
+ try{const b=t.browser(),a='a'.repeat(32),c='c'.repeat(32),one='first-browser-secret',two='second-browser-secret'
+ const starts=await Promise.all([b.call(`/api/auth/wajo/start?client_binding=${sha256(one)}&attempt=${a}`),b.call(`/api/auth/wajo/start?client_binding=${sha256(two)}&attempt=${c}`)])
+ assert.equal([...b.jar.keys()].filter(k=>k.startsWith('tatada_login_')).length,2)
+ for(const [index,start]of starts.entries()){
+  const state=new URL(start.location).searchParams.get('state'),callback=await b.call(`/api/fo/callback?code=good&state=${state}`),params=new URLSearchParams(callback.location.split('?')[1]),code=params.get('auth_exchange'),binding=index?two:one
+  assert.ok(code);assert.equal(params.get('auth_attempt'),index?c:a)
+  assert.equal((await b.call('/api/auth/exchange',{method:'POST',json:{code,binding:'wrong'}})).body.code,'exchange_browser_mismatch')
+  assert.equal((await b.call('/api/auth/exchange',{method:'POST',json:{code,binding}})).status,200)
+  assert.equal((await b.call('/api/auth/exchange',{method:'POST',json:{code,binding}})).body.code,'exchange_used')
+ }
+ assert.equal((await b.call('/api/auth/exchange',{method:'POST',json:{code:'missing',binding:one}})).body.code,'exchange_invalid')
+ const start=await b.call(`/api/auth/wajo/start?client_binding=${sha256(one)}&attempt=${a}`),state=new URL(start.location).searchParams.get('state'),callback=await b.call(`/api/fo/callback?code=good&state=${state}`),code=new URLSearchParams(callback.location.split('?')[1]).get('auth_exchange');t.clock.t+=60001
+ assert.equal((await b.call('/api/auth/exchange',{method:'POST',json:{code,binding:one}})).body.code,'exchange_expired')
  }finally{t.server.close()}
 })

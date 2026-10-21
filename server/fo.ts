@@ -64,6 +64,7 @@ export interface VoiceJoin {signalUrl:string;participantToken:string;iceTranspor
 export interface FoConversation { conversationId: string; title?: string; channel?: string; startedAt?: string }
 
 export interface FoAdapter {
+  readonly executionBlockedReason?:string
   joinVoice?(userId:string):Promise<VoiceJoin>
   startVoice?(userId: string): Promise<{ links: string[]; message: string }>
   readonly mode: 'live' | 'mock'
@@ -442,4 +443,13 @@ export class MockFoAdapter implements FoAdapter {
     if (!c || c.ownerId !== userId) throw new McpHttpError(404, 'unknown conversation')
     return c
   }
+}
+
+/** Alpha boundary: a free-form agent credential cannot enforce per-action scopes.
+ * Read endpoints remain available. No prompt or checkbox grants broader execution.
+ */
+export function readOnlyFo(adapter:FoAdapter):FoAdapter {
+ if(adapter.mode==='mock')return adapter
+ const executionBlockedReason='Live Fo execution is unavailable until Wajo supports enforceable action permissions. Existing conversations remain readable. Use separately authorized Gmail printing or Calendar export.'
+ return {mode:'live',executionBlockedReason,connected:adapter.connected.bind(adapter),tools:adapter.tools.bind(adapter),probeConversations:adapter.probeConversations.bind(adapter),trace:adapter.trace.bind(adapter),reply:adapter.reply.bind(adapter),conversation:adapter.conversation.bind(adapter),conversations:adapter.conversations.bind(adapter),ask:async()=>({status:'failed',reply:executionBlockedReason})}
 }

@@ -239,9 +239,10 @@ export function createApp(deps: Deps) {
         const code = typeof body.code === 'string' ? body.code : ''
         const binding = typeof body.binding === 'string' ? sha256(body.binding) : ''
         const entry = store.data.sessionExchanges?.[sha256(code)]
-        if (!entry || entry.expiresAt < now() || entry.binding !== binding) return send(res, 401, { error: 'Sign-in link expired or belongs to another browser' })
-        store.update((d) => delete d.sessionExchanges?.[sha256(code)])
-        return send(res, 200, { sessionToken: newSession(entry.userId) })
+        const failure = !entry ? 'exchange_invalid' : entry.binding !== binding ? 'exchange_browser_mismatch' : entry.usedAt!==undefined ? 'exchange_used' : entry.expiresAt <= now() ? 'exchange_expired' : undefined
+        if(failure){console.info('[tatada auth]',failure);return send(res,401,{error:failure==='exchange_browser_mismatch'?'This sign-in belongs to a different browser. Start a new sign-in here.':failure==='exchange_used'?'This sign-in was already used. Start a new sign-in.':'This sign-in expired or is invalid. Start a new sign-in.',code:failure})}
+        store.update(() => {entry!.usedAt=now()})
+        return send(res, 200, { sessionToken: newSession(entry!.userId) })
       }
       const current = deps.owner ? undefined : sessionOf(req)
       const userId = deps.owner ? OWNER_ID : current?.s.userId
@@ -289,6 +290,8 @@ export function createApp(deps: Deps) {
         if (!live || !oauth) return redirect(res, `${appUrl}/#/welcome?auth=demo_mode`)
         if (!authLimit.allow(`start:${ip(req)}`)) return redirect(res, `${appUrl}/#/welcome?auth=rate_limited`)
         const clientBinding = url.searchParams.get('client_binding') ?? ''
+        const attempt=url.searchParams.get('attempt')??''
+        if(attempt&&!/^[a-f0-9]{32}$/.test(attempt))return redirect(res,`${appUrl}/#/welcome?auth=error&reason=browser_binding`)
         if (deps.bearerSessions && !/^[a-f0-9]{64}$/.test(clientBinding)) return redirect(res, `${appUrl}/#/welcome?auth=error&reason=browser_binding`)
         let reconnectAccount=current?.s.userId
         const ticket=url.searchParams.get('reconnect')
@@ -306,24 +309,27 @@ export function createApp(deps: Deps) {
             const state = new URL(to).searchParams.get('state')!
             store.update((d) => {
               const bindings = d.loginBindings ??= {}
-              for (const key of Object.keys(bindings)) if (!d.pendingAuth[key]) delete bindings[key]
+              for (const key of Object.keys(bindings)) if (!d.pendingAuth[key]) {delete bindings[key];delete d.loginAttempts?.[key]}
               bindings[state] = clientBinding
+              if(attempt)(d.loginAttempts??={})[state]=attempt
             })
           }
-          return redirect(res, to, [`${LOGIN_COOKIE}=${nonce}; HttpOnly; SameSite=Lax; Path=${loginCookiePath}; Max-Age=600${secure}`])
+          return redirect(res, to, [`${LOGIN_COOKIE}_${sha256(pendingState).slice(0,20)}=${nonce}; HttpOnly; SameSite=Lax; Path=${loginCookiePath}; Max-Age=600${secure}`])
         } catch (e) {
           return redirect(res, `${appUrl}/#/welcome?auth=error&reason=${encodeURIComponent(e instanceof OAuthError ? e.code : 'error')}`)
         }
       }
 
       if (path === '/api/fo/callback' && method === 'GET') {
-        const done = (q: string, cookies: string[] = []) => redirect(res, `${appUrl}/#/${q}`, [clear(LOGIN_COOKIE, loginCookiePath), ...cookies])
+        const stateCookie=`${LOGIN_COOKIE}_${sha256(url.searchParams.get('state')??'').slice(0,20)}`
+        const activeCookie=cookie(req,stateCookie)?stateCookie:LOGIN_COOKIE // pre-release pending attempts remain valid
+        const done = (q: string, cookies: string[] = []) => redirect(res, `${appUrl}/#/${q}`, [clear(activeCookie, loginCookiePath), ...cookies])
         if (!live || !oauth || (!deps.resolveIdentity && !deps.owner)) return done('welcome?auth=demo_mode')
         if (url.searchParams.get('error')) return done(deps.owner ? '?fo=denied' : 'welcome?auth=denied')
         const reconnectAccount=store.data.pendingAuth[url.searchParams.get('state')??'']?.accountId
         let login
         try {
-          login = await oauth.finish(url.searchParams.get('code') ?? '', url.searchParams.get('state') ?? '', sha256(cookie(req, LOGIN_COOKIE) ?? ''))
+          login = await oauth.finish(url.searchParams.get('code') ?? '', url.searchParams.get('state') ?? '', sha256(cookie(req, activeCookie) ?? ''))
         } catch (e) {
           return done(`welcome?auth=error&reason=${encodeURIComponent(e instanceof OAuthError ? e.code : 'error')}`)
         }
@@ -372,15 +378,17 @@ export function createApp(deps: Deps) {
         if (deps.bearerSessions) {
           const state = url.searchParams.get('state') ?? ''
           const binding = store.data.loginBindings?.[state]
+          const attempt=store.data.loginAttempts?.[state]
           if (!binding) return done('welcome?auth=error&reason=browser_binding')
           const code = randomToken(32)
           store.update((d) => {
             delete d.loginBindings?.[state]
+            delete d.loginAttempts?.[state]
             const exchanges = d.sessionExchanges ??= {}
-            for (const [key, value] of Object.entries(exchanges)) if (value.expiresAt <= now()) delete exchanges[key]
+            for (const [key, value] of Object.entries(exchanges)) if (value.expiresAt + 10*60_000 <= now()) delete exchanges[key]
             exchanges[sha256(code)] = { userId: accountId, binding, expiresAt: now() + 60_000 }
           })
-          return done(`?auth_exchange=${code}`)
+          return done(`?auth_exchange=${code}${attempt?`&auth_attempt=${attempt}`:''}`)
         }
         // Rotate: whatever session this browser had is replaced.
         return done('?auth=signed_in', [sessionCookie(newSession(accountId, current?.key))])

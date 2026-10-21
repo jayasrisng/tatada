@@ -66,8 +66,9 @@ export interface Data {
   identityObservations: { at: number; source: string | null; field?: string; foShape?: unknown }[]
   /** sha256(session id) → session. Raw session ids are never stored. */
   sessions: Record<string, Session>
-  sessionExchanges?: Record<string, { userId: string; expiresAt: number; binding: string }>
+  sessionExchanges?: Record<string, { userId: string; expiresAt: number; binding: string; usedAt?:number }>
   loginBindings?: Record<string, string>
+  loginAttempts?: Record<string,string>
   oauthClient?: { issuer: string; clientId: string; redirectUri: string; registeredAt: number }
   /** OAuth state → pending login. Single use, short-lived. */
   pendingAuth: Record<string, PendingAuth>

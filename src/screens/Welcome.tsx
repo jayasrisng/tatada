@@ -1,3 +1,4 @@
+import {ProfilePrinting} from '../components/ProfilePrinting'
 import {browserOnly} from '../config'
 import {AccountRecovery} from '../components/AccountRecovery'
 import {CalendarConnection} from '../components/CalendarConnection'
@@ -9,7 +10,6 @@ import { go } from '../state/ui'
 import { Doodle } from '../components/Doodle'
 import { Btn, Chip, Paper } from '../components/ui'
 import { FoConnection } from '../components/FoConnection'
-import { GmailConnection } from '../components/GmailConnection'
 import { AccountPanel } from '../components/AccountPanel'
 
 const DocumentVault = lazy(() => import('../components/DocumentVault').then((m) => ({ default: m.DocumentVault })))
@@ -35,7 +35,7 @@ export function Welcome() {
   return (
     <div className="screen welcome">
       {state.onboarded && <button className="iconbtn profile-close" aria-label="Close profile" onClick={() => go('/')}><Doodle name="x" size={24} /></button>}
-      {step === 0 && state.onboarded && <div className="profile-overview"><h1 className="wizard-q">{state.profile.name ? `Your space, ${state.profile.name}.` : 'Hey Star.'}</h1><ProfileWeather/><Btn kind="solid" onClick={()=>setStep(1)}>edit my details</Btn><details className="profile-section"><summary>Your data</summary><AccountPanel/></details><details className="profile-section"><summary>Wajo connection</summary><FoConnection/><p className="small">Fo uses the Gmail and Calendar already connected in Wajo.</p><details><summary>Optional direct Google connections</summary><p className="small">For direct calendar exports and local PDF printing. These are not required for Wajo actions.</p><GmailConnection/><CalendarConnection/></details></details><details className="profile-section"><summary>Travel documents</summary><Suspense fallback={<p>Opening private documents…</p>}><DocumentVault/></Suspense></details><AccountLifecycle deleteOnly/><nav className="profile-policies" aria-label="Policies"><a href="#/policies/terms">Terms &amp; conditions</a><a href="#/policies/privacy">Privacy</a><a href="#/policies/sources">Sources &amp; credits</a></nav>{(workspace.kind === 'demo' || workspace.kind === 'local-demo') && <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>}</div>}
+      {step === 0 && state.onboarded && <div className="profile-overview"><h1 className="wizard-q">{state.profile.name ? `Your space, ${state.profile.name}.` : 'Hey Star.'}</h1><ProfileWeather/><Btn kind="solid" onClick={()=>setStep(1)}>edit my details</Btn><details className="profile-section" open={window.location.hash.includes('printing=1')}><summary>Printing</summary><ProfilePrinting/></details><details className="profile-section"><summary>Your data</summary><AccountPanel/></details><details className="profile-section"><summary>Wajo connection</summary><FoConnection/><p className="small">Fo uses the Gmail and Calendar already connected in Wajo.</p><details><summary>Optional direct Google connections</summary><p className="small">For calendar exports. Printing uses a separate send-only Gmail connection in Printing.</p><CalendarConnection/></details></details><details className="profile-section"><summary>Travel documents</summary><Suspense fallback={<p>Opening private documents…</p>}><DocumentVault/></Suspense></details><AccountLifecycle deleteOnly/><nav className="profile-policies" aria-label="Policies"><a href="#/policies/terms">Terms &amp; conditions</a><a href="#/policies/privacy">Privacy</a><a href="#/policies/sources">Sources &amp; credits</a></nav>{(workspace.kind === 'demo' || workspace.kind === 'local-demo') && <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>}</div>}
       {step === 0 && !state.onboarded && (
         <div className="welcome-hero">
           <Doodle name="sparkle" size={64} className="spin-slow hero-star" />

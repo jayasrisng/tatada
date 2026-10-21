@@ -1,3 +1,4 @@
+import {loginAttempts} from './state/login'
 /** Browser-only builds work offline; backend-enabled builds support Wajo sign-in and connected actions. */
 export const browserOnly = import.meta.env.VITE_ENABLE_BACKEND !== 'true'
 
@@ -12,7 +13,8 @@ export const apiUrl = (path: string) => `${base}${path}`
 export const hasHostedApi = Boolean(base)
 export const usesBearer = base.includes('/functions/v1/') || import.meta.env.VITE_API_TRANSPORT === 'bearer'
 const sessionKey = `tatada:session:${base}`
-const bindingKey = `tatada:login-binding:${base}`
+const attempts=loginAttempts(base,()=>sessionStorage,()=>localStorage)
+let startingLogin=false
 export const sessionHeaders = (): Record<string, string> => {
   try {
     const token = usesBearer ? (sessionStorage.getItem(sessionKey) ?? localStorage.getItem(sessionKey)) : null
@@ -27,19 +29,25 @@ export const saveSession = (token?: string) => {
   }catch{/* The other storage may still keep this session usable. */}
 }
 
-export const loginBinding = () => sessionStorage.getItem(bindingKey) ?? ''
+export const loginBinding = (attempt?:string) => attempts.binding(attempt)
+export const clearLoginAttempt = (attempt?:string) => attempts.remove(attempt)
 export async function beginSignIn(event?: { preventDefault(): void }) {
   if (!usesBearer) return
   event?.preventDefault()
+  if(startingLogin)return
+  startingLogin=true
+  try{
+  const attempt=Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('')
   const secret = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('')
-  sessionStorage.setItem(bindingKey, secret)
+  attempts.create(attempt,secret)
   const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret))), (b) => b.toString(16).padStart(2, '0')).join('')
   let reconnect=''
   if(sessionHeaders().authorization){
     const response=await fetch(apiUrl('/api/auth/wajo/link'),{method:'POST',credentials:'omit',headers:{...sessionHeaders(),'x-tatada':'1','content-type':'application/json'},body:JSON.stringify({clientBinding:hash})})
     if(response.status===401)saveSession()
-    else if(!response.ok){window.location.hash='/welcome?auth=error&reason=reconnect';return}
+    else if(!response.ok){startingLogin=false;window.location.hash='/welcome?auth=error&reason=reconnect';return}
     else {const {ticket}=await response.json();reconnect=`&reconnect=${encodeURIComponent(ticket)}`}
   }
-  window.location.assign(`${apiUrl('/api/auth/wajo/start')}?client_binding=${hash}${reconnect}`)
+  window.location.assign(`${apiUrl('/api/auth/wajo/start')}?client_binding=${hash}&attempt=${attempt}${reconnect}`)
+  }catch{startingLogin=false;window.location.hash='/welcome?auth=error&reason=browser_storage'}
 }

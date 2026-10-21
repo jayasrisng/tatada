@@ -28,6 +28,7 @@ export interface Sender { kind: 'mock' | 'fo' | 'gmail'; verified: boolean; labe
 export interface SenderCheck extends Sender { ok: boolean; reason?: string }
 
 export interface PrintJob {
+  printerHash?:string
   preferredSenderEmail?:string
   foChatId?:string
   foDownloadExpires?:number
@@ -100,7 +101,7 @@ export class PrintService {
     if(senderEmail&&(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(senderEmail)||senderEmail.length>254))throw new PrintError(400,'Use a valid sending email.')
     const plain = input.plainPaper === 'letter' || input.plainPaper === 'a4' ? input.plainPaper : 'unknown'
     const at = email.lastIndexOf('@')
-    const profile: PrinterProfile = { ...(senderEmail?{senderEmail}:{}), directPrint: input.directPrint === true, email: `${email.slice(0, at)}@${email.slice(at + 1).toLowerCase()}`, plainPaper: plain, colorInk: answer(input.colorInk), autoDuplex: answer(input.autoDuplex), bodyPrintingOff: answer(input.bodyPrintingOff), senderApproved: answer(input.senderApproved), updatedAt: this.now() }
+    const profile: PrinterProfile = { ...(senderEmail?{senderEmail}:{}), directPrint: false, printingConsent:input.printingConsent===true, defaults:cleanRequest(input.defaults), email: `${email.slice(0, at)}@${email.slice(at + 1).toLowerCase()}`, plainPaper: plain, colorInk: answer(input.colorInk), autoDuplex: answer(input.autoDuplex), bodyPrintingOff: answer(input.bodyPrintingOff), senderApproved: answer(input.senderApproved), updatedAt: this.now() }
     this.store.update((d) => { ((d.printers ??= {}) as Record<string, PrinterProfile>)[userId] = profile })
     return profile
   }
@@ -152,13 +153,14 @@ export class PrintService {
     const sender: Sender = { kind: check.kind, verified: check.verified, label: check.label }
     const address = printerAddress(printer.email, plan.suffix)
     const copies = request.copies ?? 1
-    const contentHash = sha256(canonical({ pdfHash, address, sender, plan, copies,preferredSenderEmail:printer.senderEmail }))
+    const printerHash=sha256(canonical(printer))
+    const contentHash = sha256(canonical({ pdfHash, address, sender, plan, copies,printerHash,instructions:request.instructions??'',preferredSenderEmail:printer.senderEmail }))
     const t = this.now()
     const job: PrintJob = {
       id: randomToken(12), ownerId: userId, createdAt: t, updatedAt: t,
       document: { kind: doc.kind, title: doc.title, tripId: typeof doc.tripId === 'string' ? doc.tripId.slice(0, 100) : undefined },
-      preferredSenderEmail:printer.senderEmail,pdf: b64, pdfHash, bytes: bytes.length, pageCount, request, choices, plan, printer: printer.email, address, sender,
-      blocker: check.ok ? (printer.senderEmail&&check.kind==='gmail'&&printer.senderEmail.toLowerCase()!==check.label.toLowerCase()?`Connect ${printer.senderEmail} in print settings.`:undefined) : check.reason ?? 'Sending isn\'t available.',
+      printerHash,preferredSenderEmail:printer.senderEmail,pdf: b64, pdfHash, bytes: bytes.length, pageCount, request, choices, plan, printer: printer.email, address, sender,
+      blocker: this.mode!=='mock'&&printer.printingConsent!==true?'Enable printing consent once in Profile → Printing.':!check.verified?'A verified sending account is required. Connect Gmail in Profile → Printing.':check.ok ? (printer.senderEmail&&check.kind==='gmail'&&printer.senderEmail.toLowerCase()!==check.label.toLowerCase()?`Connect ${printer.senderEmail} in print settings.`:undefined) : check.reason ?? 'Sending isn\'t available.',
       contentHash, dedupeKey: sha256(`${pdfHash}|${address}`), ref: randomToken(5), status: 'awaiting_approval', attempts: 0,
       events: [{ at: t, text: 'Prepared. Waiting for your approval.' }],
     }
@@ -195,16 +197,17 @@ export class PrintService {
     if (job.approval?.idempotencyKey === key) return this.view(job)
     if (job.status !== 'awaiting_approval' && !(resend && job.status === 'send_uncertain')) throw new PrintError(409, 'This print job is already being handled.', 'changed')
     const printer = this.printer(userId)
+    if(!printer||job.printerHash!==sha256(canonical(printer)))throw new PrintError(409,'Your printer settings changed. Prepare this print again.','changed')
     if(printer&&printer.senderEmail!==job.preferredSenderEmail)throw new PrintError(409,'The preferred sending account changed. Prepare the print again.','changed')
     if (!printer || printerAddress(printer.email, job.plan.suffix) !== job.address ||
       canonical(planPrint(job.request, printer, job.choices, job.pageCount / job.plan.repeat)) !== canonical(job.plan)) {
       throw new PrintError(409, 'Your printer settings changed since this preview. Prepare it again.', 'changed')
     }
     if(printer.senderEmail&&sender.kind==='gmail'&&printer.senderEmail.toLowerCase()!==sender.label.toLowerCase())throw new PrintError(409,'The preferred sending account changed. Prepare the print again.','changed')
-    if (!sender.ok || sender.kind !== job.sender.kind || sender.label !== job.sender.label) throw new PrintError(409, sender.ok ? 'The sending account changed since this preview. Prepare it again.' : sender.reason ?? 'Sending isn\'t available.', 'changed')
+    if (!sender.ok || !sender.verified || (this.mode!=='mock'&&printer.printingConsent!==true) || sender.kind !== job.sender.kind || sender.label !== job.sender.label) throw new PrintError(409, sender.ok ? 'The sending account changed since this preview. Prepare it again.' : sender.reason ?? 'Sending isn\'t available.', 'changed')
     const t = this.now()
     const twin = Object.values(this.jobs).find((j) => j.id !== job.id && j.ownerId === userId && j.dedupeKey === job.dedupeKey && (j.status === 'sending' || j.status === 'send_uncertain' || (j.status === 'submitted' && t - j.updatedAt < DUPLICATE_WINDOW)))
-    if (twin && input.allowDuplicate !== true) throw new PrintError(409, `This exact document was ${twin.status === 'submitted' ? 'just submitted' : 'already sent (status unknown)'} to this printer. Approve again only if you want another print.`, 'duplicate')
+    if (twin && (twin.status!=='submitted'||input.allowDuplicate !== true)) throw new PrintError(409, `This exact document was ${twin.status === 'submitted' ? 'just submitted' : 'already sent (status unknown)'} to this printer. Approve again only if you want another print.`, 'duplicate')
     const pdf = job.pdf
     if (!pdf) throw new PrintError(410, 'This PDF is no longer kept. Prepare it again.')
 
@@ -261,6 +264,7 @@ export class PrintService {
 function cleanRequest(v: unknown): PrintRequest {
   const r = (v ?? {}) as Record<string, unknown>
   const out: PrintRequest = {}
+  if(typeof r.instructions==='string')out.instructions=r.instructions.trim().slice(0,500)
   if (r.color === 'color' || r.color === 'grayscale') out.color = r.color
   if (r.size === 'letter' || r.size === 'a4' || r.size === '4x6') out.size = r.size
   if (typeof r.duplex === 'boolean') out.duplex = r.duplex

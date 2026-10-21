@@ -1,9 +1,10 @@
 import {accountKey} from './persistence'
 import {OFFLINE_SELECTED} from '../offline/pack'
 import {fetchWithBackoff} from './retry'
+import {redeemOnce} from './login'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { EmailDraft, Profile, Trip } from '../types'
-import { apiUrl, usesBearer, sessionHeaders, saveSession, loginBinding, browserOnly } from '../config'
+import { apiUrl, usesBearer, sessionHeaders, saveSession, loginBinding, clearLoginAttempt, browserOnly } from '../config'
 import { sharedData, stayBooking } from '../magic/stay'
 
 /*
@@ -58,9 +59,11 @@ export interface ServerInfo {
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  code?:string
+  constructor(status: number, message: string, code?:string) {
     super(message)
     this.status = status
+    this.code=code
   }
 }
 
@@ -74,7 +77,7 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
     body: init.json !== undefined ? JSON.stringify(init.json) : undefined,
   }, path)
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new ApiError(res.status, body.error ?? `Server error (${res.status})`)
+  if (!res.ok) throw new ApiError(res.status, body.error ?? `Server error (${res.status})`,body.code)
   return body as T
 }
 
@@ -127,9 +130,17 @@ export function ServerProvider({ children }: { children: ReactNode }) {
       const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
       const code = params.get('auth_exchange')
       if (usesBearer && code) {
-        const result = await api<{ sessionToken: string }>('/api/auth/exchange', { method: 'POST', json: { code, binding: loginBinding() } })
-        saveSession(result.sessionToken)
-        history.replaceState(null, '', `${location.pathname}${location.search}#/`)
+        const attempt=params.get('auth_attempt')??undefined
+        try{
+          const result=await redeemOnce(code,()=>api<{sessionToken:string}>('/api/auth/exchange',{method:'POST',json:{code,binding:loginBinding(attempt)}}))
+          saveSession(result.sessionToken);clearLoginAttempt(attempt)
+          history.replaceState(null,'',`${location.pathname}${location.search}#/`)
+        }catch(e){
+          if(!(e instanceof ApiError)||e.status!==401)throw e
+          const reason=['exchange_expired','exchange_used','exchange_browser_mismatch'].includes(e.code??'')?e.code:'exchange_invalid'
+          history.replaceState(null,'',`${location.pathname}${location.search}#/welcome?auth=error&reason=${reason}`)
+          // An invalid callback does not revoke a separately valid existing session.
+        }
       }
       const s = await api<Omit<ServerInfo, 'available' | 'checked'> & { sessionToken?: string }>('/api/session', { method: 'POST' })
       if (s.sessionToken) saveSession(s.sessionToken)

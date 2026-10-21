@@ -13,7 +13,7 @@ import { MockPrintDelivery, PrintService, type PrintJob } from '../print.ts'
 import { createApp, OWNER_ID } from '../app.ts'
 import { setup } from './helpers.ts'
 
-const PRINTER = { email: 'tatada-desk@print.epsonconnect.com', plainPaper: 'letter', colorInk: 'yes', autoDuplex: 'yes', bodyPrintingOff: 'yes', senderApproved: 'yes' }
+const PRINTER = { printingConsent:true, email: 'tatada-desk@print.epsonconnect.com', plainPaper: 'letter', colorInk: 'yes', autoDuplex: 'yes', bodyPrintingOff: 'yes', senderApproved: 'yes' }
 async function pdf(pages = 1, size: [number, number] = [612, 792], text = 'Lisbon') {
   const doc = await PDFDocument.create()
   for (let i = 0; i < pages; i++) doc.addPage(size).drawText(`${text} ${i + 1}`, { x: 72, y: 700 })
@@ -149,9 +149,9 @@ test('Wajo PDF delivery requires a reachable hosted backend instead of sending a
   const s = make({ fo: true })
   s.service.setPrinter(OWNER_ID, PRINTER)
   const job = await s.service.prepare(OWNER_ID, body(await pdf()))
-  assert.match(job.blocker!, /hosted HTTPS backend/)
+  assert.match(job.blocker!, /verified sending/)
   assert.equal(job.sender.verified, false)
-  await assert.rejects(approve(s, OWNER_ID, job), /hosted HTTPS backend/)
+  await assert.rejects(approve(s, OWNER_ID, job), /verified sending/)
   assert.equal(s.service.get(OWNER_ID, job.id).status, 'awaiting_approval')
 })
 
@@ -213,13 +213,13 @@ test('two signed-in accounts never see each other\'s printer or print jobs', asy
   } finally { await new Promise<void>((r) => server.close(() => r())) }
 })
 
-test('direct-print preference is account-scoped and retained in the stored printer profile', () => {
+test('legacy direct-print preference is disabled; opening settings never authorizes delivery', () => {
  const s=make()
  s.service.setPrinter('a',{...PRINTER,directPrint:true})
- assert.equal(s.service.printer('a')?.directPrint,true)
+ assert.equal(s.service.printer('a')?.directPrint,false)
  assert.equal(s.service.printer('b'),undefined)
  const reopened=new PrintService({store:s.store,delivery:new MockPrintDelivery(s.store)})
- assert.equal(reopened.printer('a')?.directPrint,true)
+ assert.equal(reopened.printer('a')?.directPrint,false)
  reopened.setPrinter('a',{...PRINTER,directPrint:false})
  assert.equal(reopened.printer('a')?.directPrint,false)
 })
@@ -242,7 +242,7 @@ test('a preferred From account must match the authorized Gmail sender, including
  service.setPrinter('a',{...PRINTER,senderEmail:'authorized@example.test'})
  const ready=await service.prepare('a',body(await pdf()));assert.equal(ready.blocker,undefined)
  service.setPrinter('a',{...PRINTER,senderEmail:'different@example.test'})
- await assert.rejects(service.approve('a',ready.id,{contentHash:ready.contentHash,idempotencyKey:'account-change'}),/preferred sending account changed/)
+ await assert.rejects(service.approve('a',ready.id,{contentHash:ready.contentHash,idempotencyKey:'account-change'}),/printer settings changed/)
 })
 
 test('combined All documents retain normal preview and approval protection', async () => {
@@ -272,4 +272,14 @@ test('changed paper and capability settings invalidate a prepared approval', asy
     await assert.rejects(approve(s,'a',job),/settings changed/)
     assert.equal(s.outbox().length,0)
   }
+})
+
+test('ongoing consent, defaults and instructions are account-scoped and invalidate prepared approvals',async()=>{
+ const store=Store.memory();let sends=0;const service=new PrintService({store,delivery:{mode:'gmail',sender:async()=>({kind:'gmail',verified:true,label:'authorized@example.test',ok:true}),send:async()=>{sends++;return {ok:true,ref:'fixture'}}}})
+ service.setPrinter('a',{...PRINTER,printingConsent:false,senderEmail:'authorized@example.test',defaults:{color:'grayscale',copies:2,duplex:false,size:'letter'}})
+ const blocked=await service.prepare('a',body(await pdf()));assert.match(blocked.blocker!,/consent/);await assert.rejects(service.approve('a',blocked.id,{contentHash:blocked.contentHash,idempotencyKey:'consent-not-granted'}),/consent/);assert.equal(sends,0)
+ service.setPrinter('a',{...PRINTER,senderEmail:'authorized@example.test',printingConsent:true,defaults:{copies:2}})
+ assert.equal(service.printer('a')?.defaults?.copies,2);assert.equal(service.printer('b'),undefined)
+ const job=await service.prepare('a',body(await pdf(),{request:{instructions:'Keep this private'}}));assert.equal(job.request.instructions,'Keep this private');assert.equal(sends,0)
+ service.setPrinter('a',{...service.printer('a'),printingConsent:false});await assert.rejects(service.approve('a',job.id,{contentHash:job.contentHash,idempotencyKey:'consent-was-revoked'}),/settings changed/);assert.equal(sends,0)
 })

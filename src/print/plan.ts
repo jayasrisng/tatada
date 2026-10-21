@@ -20,6 +20,8 @@ export interface PrinterProfile {
   /** Preferred account for Gmail consent; never used to forge the actual sender. */
   senderEmail?: string
   directPrint?: boolean
+  printingConsent?: boolean
+  defaults?: Pick<PrintRequest, 'color' | 'duplex' | 'copies' | 'size'>
   email: string
   /** As the owner set it in Epson Connect → Print Settings. */
   plainPaper: 'letter' | 'a4' | 'unknown'
@@ -32,7 +34,8 @@ export interface PrinterProfile {
   updatedAt: number
 }
 
-export interface PrintRequest { color?: 'color' | 'grayscale'; size?: PaperSize; duplex?: boolean; copies?: number; document?: 'card' | 'journal' | 'flights' | 'hotels' | 'packing' | 'all' }
+export interface PrintRequest {
+  instructions?: string; color?: 'color' | 'grayscale'; size?: PaperSize; duplex?: boolean; copies?: number; document?: 'card' | 'journal' | 'flights' | 'hotels' | 'packing' | 'all' }
 export interface PrintChoices { fourBySix?: 'layout-on-plain'; duplex?: 'single' | 'try'; copies?: 'repeat-pages' | 'single' }
 
 export interface PlanLine { setting: string; requested: string; how: 'pdf' | 'address' | 'printer' | 'not_possible'; result: string }

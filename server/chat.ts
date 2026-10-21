@@ -139,6 +139,7 @@ export class FoChatService {
   prepare(ownerId: string, id: string, body: { text?: unknown; context?: unknown }): FoChat {
     const c = this.own(ownerId, id)
     if (BUSY.includes(c.status)) throw new ActionError(409, 'Fo is still working on the last message.')
+    if(this.fo.executionBlockedReason)throw new ActionError(503,this.fo.executionBlockedReason)
     const text = typeof body.text === 'string' ? body.text.trim() : ''
     if (!text || text.length > MAX_TEXT) throw new ActionError(400, 'Write a message first.')
     const context = typeof body.context === 'string' && body.context.trim() ? body.context.trim().slice(0, 6000) : ''

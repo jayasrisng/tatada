@@ -10,7 +10,7 @@ let failed = 0
 if (mode !== '--integration') {
  const output = mkdtempSync(join(tmpdir(), 'tatada-tests-'))
  try {
-  const modules = ['assistant/context','travel/readiness','state/reducer','state/persistence','state/portability','style/looks','discovery/places','discovery/eventFormat','discovery/zone','travel/arrangements','travel/calendar','travel/next','travel/display','travel/history','travel/importer','print/plan','print/pdf','sharing/trip','privacy/vault','state/retry']
+  const modules = ['assistant/context','travel/readiness','state/reducer','state/persistence','state/portability','style/looks','discovery/places','discovery/eventFormat','discovery/zone','travel/arrangements','travel/calendar','travel/next','travel/display','travel/history','travel/importer','print/plan','print/pdf','sharing/trip','privacy/vault','state/retry','state/login']
   failed = run([resolve('node_modules/typescript/bin/tsc'), ...modules.map(m=>`src/${m}.ts`), '--outDir',output,'--module','commonjs','--target','ES2022','--strict','--skipLibCheck','--esModuleInterop'])
   if (!failed) {
    writeFileSync(join(output,'package.json'),'{"type":"commonjs"}')

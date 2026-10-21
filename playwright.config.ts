@@ -7,5 +7,5 @@ export default defineConfig({
  outputDir:process.env.TATADA_E2E_ARTIFACTS??'test-results',
  use:{baseURL:remote??'http://127.0.0.1:5198/',trace:'retain-on-failure',screenshot:'only-on-failure'},
  projects:[{name:'desktop-chromium',use:{browserName:'chromium',viewport:{width:1440,height:900}}},{name:'mobile-chromium',use:{browserName:'chromium',viewport:{width:390,height:844}}}],
- webServer:remote?undefined:{command:'npm run dev:frontend -- --port 5198 --strictPort',url:'http://127.0.0.1:5198/',reuseExistingServer:false,env:{VITE_ENABLE_BACKEND:'false',VITE_API_URL:'',VITE_BASE_PATH:'/'}},
+ webServer:remote?undefined:[{command:'npm run dev:frontend -- --port 5198 --strictPort',url:'http://127.0.0.1:5198/',reuseExistingServer:false,env:{VITE_ENABLE_BACKEND:'false',VITE_API_URL:'',VITE_BASE_PATH:'/'}},{command:'npm run dev:frontend -- --port 5200 --strictPort',url:'http://127.0.0.1:5200/',reuseExistingServer:false,env:{VITE_ENABLE_BACKEND:'true',VITE_API_URL:'',VITE_BASE_PATH:'/'}}],
 })
