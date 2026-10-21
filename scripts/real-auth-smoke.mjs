@@ -12,7 +12,7 @@ import {emptyState,seed} from '../src/data/seed.ts'
 const check=(condition,message)=>{if(!condition)throw Error(message)}
 const workspace=mkdtempSync(join(tmpdir(),'tatada-auth-ci-')),project='tatada_auth_ci',origin='https://beta.fixture',endpoint=origin+'/functions/v1/tatada-api'
 let started=false
-function exec(binary,args,input){const r=spawnSync(binary,args,{input,encoding:'utf8',maxBuffer:32*1024*1024,timeout:480000});check(r.status===0,`Isolated ${binary} ${args[0]} failed (private diagnostics withheld)`);return r.stdout}
+function exec(binary,args,input){const r=spawnSync(binary,args,{input,encoding:'utf8',maxBuffer:32*1024*1024,timeout:480000});if(r.status!==0&&binary==='docker'&&args[0]==='run')console.error(String(r.stderr).split('\n')[0].replace(/eyJ[\w.-]+|sb_secret_[\w-]+/g,'[credential]').slice(0,220));check(r.status===0,`Isolated ${binary} ${args[0]} failed (private diagnostics withheld)`);return r.stdout}
 const cli=(...args)=>exec('npx',['--yes','supabase@2.121.0','--workdir',workspace,'--yes',...args])
 const sql=query=>exec('docker',['exec','-i',`supabase_db_${project}`,'psql','-X','-qAt','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres'],query)
 const token=()=>randomBytes(32).toString('base64url'),hash=s=>createHash('sha256').update(s).digest('hex')
@@ -28,16 +28,16 @@ try{
  check(new URL(url).hostname==='127.0.0.1'||new URL(url).hostname==='localhost','Refuse non-local Auth stack');check(publicKey&&serviceKey,'Local Auth keys unavailable')
  // Recreate only the disposable Auth container with the intended password policy.
  // Supabase CLI does not yet expose this GoTrue option in its TOML config.
- const container=`supabase_auth_${project}`,original=JSON.parse(exec('docker',['inspect',container]))[0],network=Object.keys(original.NetworkSettings.Networks)[0],networkConfig=original.NetworkSettings.Networks[network]
- const args=['run','-d','--name',container,'--network',network,'--ip',networkConfig.IPAddress]
+ const container=`supabase_auth_${project}`,original=JSON.parse(exec('docker',['inspect',container]))[0],network=Object.keys(original.NetworkSettings.Networks)[0]
+ const args=['run','-d','--name',container,'--network',network]
  for(const [key,value]of Object.entries(original.Config.Labels??{}))args.push('--label',`${key}=${value}`)
  for(const value of original.Config.Env??[])if(!/^GOTRUE_SECURITY_UPDATE_PASSWORD_REQUIRE_(?:CURRENT_PASSWORD|REAUTHENTICATION)=/.test(value))args.push('-e',value)
  args.push('-e','GOTRUE_SECURITY_UPDATE_PASSWORD_REQUIRE_CURRENT_PASSWORD=true','-e','GOTRUE_SECURITY_UPDATE_PASSWORD_REQUIRE_REAUTHENTICATION=false')
  for(const mount of original.Mounts??[])args.push('--mount',`type=${mount.Type},source=${mount.Type==='volume'?mount.Name:mount.Source},target=${mount.Destination}${mount.RW?'':',readonly'}`)
  if(original.Config.User)args.push('--user',original.Config.User)
  if(original.Config.Entrypoint?.length)args.push('--entrypoint',original.Config.Entrypoint[0])
- args.push(original.Config.Image,...(original.Config.Entrypoint?.slice(1)??[]),...(original.Config.Cmd??[]));exec('docker',['stop',container]);exec('docker',['rm',container]);exec('docker',args)
- let healthy=false;for(let n=0;n<100;n++){try{healthy=(await fetch(url+'/auth/v1/health',{headers:{apikey:publicKey}})).ok}catch{}if(healthy)break;await new Promise(r=>setTimeout(r,300))}check(healthy,'Isolated Auth policy restart failed')
+ args.push(original.Config.Image,...(original.Config.Entrypoint?.slice(1)??[]),...(original.Config.Cmd??[]));exec('docker',['stop',container]);exec('docker',['rm',container]);exec('docker',args);exec('docker',['restart',`supabase_kong_${project}`])
+ let healthy=false;for(let n=0;n<300;n++){try{healthy=(await fetch(url+'/auth/v1/health',{headers:{apikey:publicKey}})).ok}catch{}if(healthy)break;await new Promise(r=>setTimeout(r,300))}check(healthy,'Isolated Auth policy restart failed')
 
  sql(readFileSync(new URL('../supabase/schemas/tatada.sql',import.meta.url),'utf8')+"\nnotify pgrst,'reload schema';")
  await new Promise(r=>setTimeout(r,1500))
