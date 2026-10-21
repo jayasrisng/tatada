@@ -2,7 +2,7 @@
 
 Candidate version: **0.1.0-beta.1**, built on validated `1143819` on `melon/v0.1-alpha`. The owner is separate from **10 tester slots**. Existing Supabase project and `https://jayasrisng.com/tatada/` are retained. This document supersedes the original manual-provisioning flow in `PROTOTYPE.md`.
 
-**This is candidate code, not a declaration of deployment.** The last inspected production API was v5; neither the prototype nor beta invitation migration was applied. CI fixtures are simulated, even when they execute real PostgreSQL or Chromium. A real backup restore and real Auth/TOTP checks are release gates.
+**This is candidate code, not a declaration of deployment.** The last inspected production API was v5; neither the prototype nor beta invitation migration was applied. Controlled fixtures are simulated, even when they execute PostgreSQL or Chromium. The isolated-runner Auth smoke suite additionally runs actual GoTrue, Admin creation, password login, TOTP and PostgREST against a disposable Supabase stack; it does not access production or reconstruct the managed platform. A real backup restore and real Auth/TOTP checks are release gates.
 
 ## 1. Verify the backup first — no paid services
 
@@ -34,7 +34,7 @@ They preserve the runtime row, existing workspaces and encryption secrets. Publi
 Confirm hosted Auth settings in the existing Supabase dashboard:
 
 - Email/password enabled; **Allow new users to sign up OFF**; anonymous sign-ins OFF; unused sign-in providers OFF.
-- Minimum password length at least 12; **Require current password when changing password ON**. Email/nonce secure-password-change reauthentication OFF while SMTP is unavailable. No automatic email recovery/password-change notification that requires unconfigured SMTP.
+- Minimum password length at least 12; **Require current password when changing password ON** as defense in depth. The backend also verifies current credentials against the same UID independently before changing a temporary password. Email/nonce secure-password-change reauthentication OFF while SMTP is unavailable. No automatic email recovery/password-change notification that requires unconfigured SMTP.
 - TOTP enrollment/verification ON; preserve session safeguards, Auth UIDs and factors.
 - Site URL stays `https://jayasrisng.com/tatada`. No SMTP, Resend, Google OAuth or new domain is needed.
 - Runtime retains its existing server-only credentials and sealing secret. Never put these in `VITE_` variables or browser storage.

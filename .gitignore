@@ -34,3 +34,5 @@ supabase/.temp
 !/scripts/beta-owner.mjs
 
 !/scripts/backup-verify.mjs
+
+!/scripts/real-auth-smoke.mjs

@@ -13,7 +13,8 @@ schema_paths = ["./schemas/*.sql"]
 enable_signup = false
 minimum_password_length = 12
 [auth.email]
-enable_signup = false
+# Keep email/password provider enabled; global signup and DB admission are closed.
+enable_signup = true
 enable_confirmations = true
 [auth.mfa.totp]
 enroll_enabled = true

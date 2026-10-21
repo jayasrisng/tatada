@@ -17,8 +17,21 @@ export class SupabaseIdentity implements IdentityGateway {
  async deleteUser(id:string){if(!UUID.test(id))throw Error('Invalid account ID');const response=await this.request(`${this.publicConfig.url}/auth/v1/admin/users/${id}`,{method:'DELETE',headers:{apikey:this.key,authorization:`Bearer ${this.key}`},signal:AbortSignal.timeout(10000)});if(!response.ok&&response.status!==404)throw Error('Identity deletion is pending.')}
  async changePassword(token:string,p:Principal,current:string,password:string){
   if(!p.passwordChangeRequired||!p.passwordChange||!current||password.length<12||password.length>1024||current.length>1024||password===current)throw new ActionError(400,'Use your current password and a different new password of at least 12 characters.')
-  // User-scoped Auth API enforces the configured current-password policy and
-  // rejects reuse. Credentials exist only in this request, never the Store/logs.
+  // Verify the current password independently of hosted dashboard settings.
+  // The Auth-supplied email is only a login label; matching the verified UID
+  // prevents another account's credentials from authorizing this change.
+  const headers={apikey:this.publicConfig.publicKey,authorization:`Bearer ${token}`,'content-type':'application/json'}
+  const owner=await this.request(`${this.publicConfig.url}/auth/v1/user`,{headers,signal:AbortSignal.timeout(10000)})
+  if(!owner.ok)throw new ActionError(403,'Password verification failed.')
+  const label=await owner.json() as {id?:string;email?:string}
+  if(label.id!==p.id||!label.email)throw new ActionError(403,'Password verification failed.')
+  const check=await this.request(`${this.publicConfig.url}/auth/v1/token?grant_type=password`,{method:'POST',headers:{apikey:this.publicConfig.publicKey,'content-type':'application/json'},body:JSON.stringify({email:label.email,password:current}),signal:AbortSignal.timeout(10000)})
+  if(!check.ok)throw new ActionError(403,'Password verification failed. Check your current password.')
+  const verified=await check.json() as {user?:{id?:string};access_token?:string}
+  if(verified.user?.id!==p.id||!verified.access_token)throw new ActionError(403,'Password verification failed.')
+  // Close only the auxiliary verification session; keep the original MFA session.
+  const closed=await this.request(`${this.publicConfig.url}/auth/v1/logout?scope=local`,{method:'POST',headers:{apikey:this.publicConfig.publicKey,authorization:`Bearer ${verified.access_token}`},signal:AbortSignal.timeout(10000)})
+  if(!closed.ok)throw new ActionError(503,'Password verification could not complete. Try again later.')
   const response=await this.request(`${this.publicConfig.url}/auth/v1/user`,{method:'PUT',headers:{apikey:this.publicConfig.publicKey,authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify({current_password:current,password}),signal:AbortSignal.timeout(10000)})
   if(!response.ok)throw new ActionError(403,'Password change failed. Check the current password and authenticator, or contact the owner.')
   const user=await response.json() as {id?:string};if(user.id!==p.id)throw new ActionError(503,'Password change could not be confirmed. Contact the owner.')

@@ -12,7 +12,7 @@ jobs:
   verify:
     name: Install, build, tests and browser journeys
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -24,6 +24,8 @@ jobs:
       - run: npm run build:website
       - run: npm test
       - run: npm audit --audit-level=high
+      - name: Real Supabase Auth smoke (isolated runner)
+        run: node scripts/real-auth-smoke.mjs
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       # Sample UI only; never publish raw traces or private test logs as artifacts.

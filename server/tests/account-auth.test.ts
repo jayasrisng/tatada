@@ -120,17 +120,17 @@ test('prototype denies public sharing, Google and cloud print even after MFA whi
 })
 
 
-test('password completion requires a successful user-scoped Auth update, a matching UID and unchanged invitation revision',async()=>{
+test('password completion verifies current credentials against the same UID before changing anything',async()=>{
  let mode='success',calls:{url:string;headers:Headers;body:Record<string,unknown>}[]=[]
- const identity=new SupabaseIdentity({url:'https://auth.fixture',publicKey:'public-fixture',serviceKey:'server-fixture',fetch:async(input,init)=>{const url=String(input),headers=new Headers(init?.headers),body=JSON.parse(String(init?.body));calls.push({url,headers,body});if(url.endsWith('/user'))return Response.json({id:mode==='wrong-uid'?'other':uid},{status:mode==='rejected'?400:200});return Response.json(mode!=='reset-race')}})
+ const identity=new SupabaseIdentity({url:'https://auth.fixture',publicKey:'public-fixture',serviceKey:'server-fixture',fetch:async(input,init)=>{const url=String(input),headers=new Headers(init?.headers),body=init?.body?JSON.parse(String(init.body)):{};calls.push({url,headers,body});if(url.endsWith('/user')&&init?.method!=='PUT')return Response.json({id:uid,email:'synthetic@example.test'});if(url.includes('/token?'))return Response.json({user:{id:mode==='wrong-uid'?'other':uid},access_token:'synthetic-auxiliary-session'},{status:mode==='wrong-password'?400:200});if(url.includes('/logout?'))return new Response(null,{status:204});if(url.endsWith('/user'))return Response.json({id:mode==='wrong-update'?'other':uid},{status:mode==='rejected'?400:200});return Response.json(mode!=='reset-race')}})
  const principal={...p,passwordChangeRequired:true,passwordChange:{nonce:'synthetic-reset-revision',changedAt:null}}
  const change=()=>identity.changePassword('synthetic-user-jwt',principal,'Synthetic-initial-only!','Synthetic-rotated-only!')
- for(const status of ['rejected','wrong-uid']){mode=status;calls=[];await assert.rejects(change);assert.equal(calls.length,1)}
+ for(const status of ['wrong-password','wrong-uid']){mode=status;calls=[];await assert.rejects(change,/verification/);assert.equal(calls.length,2)}
+ for(const status of ['rejected','wrong-update']){mode=status;calls=[];await assert.rejects(change);assert.equal(calls.length,4)}
  mode='reset-race';await assert.rejects(change,/account changed/)
- mode='success';calls=[];await change();assert.equal(calls.length,2);assert.equal(calls[0].headers.get('authorization'),'Bearer synthetic-user-jwt');assert.equal(calls[0].headers.get('apikey'),'public-fixture');assert.equal(calls[0].body.current_password,'Synthetic-initial-only!');assert.equal(calls[1].headers.get('authorization'),'Bearer server-fixture');assert.equal(calls[1].body.p_nonce,'synthetic-reset-revision');assert.equal(calls[1].body.password,undefined);assert.equal(calls[1].body.current_password,undefined)
+ mode='success';calls=[];await change();assert.equal(calls.length,5);assert.equal(calls[1].body.password,'Synthetic-initial-only!');assert.equal(calls[2].headers.get('authorization'),'Bearer synthetic-auxiliary-session');assert.equal(calls[3].headers.get('authorization'),'Bearer synthetic-user-jwt');assert.equal(calls[3].body.current_password,'Synthetic-initial-only!');assert.equal(calls[4].headers.get('authorization'),'Bearer server-fixture');assert.equal(calls[4].body.p_nonce,'synthetic-reset-revision');assert.equal(calls[4].body.password,undefined)
  calls=[];await assert.rejects(()=>identity.changePassword('synthetic-user-jwt',principal,'Synthetic-initial-only!','Synthetic-initial-only!'));assert.equal(calls.length,0)
 })
-
 
 test('password endpoint requires recent TOTP for enrolled users and never creates or loads an owner',async()=>{
  const f=fixture(true);f.principals.alice.passwordChangeRequired=true;let calls=0
