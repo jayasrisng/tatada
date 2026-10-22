@@ -13,7 +13,11 @@ supabase/.temp
 
 # Private owner notes and verification stay local, including future additions.
 /.local/
-/docs/
+# Only the maintained documentation set is public.
+/docs/*
+!/docs/product.md
+!/docs/development.md
+!/docs/beta.md
 # Publish only the launch/build and release validation scripts used by the app.
 /scripts/*
 !/scripts/dev.mjs

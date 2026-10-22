@@ -1,11 +1,11 @@
-import {ContextPicker} from '../components/ContextPicker'
+import {ContextPicker} from '../components/assistant/ContextPicker'
 import { useState } from 'react'
 import { useUI } from '../state/ui'
 import { useStore } from '../state/store'
-import { Doodle } from '../components/Doodle'
-import { ActionCard } from '../components/ActionCard'
-import { AddRow, ChecklistRow } from '../components/Checklist'
-import { Heading, TopBar } from '../components/ui'
+import { Doodle } from '../components/layout/Doodle'
+import { ActionCard } from '../components/assistant/ActionCard'
+import { AddRow, ChecklistRow } from '../components/travel/Checklist'
+import { Heading, TopBar } from '../components/layout/ui'
 import { PHASES } from '../types'
 
 export function Tasks() {

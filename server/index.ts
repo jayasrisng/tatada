@@ -1,3 +1,4 @@
+import {WajoPrintDelivery} from './fo-print.ts'
 import {finishAuthDeletions,SupabaseIdentity} from './account-auth.ts'
 import {readOnlyFo} from './fo.ts'
 import {PrintFiles} from './print-files.ts'
@@ -70,6 +71,7 @@ function secret(): string {
 }
 
 const store = new Store(join(dataDir, `server-${mode}.json`))
+let printFo: FoAdapter
 let fo: FoAdapter
 let oauth: FoOAuth | undefined
 let resolveIdentity: ResolveIdentity | undefined
@@ -84,7 +86,8 @@ if (mode === 'live') {
   const apiKey = singleOwner && env.WAJO_FO_API_KEY ? new ApiKeyCredentials(env.WAJO_FO_API_KEY, OWNER_ID,()=>!store.data.foKeyDisabled?.[OWNER_ID]) : undefined
   if (env.WAJO_FO_API_KEY && !singleOwner) console.warn('[tatada] WAJO_FO_API_KEY ignored: a shared key cannot identify individual users; sign-in uses per-user OAuth')
   foAuth = apiKey ? 'api_key' : 'oauth'
-  fo = readOnlyFo(new LiveFoAdapter(apiKey ? new PreferredFoCredentials(oauth,apiKey) : oauth, mcp, store))
+  printFo = new LiveFoAdapter(apiKey ? new PreferredFoCredentials(oauth,apiKey) : oauth, mcp, store)
+  fo = readOnlyFo(printFo)
   // Verified Wajo identity, from Wajo's own responses only (see identity.ts).
   resolveIdentity = async ({ tokens, body, issuer }) => {
     const direct = fromTokenResponse(body, issuer) ?? fromAccessToken(tokens.accessToken, issuer, Date.now())
@@ -94,6 +97,7 @@ if (mode === 'live') {
   }
 } else {
   fo = new MockFoAdapter(store)
+  printFo = fo
 }
 
 const actions = new ActionService({
@@ -110,7 +114,7 @@ chats.recover()
 const gmail = new GmailConnection({store,sealer:new Sealer(secret()),clientId:env.GOOGLE_CLIENT_ID,clientSecret:env.GOOGLE_CLIENT_SECRET,redirectUri:env.GOOGLE_REDIRECT_URI ?? `${appUrl}/api/gmail/callback`})
 const calendar=new CalendarService(store,new CalendarConnection({store,sealer:new Sealer(secret()),clientId:env.GOOGLE_CLIENT_ID,clientSecret:env.GOOGLE_CLIENT_SECRET,redirectUri:env.GOOGLE_REDIRECT_URI??`${appUrl}/api/gmail/callback`}))
 const printFiles=new PrintFiles(store,secret(),publicUrl)
-const print = new PrintService({ store, delivery: mode === 'live' ? new GmailPrintDelivery(gmail) : new MockPrintDelivery(store) })
+const print = new PrintService({ store, delivery: mode === 'live' ? env.TATADA_PRINT_DELIVERY==='wajo' ? new WajoPrintDelivery({store,fo:printFo,files:printFiles,enabled:true}) : new GmailPrintDelivery(gmail) : new MockPrintDelivery(store) })
 print.recover()
 const travel=env.AMADEUS_CLIENT_ID&&env.AMADEUS_CLIENT_SECRET?new AmadeusTravel({clientId:env.AMADEUS_CLIENT_ID,clientSecret:env.AMADEUS_CLIENT_SECRET,environment:env.AMADEUS_ENV==='production'?'production':'test'}):undefined
 const appPort = new URL(appUrl).port

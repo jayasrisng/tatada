@@ -1,19 +1,19 @@
 import { lazy, Suspense, useState } from 'react'
 import { useStore } from '../state/store'
 import { go, useUI } from '../state/ui'
-import { SharedTripImport } from '../components/TripSharing'
-import { Doodle } from '../components/Doodle'
-import { Box, Chip, Heading, TopBar, daysUntil, fmtRange } from '../components/ui'
+import { SharedTripImport } from '../components/travel/TripSharing'
+import { Doodle } from '../components/layout/Doodle'
+import { Box, Chip, Heading, TopBar, daysUntil, fmtRange } from '../components/layout/ui'
 import { useToday } from '../state/today'
 import type { Trip } from '../types'
 
-const TravelHistory = lazy(() => import('../components/TravelHistory').then((m) => ({ default: m.TravelHistory })))
+const TravelHistory = lazy(() => import('../components/journal/TravelHistory').then((m) => ({ default: m.TravelHistory })))
 
 export function Trips({ initial = 'trips' }: { initial?: 'trips' | 'history' }) {
   const today = useToday()
   const [view, setView] = useState<'trips' | 'history'>(initial)
   const { state } = useStore()
-  const { focusTripId, setFocusTrip } = useUI()
+  const { focusTripId } = useUI()
   const visibleTrips = state.trips.filter(t => !focusTripId || t.id === focusTripId)
   const byStart = (a: Trip, b: Trip) => a.start.localeCompare(b.start)
   const now = visibleTrips.filter((t) => t.start <= today && t.end >= today).sort(byStart)
@@ -47,11 +47,10 @@ export function Trips({ initial = 'trips' }: { initial?: 'trips' | 'history' }) 
       <TopBar back="/" />
       <Heading>Trips</Heading>
       {location.hash.includes('cleanup=needed')&&<p role="alert">Trip deleted. Some device originals or recovery data could not be cleaned up. Open Profile → Your data to review original confirmations and recovery copies.</p>}
-      {focusTripId && <p className="small">Trip mode · <button className="linkbtn" onClick={() => setFocusTrip(undefined)}>show my whole world</button></p>}
       <details className="trip-sharing-entry"><summary>Have a friend’s trip?</summary><SharedTripImport /></details>
       {!focusTripId && <nav className="seg" aria-label="Trips views"><button className={view === 'trips' ? 'on' : ''} onClick={() => setView('trips')}>my trips</button><button className={view === 'history' && !focusTripId ? 'on' : ''} onClick={() => setView('history')}>my maps & timeline</button></nav>}
       {view === 'history' && !focusTripId ? <Suspense fallback={<p>Opening your map…</p>}><TravelHistory /></Suspense> : <div className="trip-list">
-        <Box dashed className="trip-card new" onClick={() => go('/new')}>
+        <Box dashed className="trip-card new tour-new-trip" onClick={() => go('/new')}>
           <Doodle name="plus" size={30} />
           <span>new trip</span>
         </Box>

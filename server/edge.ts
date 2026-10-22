@@ -1,3 +1,4 @@
+import {WajoPrintDelivery} from './fo-print.ts'
 import {BETA_VERSION} from '../shared/release.ts'
 import {finishAuthDeletions,type IdentityGateway} from './account-auth.ts'
 import {readOnlyFo} from './fo.ts'
@@ -25,6 +26,7 @@ export interface EdgeRepository {
   release(token: string): Promise<void>
 }
 export interface EdgeOptions {
+  wajoPrinting?:boolean
   identity?:IdentityGateway
   repository: EdgeRepository
   appUrl: string
@@ -69,7 +71,8 @@ export function createEdgeHandler(options: EdgeOptions) {
   const configure = (store: Store) => {
     const mcp = new McpClient(resource, { timeoutMs: 15000 })
     const oauth = new FoOAuth({ store, sealer: new Sealer(options.secret), resource, redirectUri: `${publicUrl}/api/fo/callback`, fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(15000) }) })
-    const inner: FoAdapter = readOnlyFo(options.mode === 'mock' ? new MockFoAdapter(store) : new LiveFoAdapter(oauth, mcp, store))
+    const printFo = options.mode === 'mock' ? new MockFoAdapter(store) : new LiveFoAdapter(oauth, new McpClient(resource,{timeoutMs:50000}), store)
+    const inner: FoAdapter = readOnlyFo(printFo)
     // Flush the saved sending/answering record before any provider side effect.
     const fo = new Proxy(inner, {
       get(target, property) {
@@ -83,7 +86,7 @@ export function createEdgeHandler(options: EdgeOptions) {
     const gmail=new GmailConnection({store,sealer:new Sealer(options.secret),...options.gmail,redirectUri:options.gmail?.redirectUri??`${publicUrl}/api/gmail/callback`})
     const calendar=options.gmail?new CalendarService(store,new CalendarConnection({store,sealer:new Sealer(options.secret),...options.gmail,redirectUri:options.gmail.redirectUri??`${publicUrl}/api/gmail/callback`})):undefined
     const printFiles=new PrintFiles(store,options.secret,publicUrl)
-    const print = new PrintService({ store, delivery: options.mode === 'mock' ? new MockPrintDelivery(store) : new GmailPrintDelivery(gmail) })
+    const print = new PrintService({ store, delivery: options.mode === 'mock' ? new MockPrintDelivery(store) : options.wajoPrinting ? new WajoPrintDelivery({store,fo:printFo,files:printFiles,enabled:true}) : new GmailPrintDelivery(gmail) })
     const handle = createApp({identity:options.identity, printFiles,store, fo, actions, chats, print, calendar, gmail, intelligence, travel, oauth: options.mode === 'mock' ? undefined : oauth, appUrl, secureCookies: true, allowedOrigin: origin, bearerSessions: true, browserAccounts: true, loginCookiePath: `${prefix}/`,
       resolveIdentity: async ({ body, tokens, issuer }) => {
         const identity = fromTokenResponse(body, issuer) ?? fromAccessToken(tokens.accessToken, issuer, Date.now())
@@ -155,7 +158,7 @@ export function createEdgeHandler(options: EdgeOptions) {
       committed = true
       if (token) { await repository.release(token); token = undefined }
       const deletionPending=Object.values(store.data.authDeletions??{}).some(j=>j.status==='pending'&&j.attempts<5)
-      const pending=deletionPending||Object.values(store.data.actions).some(a=>['approved','sending','send_uncertain','waiting','answering','verifying'].includes(a.status))||Object.values(store.data.foChats??{}).some(value=>['sending','send_uncertain','working'].includes((value as {status:string}).status))||Object.values(store.data.printJobs??{}).some(value=>{const j=value as {sender?:{kind:string};status:string;createdAt:number};return j.sender?.kind==='fo'&&j.status==='send_uncertain'&&Date.now()-j.createdAt<30*60_000})
+      const pending=deletionPending||Object.values(store.data.actions).some(a=>['approved','sending','send_uncertain','waiting','answering','verifying'].includes(a.status))||Object.values(store.data.foChats??{}).some(value=>['sending','send_uncertain','working'].includes((value as {status:string}).status))||Object.values(store.data.printJobs??{}).some(value=>{const j=value as {sender?:{kind:string};status:string;createdAt:number;foRequestFinished?:boolean;foChatId?:string};return !!j.foChatId&&!j.foRequestFinished&&j.sender?.kind==='fo'&&j.status==='send_uncertain'&&Date.now()-j.createdAt<30*60_000})
       if ((snapshot || response.ok)&&pending) kick()
       return response
     } catch {

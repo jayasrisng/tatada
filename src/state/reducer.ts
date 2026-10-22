@@ -5,6 +5,8 @@ import { outcome } from '../magic/engine'
 import { uid } from './id'
 
 export type Act =
+  | {type:'saveMapPlace';tripId:string;place:{name:string;lat:number;lon:number};destination?:boolean}
+  | {type:'removeMapPlace';tripId:string;name:string}
   | {type:'hydrateProfile';profile:Profile}
   | {type:'appendTripConversation';tripId:string;turns:TripTurn[]}
   | {type:'deleteTrip';tripId:string}
@@ -63,6 +65,10 @@ const patchAction = (s: AppState, id: string, fn: (a: FoAction) => FoAction): Ap
 
 export function reducer(s: AppState, a: Act): AppState {
   switch (a.type) {
+    case 'saveMapPlace':
+      if(!Number.isFinite(a.place.lat)||!Number.isFinite(a.place.lon)||Math.abs(a.place.lat)>90||Math.abs(a.place.lon)>180)return s
+      return {...s,trips:s.trips.map(t=>t.id===a.tripId?{...t,...(a.destination?{destinationPoint:{lat:a.place.lat,lon:a.place.lon}}:{}),mapPlaces:[...(t.mapPlaces??[]).filter(p=>p.name!==a.place.name),a.place]}:t)}
+    case 'removeMapPlace': return {...s,trips:s.trips.map(t=>t.id===a.tripId?{...t,mapPlaces:t.mapPlaces?.filter(p=>p.name!==a.name)}:t)}
     case 'saveTripPlanning': return {...s,trips:s.trips.map(t=>t.id===a.tripId?{...t,planning:a.planning}:t)}
     case 'deleteTrip': return withoutTrip(s,a.tripId)
     case 'setTripTimeZone':

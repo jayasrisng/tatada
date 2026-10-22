@@ -9,7 +9,8 @@ const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 if (!url || !key) throw new Error('Supabase runtime credentials are missing')
 Deno.serve(createEdgeHandler({
   repository: new SupabaseRepository(url, key),
-  identity:new SupabaseIdentity({url,publicKey:Deno.env.get('SUPABASE_ANON_KEY')??'',serviceKey:key}),
+  wajoPrinting:Deno.env.get('TATADA_PRINT_DELIVERY')==='wajo',
+  identity:Deno.env.get('TATADA_AUTH_MODE')==='wajo'?undefined:new SupabaseIdentity({url,publicKey:Deno.env.get('SUPABASE_ANON_KEY')??'',serviceKey:key}),
   appUrl: Deno.env.get('TATADA_APP_URL') ?? 'https://jayasrisng.com/tatada',
   publicUrl: `${url}/functions/v1/tatada-api`,
   secret: Deno.env.get('TATADA_SECRET') ?? key,

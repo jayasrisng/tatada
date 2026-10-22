@@ -1,11 +1,12 @@
-import {BetaFeedback} from './components/Beta'
+import {BetaFeedback} from './components/account/Beta'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useStore } from './state/store'
 import { go, useRoute, useUI } from './state/ui'
 import { useServer } from './state/server'
-import { ChalkDefs } from './components/Doodle'
-import { TabBar } from './components/TabBar'
-import { MagicSheet } from './components/MagicSheet'
+import { ChalkDefs } from './components/layout/Doodle'
+import { TabBar } from './components/layout/TabBar'
+import { MagicSheet } from './components/assistant/MagicSheet'
+import { GuidedTour } from './components/layout/GuidedTour'
 import { Home } from './screens/Home'
 import { Trips } from './screens/Trips'
 import { TripWorkspace } from './screens/TripWorkspace'
@@ -14,8 +15,8 @@ import { Tasks } from './screens/Tasks'
 import { Style } from './screens/Style'
 import { Welcome } from './screens/Welcome'
 
-import { fmtRange } from './components/ui'
-import { Arrival } from './components/Arrival'
+import { fmtRange } from './components/layout/ui'
+import { Arrival } from './components/layout/Arrival'
 const PrintView = lazy(() => import('./screens/PrintView').then((m) => ({ default: m.PrintView })))
 
 const Policies = lazy(() => import('./screens/Policies').then(m => ({ default: m.Policies })))
@@ -27,6 +28,8 @@ export function App() {
   const { state, storageWarning } = useStore()
   const { magic, focusTripId, setFocusTrip } = useUI()
   const [root, id, tab, sub] = route
+  const [touring, setTouring] = useState(false)
+  useEffect(() => { if (root === 'tour') { setTouring(true); go('/') } }, [root])
   useEffect(() => {
     if (focusTripId && root === 'new') { setFocusTrip(undefined); return }
     if (focusTripId && root === 'trip' && id !== focusTripId && state.trips.some(t => t.id === id)) setFocusTrip(id)
@@ -42,11 +45,14 @@ export function App() {
     case undefined:
       screen = <Home />
       break
+    case 'tour':
+      screen = <Home />
+      break
     case 'trips':
       screen = <Trips key={id ?? 'trips'} initial={id === 'map' ? 'history' : 'trips'} />
       break
     case 'trip':
-      screen = tab === 'print' ? <Suspense fallback={<p>Opening print…</p>}><PrintView id={id} doc={sub} /></Suspense> : <TripWorkspace id={id} tab={tab} />
+      screen = tab === 'print' ? <Suspense fallback={<p>Opening print…</p>}><PrintView id={id} doc={sub} /></Suspense> : <TripWorkspace key={`${id}:${tab}`} id={id} tab={tab} />
       break
     case 'new':
       screen = <NewTrip />
@@ -67,23 +73,24 @@ export function App() {
       screen = <Home />
   }
 
-  const chromeless = root === 'policies' || root === 'welcome' || root === 'new' || tab === 'print'
+  const chromeless = root === 'tour' || root === 'policies' || root === 'welcome' || root === 'new' || tab === 'print'
   const current = root === 'trip' ? 'trips' : (root ?? '')
 
   return (
     <div className={`frame ${focusTripId ? 'trip-shell' : ''}`}>
       <ChalkDefs />
-      {focusTripId && <header className="trip-shell-bar" inert={!!magic || arriving}><span>{state.trips.find(t=>t.id===focusTripId)?.destination}<small>{(() => {const t=state.trips.find(t=>t.id===focusTripId);return t ? fmtRange(t.start,t.end) : ''})()}</small></span><button className="linkbtn" onClick={()=>{setFocusTrip(undefined); go('/')}}>my world</button></header>}
+      {focusTripId && <header className="trip-shell-bar" aria-label="Current trip" inert={!!magic || arriving}><span>{state.trips.find(t=>t.id===focusTripId)?.destination}<small>{(() => {const t=state.trips.find(t=>t.id===focusTripId);return t ? fmtRange(t.start,t.end) : ''})()}</small></span><button className="linkbtn" onClick={()=>{setFocusTrip(undefined); go('/')}}>My World</button></header>}
       {arriving && <Arrival name={state.profile.name} onDone={finishArrival} />}
       {storageWarning && <p className="storage-warning" role="status">{storageWarning}</p>}
       {/* While Magic is open, the rest of the app is inert: no focus, no clicks, hidden from screen readers. */}
       <main className={`app ${chromeless ? 'chromeless' : ''}`} inert={!!magic || arriving}>{screen}<BetaFeedback/></main>
-      {!chromeless && (
+      {(!chromeless || !!focusTripId) && (
         <div inert={!!magic || arriving}>
           <TabBar current={current} tripId={root === 'trip' ? id : undefined} />
         </div>
       )}
       <MagicSheet />
+      {touring && !arriving && <GuidedTour onClose={() => setTouring(false)} />}
     </div>
   )
 }

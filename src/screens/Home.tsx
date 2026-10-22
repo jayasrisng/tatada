@@ -1,20 +1,20 @@
 import {destinationZone,localStamp} from '../travel/next'
 import {validZone} from '../travel/confirmations'
-import {Doodle} from '../components/Doodle'
+import {Doodle} from '../components/layout/Doodle'
 import { useState } from 'react'
 import { useToday } from '../state/today'
 import { useStore } from '../state/store'
 import { go, useUI } from '../state/ui'
-import { ThemeToggle } from '../components/ThemeToggle'
-import { AreaMap } from '../components/AreaMap'
-import { WorldMap } from '../components/WorldMap'
-import { TripJourney } from '../components/TripJourney'
-import { daysUntil, fmtRange } from '../components/ui'
+import { ThemeToggle } from '../components/layout/ThemeToggle'
+import { AreaMap } from '../components/discovery/AreaMap'
+import { WorldMap } from '../components/discovery/WorldMap'
+import { TripJourney } from '../components/travel/TripJourney'
+import { daysUntil, fmtRange } from '../components/layout/ui'
 import { plannedCountries, tripOfTheMoment, visitedCountries } from '../travel/history'
 import { countryCode } from '../travel/countries'
 import { countryCaption } from '../travel/captions'
 
-const LINES = ['Same stardust. New stories.', 'Less feed. More feet on the ground.', 'Let the wow happen IRL.', 'Your next story is out there.', 'A little lost. A lot more alive.']
+const LINES = ['Less planning. More being there.']
 export function Home() {
   const { state } = useStore(), { focusTripId, setFocusTrip } = useUI()
   const today = useToday()
@@ -35,10 +35,11 @@ export function Home() {
   const selected = eligible.find(t => t.id === picked) ?? eligible[0]
 
   return <div className={`screen home ${focused ? 'trip-mode' : ''}`}>
-    <header className="home-top"><span className="logo">tatada</span><ThemeToggle /><button className="avatar" onClick={() => go('/welcome')} aria-label="Your profile">{state.profile.name.slice(0,1) || '?'}</button></header>
+    <header className="home-top"><span className="logo">tatada</span><ThemeToggle /><button data-tour="profile" className="avatar" onClick={() => go('/welcome')} aria-label="Your profile">{state.profile.name.slice(0,1) || '?'}</button></header>
     <p className="home-greeting star-arrival">Hey <strong>{state.profile.name || 'Star'}</strong> ✶</p>
     <h1 className="home-invitation">{focused ? `${focused.destination}. Your next chapter.` : line}</h1>
-    {focused ? <div className="trip-mode-controls"><p className="small dim">Trip mode · just {focused.destination}</p><button className="linkbtn" onClick={() => setFocusTrip(undefined)}>back to my world</button></div> : eligible.length > 0 && <div className="trip-mode-controls trip-launcher home-trip" role="group" aria-label="Next adventure"><Doodle name="suitcase" size={28}/><div className="trip-launch-copy"><label>Next adventure<span className="trip-launch-choice"><select aria-label="Trip mode destination" value={selected?.id ?? ''} onChange={e=>setPicked(e.target.value)}>{eligible.map(t=><option key={t.id} value={t.id}>{t.destination}</option>)}</select></span></label>{selected&&<span>{active(selected)?`day ${daysUntil(selected.start)*-1+1} of ${daysUntil(selected.end)-daysUntil(selected.start)+1}`:daysUntil(selected.start)===1?'tomorrow':`in ${daysUntil(selected.start)} days`} · {fmtRange(selected.start,selected.end)}</span>}</div><button type="button" className="iconbtn trip-launch-enter" aria-label="Enter trip mode" title="Trip mode" onClick={()=>selected&&setFocusTrip(selected.id)}><Doodle name="plane" size={27}/><span>trip mode</span></button></div>}
+
+    {focused ? <div className="trip-mode-controls"><p className="small dim">Trip mode · just {focused.destination}</p></div> : eligible.length > 0 && <div className="trip-mode-controls trip-launcher home-trip" role="group" aria-label="Next adventure"><Doodle name="suitcase" size={28}/><div className="trip-launch-copy"><label>Next adventure<span className="trip-launch-choice"><select aria-label="Trip mode destination" value={selected?.id ?? ''} onChange={e=>setPicked(e.target.value)}>{eligible.map(t=><option key={t.id} value={t.id}>{t.destination}</option>)}</select></span></label>{selected&&<span>{active(selected)?`day ${daysUntil(selected.start)*-1+1} of ${daysUntil(selected.end)-daysUntil(selected.start)+1}`:daysUntil(selected.start)===1?'tomorrow':`in ${daysUntil(selected.start)} days`} · {fmtRange(selected.start,selected.end)}</span>}</div><button type="button" className="iconbtn trip-launch-enter" aria-label="Enter trip mode" title="Enter trip mode" onClick={()=>{if(selected){setFocusTrip(selected.id);go(`/trip/${selected.id}/itinerary`)}}}><Doodle name="plane" size={27}/><span>trip mode</span></button></div>}
     {(focused||!selected)&&<div className="home-now">{trip ? <button className="home-trip" onClick={() => go(`/trip/${trip.id}`)}><strong>{now ? `In ${trip.destination}` : trip.destination}</strong><span>{now ? `day ${day} of ${length}` : away === 1 ? 'tomorrow' : away > 0 ? `in ${away} days` : 'your trip'} · {fmtRange(trip.start,trip.end)}</span></button> : <button className="home-trip" onClick={() => go('/new')}><strong>Where should we go next?</strong><span>plan a trip</span></button>}</div>}
     {focused && <TripJourney trip={focused}/>}
     <div className="home-map">{!focused&&<p className="home-legend small dim"><i className="lg visited"/> been <i className="lg planned"/> planned</p>}{focused?.destinationPoint ? <AreaMap trip={focused} /> : <WorldMap visited={focused ? new Set() : visited} planned={planned} label={focused ? `${focused.destination} trip map` : 'Your world'} focus={focused ? {country: countryCode(focused.country), label: focused.destination} : undefined} />}

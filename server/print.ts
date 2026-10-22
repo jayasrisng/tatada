@@ -30,6 +30,7 @@ export interface SenderCheck extends Sender { ok: boolean; reason?: string }
 export interface PrintJob {
   printerHash?:string
   preferredSenderEmail?:string
+  foRequestFinished?:boolean
   foChatId?:string
   foDownloadExpires?:number
   id: string
@@ -59,7 +60,7 @@ export interface PrintJob {
   error?: string
   deliveryRef?: string
 }
-export type PublicPrintJob = Omit<PrintJob, 'ownerId' | 'pdf' | 'dedupeKey'>
+export type PublicPrintJob = Omit<PrintJob, 'ownerId' | 'pdf' | 'dedupeKey' | 'foChatId' | 'foDownloadExpires'>
 
 export class PrintError extends Error {
   status: number
@@ -114,7 +115,7 @@ export class PrintService {
     if (!job || job.ownerId !== userId) throw new PrintError(404, 'Print job not found')
     return job
   }
-  view(job: PrintJob): PublicPrintJob { const { ownerId: _o, pdf: _p, dedupeKey: _d, ...rest } = job; return rest }
+  view(job: PrintJob): PublicPrintJob { const { ownerId: _o, pdf: _p, dedupeKey: _d, foChatId: _c, foDownloadExpires: _e, ...rest } = job; return rest }
   get(userId: string, id: string) { return this.view(this.own(userId, id)) }
   list(userId: string) { return Object.values(this.jobs).filter((j) => j.ownerId === userId).sort((a, b) => b.createdAt - a.createdAt).slice(0, KEEP_JOBS).map((j) => this.view(j)) }
   pdf(userId: string, id: string): Buffer {
@@ -161,7 +162,7 @@ export class PrintService {
       id: randomToken(12), ownerId: userId, createdAt: t, updatedAt: t,
       document: { kind: doc.kind, title: doc.title, tripId: typeof doc.tripId === 'string' ? doc.tripId.slice(0, 100) : undefined },
       printerHash,preferredSenderEmail:printer.senderEmail,pdf: b64, pdfHash, bytes: bytes.length, pageCount, request, choices, plan, printer: printer.email, address, sender,
-      blocker: this.mode!=='mock'&&printer.printingConsent!==true?'Enable printing consent once in Profile → Printing.':!check.verified?'A verified sending account is required. Connect Gmail in Profile → Printing.':check.ok ? (printer.senderEmail&&check.kind==='gmail'&&printer.senderEmail.toLowerCase()!==check.label.toLowerCase()?`Connect ${printer.senderEmail} in print settings.`:undefined) : check.reason ?? 'Sending isn\'t available.',
+      blocker: this.mode!=='mock'&&printer.printingConsent!==true?'Enable printing consent once in Profile → Printing.':!check.verified&&!(check.kind==='fo'&&check.ok)?'A verified sending account is required. Connect Gmail in Profile → Printing.':check.ok ? (printer.senderEmail&&check.kind==='gmail'&&printer.senderEmail.toLowerCase()!==check.label.toLowerCase()?`Connect ${printer.senderEmail} in print settings.`:undefined) : check.reason ?? 'Sending isn\'t available.',
       contentHash, dedupeKey: sha256(`${pdfHash}|${address}`), ref: randomToken(5), status: 'awaiting_approval', attempts: 0,
       events: [{ at: t, text: 'Prepared. Waiting for your approval.' }],
     }
@@ -205,7 +206,7 @@ export class PrintService {
       throw new PrintError(409, 'Your printer settings changed since this preview. Prepare it again.', 'changed')
     }
     if(printer.senderEmail&&sender.kind==='gmail'&&printer.senderEmail.toLowerCase()!==sender.label.toLowerCase())throw new PrintError(409,'The preferred sending account changed. Prepare the print again.','changed')
-    if (!sender.ok || !sender.verified || (this.mode!=='mock'&&printer.printingConsent!==true) || sender.kind !== job.sender.kind || sender.label !== job.sender.label) throw new PrintError(409, sender.ok ? 'The sending account changed since this preview. Prepare it again.' : sender.reason ?? 'Sending isn\'t available.', 'changed')
+    if (!sender.ok || (!sender.verified&&sender.kind!=='fo') || (this.mode!=='mock'&&printer.printingConsent!==true) || sender.kind !== job.sender.kind || sender.label !== job.sender.label) throw new PrintError(409, sender.ok ? 'The sending account changed since this preview. Prepare it again.' : sender.reason ?? 'Sending isn\'t available.', 'changed')
     const t = this.now()
     const twin = Object.values(this.jobs).find((j) => j.id !== job.id && j.ownerId === userId && j.dedupeKey === job.dedupeKey && (j.status === 'sending' || j.status === 'send_uncertain' || (j.status === 'submitted' && t - j.updatedAt < DUPLICATE_WINDOW)))
     if (twin && (twin.status!=='submitted'||input.allowDuplicate !== true)) throw new PrintError(409, `This exact document was ${twin.status === 'submitted' ? 'just submitted' : 'already sent (status unknown)'} to this printer. Approve again only if you want another print.`, 'duplicate')
@@ -252,7 +253,7 @@ export class PrintService {
   }
 
   private checking=new Set<string>()
-  async runDue(limit=1){for(const job of Object.values(this.jobs).filter(j=>j.sender.kind==='fo'&&j.foChatId&&j.status==='send_uncertain'&&this.now()-j.createdAt<30*60_000).slice(0,limit)){if(this.checking.has(job.id))continue;this.checking.add(job.id);try{await this.check(job.ownerId,job.id)}finally{this.checking.delete(job.id)}}}
+  async runDue(limit=1){for(const job of Object.values(this.jobs).filter(j=>j.sender.kind==='fo'&&j.foChatId&&!j.foRequestFinished&&j.status==='send_uncertain'&&this.now()-j.createdAt<30*60_000).slice(0,limit)){if(this.checking.has(job.id))continue;this.checking.add(job.id);try{await this.check(job.ownerId,job.id)}finally{this.checking.delete(job.id)}}}
 
   /** After a restart, anything caught mid-send is uncertain, not retried. */
   recover() {

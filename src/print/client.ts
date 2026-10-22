@@ -5,6 +5,7 @@ import type { PlanLine, PrintChoices, PrintPlan, PrintRequest, PrinterProfile } 
 export type PrintStatus = 'awaiting_approval' | 'sending' | 'submitted' | 'send_uncertain' | 'blocked' | 'failed' | 'cancelled'
 export interface Sender { kind: 'mock' | 'fo' | 'gmail'; verified: boolean; label: string; ok?: boolean; reason?: string }
 export interface PrintJob {
+  foRequestFinished?: boolean
   id: string
   createdAt: number
   updatedAt: number
@@ -52,7 +53,7 @@ export function approvalKey(jobId: string, fresh = false) {
   return key
 }
 export const approveJob = (job: PrintJob, o: { allowDuplicate?: boolean; resendAfterUncertain?: boolean } = {}) =>
-  api<{ job: PrintJob }>(`/api/print/jobs/${job.id}/approve`, { method: 'POST', json: { contentHash: job.contentHash, idempotencyKey: approvalKey(job.id, !!o.resendAfterUncertain), ...o }, signal: AbortSignal.timeout(60_000) }).then((r) => r.job)
+  api<{ job: PrintJob }>(`/api/print/jobs/${job.id}/approve`, { method: 'POST', json: { contentHash: job.contentHash, idempotencyKey: approvalKey(job.id, !!o.resendAfterUncertain), ...o }, signal: AbortSignal.timeout(90_000) }).then((r) => r.job)
 export const checkJob = (id: string) => api<{ job: PrintJob }>(`/api/print/jobs/${id}/check`, { method: 'POST' }).then((r) => r.job)
 export const cancelJob = (id: string) => api<{ job: PrintJob }>(`/api/print/jobs/${id}/cancel`, { method: 'POST' }).then((r) => r.job)
 

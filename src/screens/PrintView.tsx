@@ -2,18 +2,18 @@ import {garmentImage} from '../style/images'
 import {packingList} from '../style/looks'
 import {savePrintDraft} from '../print/draft'
 import {printRoute} from '../print/intent'
-import {PrintPanel} from '../components/PrintPanel'
+import {PrintPanel} from '../components/printing/PrintPanel'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import type {PrintSticker} from '../print/pdf'
 import { useStore } from '../state/store'
 import { go, hashQuery } from '../state/ui'
 import { browserOnly } from '../config'
-import { Doodle } from '../components/Doodle'
-import { Btn, Chip, TODAY, TopBar } from '../components/ui'
+import { Doodle } from '../components/layout/Doodle'
+import { Btn, Chip, TODAY, TopBar } from '../components/layout/ui'
 import { parsePrintRequest, planPrint, type PrintChoices, type PrintRequest, type PrinterProfile } from '../print/plan'
 import { checkJob, getPrinter, getSender, getJob, jobPdf, listJobs, type PrintJob, type Sender } from '../print/client'
 
-const PrintPlayground=lazy(()=>import('../components/PrintPlayground').then(m=>({default:m.PrintPlayground})))
+const PrintPlayground=lazy(()=>import('../components/printing/PrintPlayground').then(m=>({default:m.PrintPlayground})))
 const UNKNOWN_PRINTER: Omit<PrinterProfile, 'email' | 'updatedAt'> = { plainPaper: 'unknown', colorInk: 'unknown', autoDuplex: 'unknown', bodyPrintingOff: 'unknown', senderApproved: 'unknown' }
 
 /**

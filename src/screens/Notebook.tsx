@@ -1,31 +1,43 @@
+import {ItineraryLinks} from '../components/travel/ItineraryLinks'
+import {TripMeals} from '../components/travel/TripMeals'
 import {humanWhen} from '../travel/display'
 import { lazy, Suspense, useEffect, useRef } from 'react'
-import { FlightTicket } from '../components/FlightTicket'
+import { FlightSearch } from '../components/travel/FlightSearch'
+import { FlightTicket } from '../components/travel/FlightTicket'
 import { useState } from 'react'
 import type { Category, ResearchOption, Trip } from '../types'
 import { useStore } from '../state/store'
 import { go, hashQuery, useUI } from '../state/ui'
-import { AddStay } from '../components/AddStay'
-import { DecisionPanel } from '../components/DecisionPanel'
-import { AddRow } from '../components/Checklist'
-import { Doodle } from '../components/Doodle'
-import { Btn, Chip, Paper, SampleNote } from '../components/ui'
+import { AddStay } from '../components/travel/AddStay'
+import { DecisionPanel } from '../components/assistant/DecisionPanel'
+import { AddRow } from '../components/travel/Checklist'
+import { Doodle } from '../components/layout/Doodle'
+import { Btn, Chip, Paper, SampleNote } from '../components/layout/ui'
 
-const TravelArrangements=lazy(()=>import('../components/TravelArrangements').then(m=>({default:m.TravelArrangements})))
+const TravelArrangements=lazy(()=>import('../components/travel/TravelArrangements').then(m=>({default:m.TravelArrangements})))
 
 const PrintView = lazy(() => import('./PrintView').then(m => ({default:m.PrintView})))
 
-const CATS: { id: Category; label: string; icon: string }[] = [
-  { id: 'flight', label: 'Flights', icon: 'plane' },
-  { id: 'stay', label: 'Stay', icon: 'bed' },
-  { id: 'move', label: 'Getting around', icon: 'tram' },
-  { id: 'eat', label: 'Eat', icon: 'fork' },
+type BookingTab = 'transport' | 'stay' | 'experiences' | 'eat'
+const CATS: {id:BookingTab;label:string;icon:string}[] = [
+  {id:'transport',label:'Transportation',icon:'tram'}, {id:'stay',label:'Stay',icon:'bed'},
+  {id:'experiences',label:'Experiences',icon:'ticket'}, {id:'eat',label:'Eat',icon:'fork'},
 ]
-
-export function Notebook({ trip }: { trip: Trip }) {
+export function Notebook({trip}:{trip:Trip}) {
+  const requested=hashQuery().get('category')
+  const booking=trip.bookings.find(b=>b.id===hashQuery().get('booking'))
+  const initial=requested==='stay'||booking?.kind==='stay'?'stay':requested==='eat'||booking?.kind==='dinner'?'eat':requested==='experiences'||booking?.kind==='activity'?'experiences':'transport'
+  const [tab,setTab]=useState<BookingTab>(initial)
+  const [transport,setTransport]=useState<'flight'|'move'>(requested==='move'||booking?.kind==='transfer'||trip.planning?.transport==='drive'||trip.planning?.transport==='rental-car'?'move':'flight')
+  return <div className="notebook">
+    <div className="cat-row booking-tabs" role="tablist" aria-label="Booking categories">{CATS.map(c=><button key={c.id} role="tab" aria-selected={tab===c.id} className={`cat ${tab===c.id?'on':''}`} onClick={()=>setTab(c.id)}><Doodle name={c.icon} size={24}/><span>{c.label}</span></button>)}</div>
+    {tab==='transport'&&<div className="seg" aria-label="Transportation type"><button className={transport==='flight'?'on':''} onClick={()=>setTransport('flight')}>Flights</button><button className={transport==='move'?'on':''} onClick={()=>setTransport('move')}>Ground</button></div>}
+    {tab==='experiences'?<section key="experiences"><ItineraryLinks trip={trip} kind="activity"/><TravelArrangements trip={trip} kind="activity"/></section>:<BookingCategory key={tab+transport} trip={trip} cat={tab==='transport'?transport:tab}/>}
+  </div>
+}
+function BookingCategory({trip,cat}:{trip:Trip;cat:Category}) {
   const {state} = useStore()
   const [printOpen,setPrintOpen] = useState<'flights'|'hotels'|null>(null)
-  const [cat, setCat] = useState<Category>(() => CATS.find(c => c.id === hashQuery().get('category'))?.id ?? (trip.planning?.transport==='drive'||trip.planning?.transport==='rental-car'?'move':'flight'))
   const [compare, setCompare] = useState(false)
   const [showResearch,setShowResearch] = useState(false)
   const opts = trip.options.filter((o) => o.category === cat)
@@ -36,22 +48,14 @@ export function Notebook({ trip }: { trip: Trip }) {
 
   return (
     <div className="notebook">
-      <p className="small dim">Your bookings and travel options. The itinerary is your timed plan for each day.</p>
+      {cat==='eat'?<TripMeals trip={trip}/>:<ItineraryLinks trip={trip} kind={cat==='stay'?'stay':'transport'}/>}
       {printOpen && <NotebookPrintDialog id={trip.id} kind={printOpen} onClose={()=>setPrintOpen(null)}/>}
-      <div className="cat-row" role="tablist">
-        {CATS.map((c) => (
-          <button key={c.id} role="tab" aria-selected={cat === c.id} className={`cat ${cat === c.id ? 'on' : ''}`} onClick={() => setCat(c.id)}>
-            <Doodle name={c.icon} size={24} />
-            <span>{c.label}</span>
-          </button>
-        ))}
-      </div>
-
+      {cat==='flight'&&<details className="quiet-section"><summary>Find flights</summary><FlightSearch trip={trip}/></details>}
       {(cat === 'flight' || cat === 'stay') && <Btn kind="ghost" icon="printer" onClick={() => setPrintOpen(cat === 'flight' ? 'flights' : 'hotels')}>print {cat === 'flight' ? 'flights' : 'stay'}</Btn>}
 
-      <details key={cat} className="manage-arrangements"><summary>Add or edit {cat==='flight'?'flights':cat==='stay'?'your stay':cat==='move'?'transport':'meals'}</summary><Suspense fallback={<p>Opening travel details…</p>}><TravelArrangements key={`${trip.id}:${cat}`} trip={trip} kind={cat==='flight'?'flight':cat==='stay'?'stay':cat==='move'?'transfer':'dinner'}/></Suspense></details>
+      <details key={cat} className="manage-arrangements" open={!!hashQuery().get('booking')}><summary>Edit {cat==='flight'?'flights':cat==='stay'?'your stay':cat==='move'?'transport':'meals'}</summary><Suspense fallback={<p>Opening travel details…</p>}><TravelArrangements key={`${trip.id}:${cat}`} trip={trip} kind={cat==='flight'?'flight':cat==='stay'?'stay':cat==='move'?'transfer':'dinner'}/></Suspense></details>
 
-      {cat === 'stay' && trip.status !== 'past' && trip.bookings.some((b) => b.kind === 'stay') && <DecisionPanel trip={trip} />}
+      {cat === 'stay' && trip.status !== 'past' && trip.bookings.some((b) => b.kind === 'stay') && <details><summary>Check-in</summary><DecisionPanel trip={trip}/></details>}
 
       {cat === 'flight' && trip.bookings.some(b => b.kind === 'flight') && <div className="flight-keepsakes">{trip.bookings.filter(b => b.kind === 'flight').map(booking => <FlightTicket key={booking.id} booking={booking} trip={trip} profile={state.profile}/>)}</div>}
 
@@ -191,7 +195,7 @@ function NextSteps({ trip, cat }: { trip: Trip; cat: Category }) {
   const hasStay = trip.bookings.some((b) => b.kind === 'stay')
   return (
     <div className="next-steps">
-      <p className="dim">No saved options here yet. Add your arrangements above, or keep planning your route in Itinerary.</p>
+      <p className="dim">Nothing saved yet.</p>
       {cat === 'stay' &&
         (hasStay ? (
           <p>
@@ -202,7 +206,7 @@ function NextSteps({ trip, cat }: { trip: Trip; cat: Category }) {
           </p>
         ) : (
           <>
-            <h3 className="section-h">already booked somewhere?</h3>
+            <h3 className="section-h">Add your stay</h3>
             <AddStay trip={trip} />
           </>
         ))}

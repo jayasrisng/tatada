@@ -134,3 +134,17 @@ export async function searchNearby(location: Place, kind: PlaceKind, prefs: Plac
   }
   return initial
 }
+
+export type EssentialKind='toilets'|'fuel'|'water'|'pharmacy'|'family'|'work'
+export async function searchEssentials(origin:Point,kind:EssentialKind){
+ if(!validPoint(origin))throw Error('Choose a location first.')
+ const tags={toilets:'amenity:toilets',fuel:'amenity:fuel',water:'amenity:drinking_water',pharmacy:'amenity:pharmacy',work:'amenity:cafe'}
+ let raw:OSMElement[]
+ if(kind==='family') {
+  const result=await request<{features:PhotonFeature[]}>(`https://photon.komoot.io/api/?q=nursing%20room&lat=${origin.lat}&lon=${origin.lon}&limit=15`)
+  raw=result.features.map(elementOf).filter((p):p is OSMElement=>!!p)
+ }else raw=await nearby(origin,tags[kind],10000,30)
+ const data=await withDetails(raw)
+ const {distanceMeters}=await import('./places')
+ return data.flatMap(e=>{const point=e.lat!==undefined&&e.lon!==undefined?{lat:e.lat,lon:e.lon}:e.center;if(!point||!validPoint(point)||['no','private'].includes(e.tags?.access??''))return [];const distance=distanceMeters(origin,point);return distance<=10000?[{id:`${e.type}/${e.id}`,name:e.tags?.name||({toilets:'Restroom',fuel:'Fuel',water:'Drinking water',pharmacy:'Pharmacy',family:'Possible nursing room',work:'Café'}[kind]),...point,distance,tags:e.tags??{}}]:[]}).sort((a,b)=>a.distance-b.distance).slice(0,8)
+}

@@ -7,7 +7,7 @@ import '@fontsource/cabin-sketch/700.css'
 import './styles/global.css'
 import './styles/brand.css'
 import { ServerProvider } from './state/server'
-import { AuthGate } from './components/AuthGate'
+import { AuthGate } from './components/account/AuthGate'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -19,6 +19,7 @@ async function reopen(page:Page){
 }
 async function route(page:Page,path:string){await page.evaluate(p=>{location.hash=p},path)}
 test.beforeEach(async({page},testInfo)=>{
+ await page.route('https://tile.openstreetmap.org/**',r=>r.fulfill({status:200,contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64')}))
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
  page.on('console',m=>{if(['warning','error'].includes(m.type()))console.log(`[browser ${testInfo.project.name}] ${m.type()}: ${m.text().replace(/([?&](?:code|state|token|binding)[^=]*=)[^&#\s]+/gi,'$1[redacted]')}`)})
  ;(page as Page&{auditErrors:string[]}).auditErrors=errors
@@ -41,8 +42,8 @@ test('create a disposable trip and preserve it across refresh',async({page})=>{
  await page.getByPlaceholder('Where are we going?').fill('QA Disposable Kyoto')
  const start=new Date(Date.now()+30*86400000).toISOString().slice(0,10),end=new Date(Date.now()+34*86400000).toISOString().slice(0,10)
  await page.getByLabel('Leave',{exact:true}).fill(start);await page.getByLabel('Return',{exact:true}).fill(end)
- await page.getByRole('button',{name:'create my trip',exact:true}).click();await expect(page.getByRole('heading',{name:'QA Disposable Kyoto',exact:true})).toBeVisible()
- const hash=await page.evaluate(()=>location.hash);await reopen(page);await expect(page.getByRole('heading',{name:'QA Disposable Kyoto',exact:true})).toBeVisible();expect(await page.evaluate(()=>location.hash)).toBe(hash)
+ await page.getByRole('button',{name:'create my trip',exact:true}).click();await expect(page.getByText('QA Disposable Kyoto',{exact:true})).toBeVisible()
+ const hash=await page.evaluate(()=>location.hash);await reopen(page);await expect(page.getByText('QA Disposable Kyoto',{exact:true})).toBeVisible();expect(await page.evaluate(()=>location.hash)).toBe(hash)
 })
 test('tasks add, edit, complete and persist',async({page})=>{
  await route(page,'/tasks');const add=page.getByLabel('Add to prepare');await add.fill('QA disposable task');await add.press('Enter')
@@ -53,7 +54,7 @@ test('tasks add, edit, complete and persist',async({page})=>{
 test('itinerary completion is editable and persists; Calendar file is a sample',async({page})=>{
  await route(page,'/trip/lisbon/itinerary');const stop=page.getByRole('checkbox',{name:/^Done:/}).first();await expect(stop).toBeVisible();const label=await stop.getAttribute('aria-label');await stop.check()
  await reopen(page);await expect(page.getByRole('checkbox',{name:label!,exact:true})).toBeChecked()
- await page.getByText('Calendar · Google, Apple & Outlook',{exact:true}).click();const download=page.waitForEvent('download');await page.getByRole('button',{name:'download calendar file (.ics)',exact:true}).click();const d=await download;const text=await readFile((await d.path())!,'utf8');expect(text).toContain('BEGIN:VCALENDAR');expect(text).toContain('BEGIN:VEVENT');expect(text).toContain('[Sample]')
+ await route(page,'/trip/lisbon/plan');await page.getByRole('button',{name:'Calendar',exact:true}).click();const download=page.waitForEvent('download');await page.getByRole('button',{name:'download calendar file (.ics)',exact:true}).click();const d=await download;const text=await readFile((await d.path())!,'utf8');expect(text).toContain('BEGIN:VCALENDAR');expect(text).toContain('BEGIN:VEVENT');expect(text).toContain('[Sample]')
 })
 test('journal create, edit, reload and PDF preview preserve the content',async({page})=>{
  await route(page,'/trip/lisbon/journal');await page.getByLabel('Moment note').fill('QA synthetic journal memory');await page.getByRole('button',{name:'save moment',exact:true}).click()
@@ -67,4 +68,139 @@ test('journal create, edit, reload and PDF preview preserve the content',async({
 test('unknown trip gives a recoverable state and history navigation works',async({page})=>{
  await route(page,'/trip/qa-nonexistent/print?preview=1');await expect(page.getByText('nothing to print here',{exact:true})).toBeVisible();await page.getByRole('button',{name:'pick a trip'}).click();await expect(page.getByRole('heading',{name:'Trips',exact:true})).toBeVisible()
  await page.goBack();await expect(page.getByText('nothing to print here',{exact:true})).toBeVisible();await page.goForward();await expect(page.getByRole('heading',{name:'Trips',exact:true})).toBeVisible()
+})
+
+test('primary trip actions and quiet secondary controls remain discoverable',async({page})=>{
+ await page.getByRole('button',{name:'Trips',exact:true}).click();await page.locator('.tour-new-trip').click();await expect(page.getByLabel('Tell me about your trip')).toBeVisible()
+ await route(page,'/trip/lisbon/plan');await expect(page.getByRole('region',{name:'Pending tasks'})).toBeVisible()
+ await expect(page.getByRole('button',{name:'Overview',exact:true})).toHaveAttribute('aria-current','page')
+ await expect(page.getByRole('button',{name:'Bookings',exact:true})).toBeVisible()
+ await page.getByRole('button',{name:'Preview PDF',exact:true}).click();await expect(page.getByRole('link',{name:'Download PDF',exact:true})).toHaveAttribute('href',/^blob:/)
+ await route(page,'/welcome');await expect(page.getByText('Payment methods',{exact:true})).toHaveCount(0)
+ await page.getByText('Travel preferences',{exact:true}).click();await page.getByRole('button',{name:'edit my details'}).click();await expect(page.getByLabel('Your name')).toBeVisible()
+})
+
+test('star guide highlights real controls and can be replayed and skipped',async({page})=>{
+ await route(page,'/welcome');await page.getByRole('button',{name:'Take a quick tour'}).click()
+ const tour=page.getByRole('complementary',{name:'Star guide'})
+ await expect(page.locator('[data-tour="nav-trips"]')).toHaveClass(/star-tour-target/)
+ await page.getByRole('button',{name:'Trips',exact:true}).click()
+ await expect(page.locator('.tour-new-trip')).toHaveClass(/star-tour-target/)
+ await page.locator('.tour-new-trip').click()
+ await expect(page.getByLabel('Tell me about your trip')).toHaveClass(/star-tour-target/)
+ await tour.getByRole('button',{name:'Next',exact:true}).click()
+ await expect(page.locator('[data-tour="pending"]')).toHaveClass(/star-tour-target/)
+ await tour.getByRole('button',{name:'Next',exact:true}).click()
+ await page.getByRole('button',{name:'Itinerary',exact:true}).click()
+ await expect(page.locator('[data-tour="section-notebook"]')).toHaveClass(/star-tour-target/)
+ await page.getByRole('button',{name:'Bookings',exact:true}).click()
+ await expect(page.getByRole('button',{name:'Enter trip mode',exact:true})).toHaveClass(/star-tour-target/)
+ await page.getByRole('button',{name:'Enter trip mode',exact:true}).click()
+ await expect(page.locator('[data-tour="section-journal"]')).toHaveClass(/star-tour-target/)
+ const seen:string[]=[]
+ for(let i=0;i<14;i++) {
+   seen.push(await page.locator('#star-tour-copy').innerText())
+   if(await tour.getByRole('button',{name:'Done',exact:true}).count())break
+   await tour.getByRole('button',{name:'Next',exact:true}).click()
+   await expect(page.locator('.star-tour-target')).toHaveCount(1)
+ }
+ expect(seen.join(' ')).toContain('closet');expect(seen.join(' ')).toContain('personal needs');expect(seen.join(' ')).toContain('My World')
+ await tour.getByRole('button',{name:'Done',exact:true}).click();await expect(tour).toHaveCount(0)
+ await expect(page.locator('.star-tour-target')).toHaveCount(0)
+ await route(page,'/tour');await expect(tour).toBeVisible();await tour.getByRole('button',{name:'Skip',exact:true}).click();await expect(tour).toHaveCount(0)
+})
+
+test('trip mode has four destinations and one persistent exit',async({page})=>{
+ await route(page,'/trip/lisbon/itinerary');await page.getByRole('button',{name:'Enter trip mode',exact:true}).click()
+ const nav=page.getByRole('navigation',{name:'Trip navigation'})
+ const header=page.getByRole('banner',{name:'Current trip'})
+ const context=await header.innerText()
+ await expect(nav.getByRole('button')).toHaveCount(4)
+ await expect(page.getByRole('button',{name:'My World',exact:true})).toHaveCount(1)
+ await expect(page.getByRole('button',{name:/Exit trip mode|leave trip mode|Trip menu/i})).toHaveCount(0)
+ await expect(page.getByRole('navigation',{name:'Trip sections',exact:true})).toHaveCount(0)
+ for(const name of ['Overview','Itinerary','Bookings','Journal']) {
+   await nav.getByRole('button',{name,exact:true}).click()
+   await expect(nav.getByRole('button',{name,exact:true})).toHaveAttribute('aria-current','page')
+   expect(await header.innerText()).toBe(context)
+   await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight))
+   const box=await header.boundingBox();expect(box!.y).toBeGreaterThanOrEqual(0);expect(box!.y).toBeLessThan(2)
+ }
+ await reopen(page);await expect(nav.getByRole('button',{name:'Journal',exact:true})).toHaveAttribute('aria-current','page')
+ await page.getByRole('button',{name:'My World',exact:true}).click()
+ await expect(header).toHaveCount(0);await expect(nav).toHaveCount(0)
+ await expect(page.getByRole('button',{name:'Trips',exact:true})).toBeVisible()
+})
+
+test('first-time setup offers a skippable introduction',async({page})=>{
+ await route(page,'/welcome');await page.getByRole('button',{name:'reset demo data',exact:true}).click()
+ await page.getByRole('button',{name:'Show me around',exact:true}).click();await expect(page.getByRole('complementary',{name:'Star guide'})).toBeVisible()
+ await page.getByRole('button',{name:'Skip',exact:true}).click();await expect(page.getByRole('button',{name:'Trips',exact:true})).toBeVisible()
+})
+
+
+test('overview stays concise and disclosures reset across tabs',async({page})=>{
+ await expect(page.getByRole('button',{name:'Plan a trip',exact:true})).toHaveCount(0)
+ await route(page,'/trip/lisbon/plan')
+ await page.getByRole('button',{name:'Calendar',exact:true}).click()
+ const calendar=page.getByRole('dialog',{name:'Calendar',exact:true})
+ await expect(calendar).toBeVisible();await page.keyboard.press('Escape');await expect(calendar).toHaveCount(0)
+ await page.getByRole('button',{name:'Itinerary',exact:true}).click();await expect(page.getByRole('group',{name:'Trip tools'})).toHaveCount(0)
+ await page.getByRole('button',{name:'Overview',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0)
+ await expect(page.locator('details.phase')).toHaveCount(0)
+ await expect(page.getByRole('button',{name:'Before you get there',exact:true})).toHaveCount(1)
+ await page.getByRole('button',{name:'Bookings',exact:true}).click()
+ for(const name of ['Transportation','Stay','Experiences','Eat'])await expect(page.getByRole('tab',{name,exact:true})).toBeVisible()
+ await page.getByRole('tab',{name:'Stay',exact:true}).click()
+ const edit=page.locator('details.manage-arrangements');await edit.locator('summary').first().click();await expect(edit).toHaveAttribute('open','')
+ await page.getByRole('tab',{name:'Eat',exact:true}).click();await expect(edit).not.toHaveAttribute('open','')
+ await page.getByRole('tab',{name:'Stay',exact:true}).click();await expect(edit).not.toHaveAttribute('open','')
+ await page.getByRole('tab',{name:'Experiences',exact:true}).click();await expect(page.getByRole('button',{name:'add activity',exact:true})).toBeVisible()
+})
+
+
+test('four trip tools open accessible popups without automatic actions',async({page})=>{
+ await route(page,'/trip/lisbon/plan')
+ const tools=page.getByRole('group',{name:'Trip tools'})
+ await expect(tools.getByRole('button')).toHaveCount(4)
+ for(const name of ['Keep this trip offline','Before you get there','Share trip','Calendar']) {
+   const trigger=tools.getByRole('button',{name,exact:true});await trigger.click()
+   const popup=page.getByRole('dialog',{name,exact:true});await expect(popup).toBeVisible()
+   await expect(popup.getByRole('button',{name:'Close popup'})).toBeFocused()
+   if(name==='Keep this trip offline')await expect(popup.getByRole('button',{name:'download trip',exact:true})).toBeVisible()
+   if(name==='Share trip')await expect(popup.getByRole('checkbox',{name:'I reviewed exactly what will be shared'})).not.toBeChecked()
+   if(name==='Calendar')await expect(popup.getByRole('button',{name:'download calendar file (.ics)'})).toBeVisible()
+   await page.keyboard.press('Escape');await expect(popup).toHaveCount(0);await expect(trigger).toBeFocused()
+ }
+ await tools.getByRole('button',{name:'Share trip',exact:true}).click()
+ const share=page.getByRole('dialog',{name:'Share trip',exact:true})
+ await share.getByRole('checkbox',{name:'Include written journal notes'}).check()
+ await share.getByRole('button',{name:'Close popup'}).click()
+ await tools.getByRole('button',{name:'Share trip',exact:true}).click()
+ await expect(page.getByRole('checkbox',{name:'Include written journal notes'})).not.toBeChecked()
+})
+
+test('itinerary tools are four popups and saved meals appear in Eat',async({page})=>{
+ await route(page,'/trip/lisbon/itinerary')
+ const tools=page.getByRole('group',{name:'Itinerary tools'})
+ await expect(tools.getByRole('button')).toHaveCount(4)
+ for(const name of ['Talk','Plan','Pack','Details']){
+  const trigger=tools.getByRole('button',{name,exact:true});await trigger.click()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(trigger).toBeFocused()
+ }
+ await page.getByRole('button',{name:'Bookings',exact:true}).click();await page.getByRole('tab',{name:'Eat',exact:true}).click()
+ await expect(page.getByRole('region',{name:'Meals along your route'}).getByText('Saturday dinner at Horta da Graça',{exact:true})).toBeVisible()
+ await page.getByText('Find meals',{exact:true}).click();await expect(page.getByLabel('Meal request')).toBeVisible()
+ await page.getByRole('tab',{name:'Stay',exact:true}).click();await page.getByRole('tab',{name:'Eat',exact:true}).click();await expect(page.getByLabel('Meal request')).not.toBeVisible()
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true)
+})
+
+test('map location is opt-in and stops when leaving the screen',async({page})=>{
+ await page.evaluate(()=>{(window as any).geoCalls=0;(window as any).geoClears=0;Object.defineProperty(navigator,'geolocation',{configurable:true,value:{watchPosition:(ok:any)=>{(window as any).geoCalls++;ok({coords:{latitude:38.72,longitude:-9.14,accuracy:25}});return 7},clearWatch:()=>{(window as any).geoClears++}}})})
+ await route(page,'/trip/lisbon/plan');await expect(page.getByRole('button',{name:'Use my location',exact:true})).toBeEnabled()
+ expect(await page.evaluate(()=>(window as any).geoCalls)).toBe(0)
+ await page.getByRole('button',{name:'Use my location',exact:true}).click();await expect(page.getByText(/Accuracy ±25 m/)).toBeVisible()
+ await page.getByRole('button',{name:'Itinerary',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).geoClears)).toBe(1)
+ await page.getByRole('button',{name:'Overview',exact:true}).click();await expect(page.getByRole('button',{name:'Use my location',exact:true})).toBeVisible();expect(await page.evaluate(()=>(window as any).geoCalls)).toBe(1)
 })

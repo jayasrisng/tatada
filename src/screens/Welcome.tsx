@@ -1,21 +1,22 @@
-import {BetaOwner} from '../components/Beta'
-import {FEATURES} from '../features'
-import {SecurityGate} from '../components/SecurityGate'
-import {AccountSecurity} from '../components/AccountSecurity'
-import {ProfilePrinting} from '../components/ProfilePrinting'
+import { ProfileCredits } from '../components/account/ProfileCredits'
+import {useServer} from '../state/server'
+import {BetaOwner} from '../components/account/Beta'
+import {SecurityGate} from '../components/account/SecurityGate'
+import {AccountSecurity} from '../components/account/AccountSecurity'
+import {ProfilePrinting} from '../components/printing/ProfilePrinting'
 import {browserOnly} from '../config'
-import {AccountRecovery} from '../components/AccountRecovery'
-import {AccountLifecycle} from '../components/AccountLifecycle'
-import {ProfileWeather} from '../components/ProfileWeather'
+import {AccountRecovery} from '../components/account/AccountRecovery'
+import {AccountLifecycle} from '../components/account/AccountLifecycle'
+import {ProfileWeather} from '../components/discovery/ProfileWeather'
 import { lazy, Suspense, useState } from 'react'
 import { useStore } from '../state/store'
 import { go } from '../state/ui'
-import { Doodle } from '../components/Doodle'
-import { Btn, Chip, Paper } from '../components/ui'
-import { FoConnection } from '../components/FoConnection'
-import { AccountPanel } from '../components/AccountPanel'
+import { Doodle } from '../components/layout/Doodle'
+import { Btn, Chip, Paper } from '../components/layout/ui'
+import { FoConnection } from '../components/assistant/FoConnection'
+import { AccountPanel } from '../components/account/AccountPanel'
 
-const DocumentVault = lazy(() => import('../components/DocumentVault').then((m) => ({ default: m.DocumentVault })))
+const DocumentVault = lazy(() => import('../components/travel/DocumentVault').then((m) => ({ default: m.DocumentVault })))
 const STYLES = ['slow mornings', 'food', 'museums', 'nature', 'nightlife', 'design', 'budget-savvy', 'treat-yourself']
 const DIETS = ['vegetarian', 'vegan', 'gluten-free', 'halal', 'kosher', 'no restrictions']
 const MEMBERS = ['Amex Gold', 'Chase Sapphire', 'AAA', 'TAP Miles&Go', 'United MileagePlus', 'Marriott Bonvoy', 'student']
@@ -23,6 +24,7 @@ const MEMBERS = ['Amex Gold', 'Chase Sapphire', 'AAA', 'TAP Miles&Go', 'United M
 const toggle = (arr: string[], v: string) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v])
 
 function WelcomeContent() {
+  const {info}=useServer()
   const { state, dispatch, resetDemo, workspace } = useStore()
   const [step, setStep] = useState(0)
   const [p, setP] = useState(state.profile)
@@ -32,22 +34,32 @@ function WelcomeContent() {
 
   const finish = () => {
     dispatch({ type: 'onboard', profile: p })
-    go('/')
+    go(state.onboarded ? '/' : '/tour')
   }
 
   return (
     <div className="screen welcome">
       {state.onboarded && <button className="iconbtn profile-close" aria-label="Close profile" onClick={() => go('/')}><Doodle name="x" size={24} /></button>}
-      {step === 0 && state.onboarded && <div className="profile-overview"><h1 className="wizard-q">{state.profile.name ? `Your space, ${state.profile.name}.` : 'Hey Star.'}</h1><ProfileWeather/><details className="profile-section"><summary>Payment methods</summary><p>{FEATURES.payments?'Payment functionality is unavailable.':'Payment functionality is out of scope for Tatada v0.1. Payment collection, storage and processing are disabled.'}</p></details><Btn kind="solid" onClick={()=>setStep(1)}>edit my details</Btn><details className="profile-section" open={window.location.hash.includes('printing=1')}><summary>Printing</summary><ProfilePrinting/></details><details className="profile-section"><summary>Your data</summary><AccountPanel/></details><details className="profile-section"><summary>Wajo connection</summary><FoConnection/><p className="small">Existing Wajo conversations remain readable. New Fo execution and calls are restricted until provider permissions can be enforced. Cloud-print delivery is disabled; use PDF download.</p></details><details className="profile-section"><summary>Travel documents</summary><Suspense fallback={<p>Opening private documents…</p>}><DocumentVault/></Suspense></details><AccountLifecycle deleteOnly/><nav className="profile-policies" aria-label="Policies"><a href="#/policies/terms">Terms &amp; conditions</a><a href="#/policies/privacy">Privacy</a><a href="#/policies/sources">Sources &amp; credits</a></nav>{(workspace.kind === 'demo' || workspace.kind === 'local-demo') && <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>}</div>}
+      {step === 0 && state.onboarded && <div className="profile-overview">
+        <span className="section-eyebrow">YOUR SPACE</span><h1 className="wizard-q">{state.profile.name ? `Hello, ${state.profile.name}.` : 'Make yourself at home.'}</h1><p className="dim">Your connections and preferences, in one place.</p>
+        <button className="btn" onClick={() => go('/tour')}>Take a quick tour</button>
+        <div className="setup-connections"><details className="profile-section"><summary data-tour="wajo"><span className="step-number">1</span> Wajo account</summary><FoConnection/><p className="small dim">Connect your own Wajo account. Available actions depend on your connection.</p></details><details className="profile-section" open={window.location.hash.includes('printing=1')}><summary data-tour="printer"><span className="step-number">2</span> Your printer</summary><ProfilePrinting/></details></div>
+        <details className="profile-section"><summary data-tour="preferences">Travel preferences</summary><p className="small dim">Name, home base, food and accessibility needs. Add only what helps your trip.</p><Btn onClick={()=>setStep(1)}>edit my details</Btn><ProfileWeather/></details>
+        <details className="profile-section"><summary data-tour="documents">Documents &amp; saved data</summary><details><summary>Private travel documents</summary><Suspense fallback={<p>Opening private documents…</p>}><DocumentVault/></Suspense></details><AccountPanel/></details>
+        <details className="profile-section"><summary>Account &amp; security</summary><AccountSecurity/><AccountLifecycle deleteOnly/></details>
+        <ProfileCredits/><nav className="profile-policies" aria-label="Policies"><a href="#/policies/terms">Terms &amp; conditions</a><a href="#/policies/privacy">Privacy</a></nav>{(workspace.kind === 'demo' || workspace.kind === 'local-demo') && <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>}
+      </div>}
       {step === 0 && !state.onboarded && (
         <div className="welcome-hero">
           <Doodle name="sparkle" size={64} className="spin-slow hero-star" />
           <h1 className="logo big">tatada</h1>
           <p className="welcome-line">Hey Star.<br />Less scrolling. More living.</p>
-          <section className="manifesto" aria-label="What Tatada is about"><p>Same stardust. Fewer borders.</p><p>Keep a little mystery. Let the wow happen IRL.</p><p>Fo handles the planning chaos. You do the living.</p><p>Go make a memory. Put the damn phone away.</p></section>
-          <Btn kind="solid" onClick={() => setStep(1)}>
-            let's begin
-          </Btn>
+          <p className="welcome-description">A plan for your days. A copy for the road. Space for the memories.</p>
+          {!browserOnly&&info.available&&<section className="welcome-setup"><p className="small">{info.foConnected?'✓ Wajo connected. Add your printer and you’re ready to plan.':'Connect Wajo and add your printer when you’re ready.'}</p>{!info.foConnected&&<FoConnection/>}<ProfilePrinting/></section>}
+          <Btn kind="solid" onClick={finish}>Show me around</Btn>
+          <button className="linkbtn" onClick={() => { dispatch({ type: 'onboard', profile: p }); go('/') }}>Skip tour and start planning</button>
+          <button className="linkbtn" onClick={()=>setStep(1)}>Add travel preferences</button>
+          <p className="small dim">Preferences are optional. You can add them anytime.</p>
           {(workspace.kind === 'demo' || workspace.kind === 'local-demo') && <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>}
         </div>
       )}
@@ -114,4 +126,4 @@ function WelcomeContent() {
   )
 }
 
-export function Welcome(){return <SecurityGate><AccountSecurity/><BetaOwner/><WelcomeContent/></SecurityGate>}
+export function Welcome(){return <SecurityGate><WelcomeContent/><BetaOwner/></SecurityGate>}

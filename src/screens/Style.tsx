@@ -1,13 +1,13 @@
-import {ContextPicker} from '../components/ContextPicker'
+import {ContextPicker} from '../components/assistant/ContextPicker'
 import {printRoute} from '../print/intent'
 import {go} from '../state/ui'
 import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import type { DressCode, Garment, GarmentCategory, ItineraryItem, Trip } from '../types'
 import { uid, useStore } from '../state/store'
-import { Doodle } from '../components/Doodle'
-import { Avatar } from '../components/Avatar'
-import { Btn, Chip, Heading, TopBar } from '../components/ui'
-import { TodayStyleChat } from '../components/TodayStyleChat'
+import { Doodle } from '../components/layout/Doodle'
+import { Avatar } from '../components/layout/Avatar'
+import { Btn, Chip, Heading, TopBar } from '../components/layout/ui'
+import { TodayStyleChat } from '../components/assistant/TodayStyleChat'
 import { useUI } from '../state/ui'
 import { useToday } from '../state/today'
 import { localToday, fmtDay } from '../magic/dates'
@@ -33,7 +33,7 @@ const DRESS: DressCode[] = ['casual', 'active', 'dressy', 'cold']
 const MAX_CAMERA = 24
 
 // The importer (EXIF reader, detector glue) loads only when someone adds photos.
-const PhotoImport = lazy(() => import('../components/PhotoImport').then((m) => ({ default: m.PhotoImport })))
+const PhotoImport = lazy(() => import('../components/journal/PhotoImport').then((m) => ({ default: m.PhotoImport })))
 
 /** A stand-in "trip" for styling today: never stored, no itinerary or packing list. */
 const todayTrip = (): Trip => ({ id: 'today', destination: 'today', country: '', start: localToday(), end: localToday(), travelers: 1, companions: '', budget: 0, vibe: [], constraints: [], discounts: [], status: 'upcoming', tint: 'pink', summary: {}, options: [], bookings: [], memories: [] })
