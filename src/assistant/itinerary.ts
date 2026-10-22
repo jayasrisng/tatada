@@ -1,4 +1,5 @@
 import type { Profile, Trip, ItineraryItem, PlanGuide } from '../types'
+import {suppliedRequirements} from './intake'
 
 export interface PlanOption { title: string; note: string; url?: string; rating?: string; distance?: string }
 export interface PlanStop { time?: string; kind: 'activity' | 'meal' | 'flight' | 'transfer' | 'rest'; options: PlanOption[] }
@@ -52,7 +53,7 @@ export function parseTripPlan(text: string, start: string, end: string, revision
 }
 export function planningContext(trip: Trip, profile: Profile) {
   const context={destination:trip.destination,country:trip.country,dates:planDays(trip.start,trip.end),travelers:trip.travelers,budget:trip.budget,journey:trip.planning,homeBases:profile.homeBases,interests:trip.vibe,needs:trip.constraints,memberships:trip.discounts,homeAirport:profile.homeAirport,diet:profile.diet,travelStyle:profile.style,base:trip.localAddress || trip.bookings.find(b=>b.kind==='stay'&&!b.simulated)?.address,arrival:trip.arrival,savedStops:trip.itinerary?.map(i=>({id:i.id,day:i.day,time:i.time,title:i.title,note:i.note?.slice(0,300),done:i.done})),savedTravel:trip.bookings.filter(b=>!b.simulated).map(b=>({kind:b.kind,title:b.title,at:b.at,arrivesAt:b.arrivesAt,flight:b.flight}))}
-  const output=()=>JSON.stringify(context)
+  const output=()=>JSON.stringify({...context,requirements:suppliedRequirements(trip.conversation??[])})
   if(output().length>7700)context.savedStops=context.savedStops?.map(i=>({...i,note:undefined}))
   if(output().length>7700)context.savedStops=context.savedStops?.slice(0,24)
   if(output().length>7700)throw Error('Too many trip details for one request. Shorten the trip preferences before planning.')

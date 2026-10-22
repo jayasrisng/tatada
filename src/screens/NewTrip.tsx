@@ -1,6 +1,6 @@
 import {api,useServer} from '../state/server'
 import type {ResearchAnswer} from '../components/ResearchPanel'
-import {intakePrompt,parseIntake,type IntakeDraft} from '../assistant/intake'
+import {buildIntakeContext,intakePrompt,parseIntake,type IntakeDraft} from '../assistant/intake'
 import { useState,useRef,useEffect } from 'react'
 import { uid, useStore } from '../state/store'
 import { go } from '../state/ui'
@@ -37,15 +37,14 @@ export function NewTrip() {
   async function clarify(){
     if(!brief.trim()||pending.current)return
     if(!info.authenticated||info.provider!=='live'){setError('Connect your account in Profile to plan together.');return}
-    const current=++epoch.current,message=brief.trim(),next=[...turns,{id:uid(),from:'you' as const,text:message,at:new Date().toISOString()}]
+    const current=++epoch.current,message=brief.trim(),last=turns.at(-1),next=last?.from==='you'&&last.text===message?turns:[...turns,{id:uid(),from:'you' as const,text:message,at:new Date().toISOString()}]
     pending.current=true;setIntakeBusy(true);setError('');setTurns(next);setBrief('');setIntakeReady(false)
     try{
-      const intakeContext=JSON.stringify({deviceDate:localToday(),timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,draft:intakeDraft,preferences:{homeBases:state.profile.homeBases,homeAirport:state.profile.homeAirport,diet:state.profile.diet,style:state.profile.style,needs:state.profile.personalNeeds},conversation:next.slice(-6).map((t,i,all)=>({from:t.from,text:t.text.slice(0,i===all.length-1?1000:450)}))})
-      if(intakeContext.length>7800)throw Error('The conversation has too many details. Review the trip details below or shorten your message.')
+      const intakeContext=buildIntakeContext(intakeDraft,next,state.profile,localToday(),Intl.DateTimeFormat().resolvedOptions().timeZone)
       const result=await api<ResearchAnswer>('/api/intelligence',{method:'POST',json:{purpose:'trip-intake',question:intakePrompt,context:intakeContext},signal:AbortSignal.timeout(100000)})
       if(current!==epoch.current)return
       if(result.incomplete)throw Error('The follow-up was cut short. Please send your last answer again.')
-      const answer=parseIntake(result.sections.map(s=>s.text).join('\n'),localToday()),d=answer.draft
+      const answer=parseIntake(result.sections.map(s=>s.text).join('\n'),localToday(),intakeDraft),d=answer.draft
       setIntakeDraft(d);setIntakeReady(answer.ready)
       setTurns(old=>[...old,{id:uid(),from:'magic',text:[answer.reply,...answer.questions].join('\n'),at:new Date().toISOString()}])
       if(d.destination!==undefined)setDestination(d.destination)
