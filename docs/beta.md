@@ -2,6 +2,10 @@
 
 Source review: October 22, 2026. Candidate version: **0.1.0-beta.1**. Scope: one owner plus ten testers, on the existing website and Supabase project.
 
+## Device-first correction — October 22
+
+The owner requires direct app entry with no Tatada invitation or signup. The website build now enables a device-local workspace that remains stable across connecting, disconnecting and expiry of Wajo. Profile stores the printer locally before connecting. Backend access is an optional Wajo connection; credentials stay sealed server-side. Preparing a PDF shares its destination/settings with the backend, and delivery still needs explicit approval. Existing cloud workspace rows are retained separately; there is no automatic migration into the device workspace. Legacy invitation deployment instructions below are historical.
+
 ## Wajo-first candidate — October 22
 
 The new candidate supports **connect Wajo → save printer email → preview a PDF → Send with Wajo**, without a separate Tatada password when configured in Wajo account mode. Existing hosted beta behavior is unchanged until a reviewed deployment switches modes.

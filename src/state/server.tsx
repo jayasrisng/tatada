@@ -5,7 +5,7 @@ import {fetchWithBackoff} from './retry'
 import {redeemOnce} from './login'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { EmailDraft, Profile, Trip } from '../types'
-import { apiUrl, usesBearer, sessionHeaders, saveSession, loginBinding, clearLoginAttempt, browserOnly } from '../config'
+import { apiUrl, usesBearer, sessionHeaders, saveSession, loginBinding, clearLoginAttempt, browserOnly, deviceWorkspace } from '../config'
 import { sharedData, stayBooking } from '../magic/stay'
 
 /*
@@ -136,7 +136,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
     refreshing.current = true
     const revision=authRevision.current
     try {
-      await initializeAuth()
+      if(!deviceWorkspace)await initializeAuth()
       const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '')
       const code = params.get('auth_exchange')
       if (usesBearer && code) {
@@ -144,7 +144,7 @@ export function ServerProvider({ children }: { children: ReactNode }) {
         try{
           const result=await redeemOnce(code,()=>api<{sessionToken:string}>('/api/auth/exchange',{method:'POST',json:{code,binding:loginBinding(attempt)}}))
           saveSession(result.sessionToken);clearLoginAttempt(attempt)
-          history.replaceState(null,'',`${location.pathname}${location.search}#/`)
+          history.replaceState(null,'',`${location.pathname}${location.search}#/${deviceWorkspace?"welcome?wajo=connected":""}`);window.dispatchEvent(new HashChangeEvent("hashchange"))
         }catch(e){
           if(!(e instanceof ApiError)||e.status!==401)throw e
           const reason=['exchange_expired','exchange_used','exchange_browser_mismatch'].includes(e.code??'')?e.code:'exchange_invalid'

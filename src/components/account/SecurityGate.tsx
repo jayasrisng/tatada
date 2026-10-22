@@ -6,7 +6,7 @@ import {authClient} from '../../state/supabase-auth'
 interface SecurityStatus{unlocked:boolean;expiresAt:number;hasTotp:boolean}
 export function SecurityGate({children}:{children:ReactNode}){
  const {info,logout}=useServer(),[status,setStatus]=useState<SecurityStatus>(),[message,setMessage]=useState(''),[code,setCode]=useState(''),[qr,setQr]=useState(''),[setupKey,setSetupKey]=useState(''),[factor,setFactor]=useState(''),[busy,setBusy]=useState(false)
- const {state,dispatch,workspace}=useStore();const requires=info.authMethod==='supabase'&&workspace.kind!=='demo'&&workspace.kind!=='local-demo';const profile=useRef(state.profile);profile.current=state.profile
+ const {state,dispatch,workspace}=useStore();const requires=workspace.kind!=='device'&&info.authMethod==='supabase'&&workspace.kind!=='demo'&&workspace.kind!=='local-demo';const profile=useRef(state.profile);profile.current=state.profile
  const checking=useRef(false)
  const active=useRef(true),locallyLocked=useRef(false),wasUnlocked=useRef(false)
  const refresh=useCallback(async()=>{if(checking.current)return;checking.current=true;try{const s=await api<SecurityStatus>('/api/security/status');if(!active.current)return s;const unlocked=s.unlocked&&!locallyLocked.current

@@ -1,6 +1,7 @@
 import {authToken} from './state/auth-token'
 import {loginAttempts} from './state/login'
 /** Browser-only builds work offline; backend-enabled builds support Wajo sign-in and connected actions. */
+export const deviceWorkspace = import.meta.env.VITE_DEVICE_WORKSPACE === 'true'
 export const browserOnly = import.meta.env.VITE_ENABLE_BACKEND !== 'true'
 
 /** Public API base; local development uses Vite's /api proxy. */

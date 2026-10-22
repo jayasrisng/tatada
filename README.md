@@ -34,7 +34,7 @@ npm run test:e2e
 
 ## Wajo-first candidate
 
-The current local work adds a simpler Wajo connection and printer setup, clearer trip navigation, and an explicitly approved Wajo PDF handoff. A direct provider test reported one attached PDF submitted; physical printing and the hosted two-account journey remain unverified. This candidate has not been deployed. See [beta readiness](docs/beta.md).
+The mobile beta opens directly with trips, preferences and printer settings saved on the device. Profile connects Wajo for optional research and approved printing. No separate Tatada signup is needed. Physical output of the synthetic print test was confirmed by the owner. See [beta readiness](docs/beta.md).
 
 ## Deployed beta scope
 

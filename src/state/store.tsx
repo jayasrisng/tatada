@@ -19,7 +19,7 @@ interface Store {
 }
 
 export interface Workspace {
-  kind: 'local-demo' | 'demo' | 'wajo' | 'owner' | 'connected'
+  kind: 'device' | 'local-demo' | 'demo' | 'wajo' | 'owner' | 'connected'
   storageKey: string
   deleteTrip?: (tripId: string) => Promise<AppState>
   suspendSync?: () => Promise<() => void>
@@ -34,7 +34,7 @@ export type ViaServer = (email: EmailDraft, trip: Trip, checklistItemId?: string
 const Ctx = createContext<Store | null>(null)
 
 export function StoreProvider({ children, workspace, initialState, initialWarning }: { children: ReactNode; workspace: Workspace; initialState?: AppState; initialWarning?: string | null }) {
-  const fresh = (workspace.kind === 'wajo' || workspace.kind === 'connected') ? emptyState : seed
+  const fresh = (workspace.kind === 'device' || workspace.kind === 'wajo' || workspace.kind === 'connected') ? emptyState : seed
   const [initial] = useState(() =>
     initialState ? { state: initialState, warning: initialWarning ?? null } : loadState(() => window.localStorage, workspace.storageKey, fresh),
   )

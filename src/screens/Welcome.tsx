@@ -43,10 +43,10 @@ function WelcomeContent() {
       {step === 0 && state.onboarded && <div className="profile-overview">
         <span className="section-eyebrow">YOUR SPACE</span><h1 className="wizard-q">{state.profile.name ? `Hello, ${state.profile.name}.` : 'Make yourself at home.'}</h1><p className="dim">Your connections and preferences, in one place.</p>
         <button className="btn" onClick={() => go('/tour')}>Take a quick tour</button>
-        <div className="setup-connections"><details className="profile-section"><summary data-tour="wajo"><span className="step-number">1</span> Wajo account</summary><FoConnection/><p className="small dim">Connect your own Wajo account. Available actions depend on your connection.</p></details><details className="profile-section" open={window.location.hash.includes('printing=1')}><summary data-tour="printer"><span className="step-number">2</span> Your printer</summary><ProfilePrinting/></details></div>
+        <div className="setup-connections"><details className="profile-section" open={window.location.hash.includes('wajo=connected')}><summary data-tour="wajo"><span className="step-number">1</span> Wajo account</summary><FoConnection/><p className="small dim">Connect your own Wajo account. Available actions depend on your connection.</p></details><details className="profile-section" open={window.location.hash.includes('printing=1')}><summary data-tour="printer"><span className="step-number">2</span> Your printer</summary><ProfilePrinting/></details></div>
         <details className="profile-section"><summary data-tour="preferences">Travel preferences</summary><p className="small dim">Name, home base, food and accessibility needs. Add only what helps your trip.</p><Btn onClick={()=>setStep(1)}>edit my details</Btn><ProfileWeather/></details>
         <details className="profile-section"><summary data-tour="documents">Documents &amp; saved data</summary><details><summary>Private travel documents</summary><Suspense fallback={<p>Opening private documents…</p>}><DocumentVault/></Suspense></details><AccountPanel/></details>
-        <details className="profile-section"><summary>Account &amp; security</summary><AccountSecurity/><AccountLifecycle deleteOnly/></details>
+        <details className="profile-section"><summary>{workspace.kind==='device'?'This device':'Account & security'}</summary>{workspace.kind!=='device'&&<AccountSecurity/>}<AccountLifecycle deleteOnly/></details>
         <ProfileCredits/><nav className="profile-policies" aria-label="Policies"><a href="#/policies/terms">Terms &amp; conditions</a><a href="#/policies/privacy">Privacy</a></nav>{(workspace.kind === 'demo' || workspace.kind === 'local-demo') && <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>}
       </div>}
       {step === 0 && !state.onboarded && (
@@ -64,7 +64,7 @@ function WelcomeContent() {
         </div>
       )}
 
-      {!browserOnly&&step===0&&<AccountRecovery/>}
+      {!browserOnly&&workspace.kind!=='device'&&step===0&&<AccountRecovery/>}
       {step === 1 && (
         <div className="wizard-body">
           <h1 className="wizard-q">Hey Star, what should we call you?</h1>

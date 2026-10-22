@@ -1,5 +1,5 @@
 import { api } from '../state/server'
-import { apiUrl, sessionHeaders, usesBearer } from '../config'
+import { apiUrl, sessionHeaders, usesBearer, deviceWorkspace } from '../config'
 import type { PlanLine, PrintChoices, PrintPlan, PrintRequest, PrinterProfile } from './plan'
 
 export type PrintStatus = 'awaiting_approval' | 'sending' | 'submitted' | 'send_uncertain' | 'blocked' | 'failed' | 'cancelled'
@@ -28,15 +28,18 @@ export interface PrintJob {
   error?: string
 }
 
-export const getPrinter = () => api<{ printer: PrinterProfile | null }>('/api/print/printer').then((r) => r.printer)
-export const savePrinter = (p: Omit<PrinterProfile, 'updatedAt'>) => api<{ printer: PrinterProfile }>('/api/print/printer', { method: 'PUT', json: p }).then((r) => r.printer)
-export const removePrinter = () => api('/api/print/printer', { method: 'DELETE' })
+const printerKey='tatada:device:printer'
+export const getPrinter = async ():Promise<PrinterProfile|null> => deviceWorkspace ? JSON.parse(localStorage.getItem(printerKey)??'null') : api<{printer:PrinterProfile|null}>('/api/print/printer').then(r=>r.printer)
+export const savePrinter = async (p:Omit<PrinterProfile,'updatedAt'>):Promise<PrinterProfile> => {if(!deviceWorkspace)return api<{printer:PrinterProfile}>('/api/print/printer',{method:'PUT',json:p}).then(r=>r.printer);const saved={...p,updatedAt:Date.now()};localStorage.setItem(printerKey,JSON.stringify(saved));return saved}
+export const removePrinter = async () => {if(deviceWorkspace){localStorage.removeItem(printerKey);return}return api('/api/print/printer',{method:'DELETE'})}
 export const getSender = () => api<{ delivery: 'mock' | 'fo' | 'gmail'; sender: Sender }>('/api/print/sender')
 export const listJobs = () => api<{ jobs: PrintJob[] }>('/api/print/jobs').then((r) => r.jobs)
 
 const toBase64 = (bytes: Uint8Array) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s) }
-export const prepareJob = (body: { pdf: Uint8Array; document: PrintJob['document']; request: PrintRequest; choices: PrintChoices }) =>
-  api<{ job: PrintJob }>('/api/print/jobs', { method: 'POST', json: { ...body, pdf: toBase64(body.pdf) }, signal: AbortSignal.timeout(60_000) }).then((r) => r.job)
+export const prepareJob = async (body: { pdf: Uint8Array; document: PrintJob['document']; request: PrintRequest; choices: PrintChoices }) => {
+  if(deviceWorkspace){const printer=await getPrinter();if(!printer)throw Error('Add your printer email in Profile first.');await api('/api/print/printer',{method:'PUT',json:printer})}
+  return api<{ job: PrintJob }>('/api/print/jobs', { method: 'POST', json: { ...body, pdf: toBase64(body.pdf) }, signal: AbortSignal.timeout(60_000) }).then((r) => r.job)
+}
 
 /** The stored PDF exactly as it will be attached. */
 export async function jobPdf(id: string): Promise<Blob> {
@@ -52,8 +55,10 @@ export function approvalKey(jobId: string, fresh = false) {
   if (!key) { key = `${jobId}-${crypto.randomUUID()}`; sessionStorage.setItem(k, key) }
   return key
 }
-export const approveJob = (job: PrintJob, o: { allowDuplicate?: boolean; resendAfterUncertain?: boolean } = {}) =>
-  api<{ job: PrintJob }>(`/api/print/jobs/${job.id}/approve`, { method: 'POST', json: { contentHash: job.contentHash, idempotencyKey: approvalKey(job.id, !!o.resendAfterUncertain), ...o }, signal: AbortSignal.timeout(90_000) }).then((r) => r.job)
+export const approveJob = async (job: PrintJob, o: { allowDuplicate?: boolean; resendAfterUncertain?: boolean } = {}) => {
+ if(deviceWorkspace){const printer=await getPrinter();if(!printer||printer.updatedAt>job.createdAt)throw Error('Printer settings changed. Prepare a fresh PDF preview before sending.')}
+ return api<{job:PrintJob}>(`/api/print/jobs/${job.id}/approve`,{method:'POST',json:{contentHash:job.contentHash,idempotencyKey:approvalKey(job.id,!!o.resendAfterUncertain),...o},signal:AbortSignal.timeout(90_000)}).then(r=>r.job)
+}
 export const checkJob = (id: string) => api<{ job: PrintJob }>(`/api/print/jobs/${id}/check`, { method: 'POST' }).then((r) => r.job)
 export const cancelJob = (id: string) => api<{ job: PrintJob }>(`/api/print/jobs/${id}/cancel`, { method: 'POST' }).then((r) => r.job)
 

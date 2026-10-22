@@ -167,7 +167,7 @@ export function FoConnection() {
         <>
           <p>Fo is not authorized. Connect your Wajo account to use real Fo; your workspace stays as it is.</p>
           <a className="btn btn-solid" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>
-            <span>{info.owner||info.authMethod==='supabase' ? 'connect Wajo' : 'sign in with Wajo'}</span>
+            <span>{workspace.kind==='device'||info.owner||info.authMethod==='supabase' ? 'Connect Wajo' : 'sign in with Wajo'}</span>
           </a>
         </>
       )}

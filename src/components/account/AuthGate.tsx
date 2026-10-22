@@ -5,7 +5,7 @@ import {AccountRecovery} from './AccountRecovery'
 import {SharedTripView} from '../travel/SharedTripView'
 import {useRoute} from '../../state/ui'
 import {OfflineTrip,loadSelectedPack} from '../travel/OfflineTrip'
-import { beginSignIn, apiUrl, hasHostedApi, browserOnly } from '../../config'
+import { beginSignIn, apiUrl, hasHostedApi, browserOnly, deviceWorkspace } from '../../config'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppState } from '../../types'
 import { api, useServer } from '../../state/server'
@@ -25,6 +25,13 @@ import { Doodle, MagicBuddy } from '../layout/Doodle'
  *   - no server                          → a labeled simulated workspace in this browser
  */
 export function AuthGate() {
+  return deviceWorkspace ? <DeviceWorkspace/> : <ConnectedAuthGate/>
+}
+function DeviceWorkspace(){
+ const [initial]=useState(()=>loadState(()=>localStorage,`${STORAGE_KEY}:device`,()=>({...emptyState(),onboarded:true})))
+ return <Mount workspace={{kind:"device",storageKey:`${STORAGE_KEY}:device`}} initialState={initial.state} initialWarning={initial.warning}/>
+}
+function ConnectedAuthGate() {
   const route=useRoute()
   const [preview, setPreview] = useState(false)
   const server = useServer()

@@ -68,3 +68,5 @@ Update the three existing docs rather than adding `FINAL`, `SUMMARY`, `READY`, o
 `public/` is copied into the build: it is not a storage folder for original photos or marketing videos. Keep source media under `.local/creative/`; publish only explicitly selected assets.
 
 The October 22 cleanup archived older prototype instructions and the old README, grouped 71 components, and relocated unreferenced videos and original outfit photos. `.local/archive/cleanup-moves.json` records private artifact moves. Historical scripts may refer to their original paths; archived experiments are not supported launch commands. Runtime stores, release checkouts, backup keys and editable film sources were preserved.
+
+The website build enables `VITE_DEVICE_WORKSPACE=true`: direct entry with a device-local workspace and printer settings. Wajo authorizes optional backend services; it does not replace or sync that workspace. Hosted Wajo connections require `TATADA_AUTH_MODE=wajo` and approved delivery requires `TATADA_PRINT_DELIVERY=wajo`. Provider credentials remain encrypted server-side. Legacy invitation data is retained separately and is not automatically imported.
