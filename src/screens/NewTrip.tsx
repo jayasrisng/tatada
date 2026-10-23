@@ -97,7 +97,7 @@ export function NewTrip() {
       <p>What needs planning?</p><div className="chips wrap">{NEEDS.map(([key]) => <Chip key={key} on={scope.includes(key)} onClick={() => setScope((all) => all.includes(key) ? all.filter((v) => v !== key) : [...all, key])}>{key}</Chip>)}</div>
       <button className="linkbtn" type="button" onClick={() => { setScope(['flights']); setPlanning(p=>({...p,transport:'flight'})); setCompanions('visiting family') }}>Only flights—staying with family</button>
       <label>Who’s coming?<input className="chalk-input" placeholder="Who’s coming?" value={companions} maxLength={150} onChange={(e) => setCompanions(e.target.value)} /></label>
-      <label>Travelers<input className="chalk-input" type="number" min={1} max={100} required value={count} onChange={(e) => setCount(Number(e.target.value))} /></label>
+      <label>Travelers<input placeholder="1" className="chalk-input" type="number" min={1} max={100} required value={count} onChange={(e) => setCount(Number(e.target.value))} /></label>
       <label>Budget in USD (optional)<input className="chalk-input" type="number" min={0} placeholder="Budget in USD (optional)" value={budget} onChange={(e) => setBudget(e.target.value)} /></label>
       <label>Needs, pets, accessibility, or anything else<input className="chalk-input" placeholder="Needs, pets, accessibility…" value={needs} maxLength={2000} onChange={(e) => setNeeds(e.target.value)} /></label>
       <label>Discount eligibility and memberships (separate with ;)<input className="chalk-input" placeholder="Memberships or discounts…" value={discounts} maxLength={1500} onChange={(e) => setDiscounts(e.target.value)} /></label>

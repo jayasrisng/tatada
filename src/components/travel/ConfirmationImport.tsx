@@ -31,7 +31,7 @@ export function ConfirmationImport({ trip }: { trip: Trip }) {
   return <details className="confirmation-import"><summary>Import a confirmation</summary>
     <p className="small dim">Flight, hotel or transport. Read on this device; review before saving.</p>
     <Btn kind="ghost" disabled={busy} onClick={() => input.current?.click()}>upload PDF</Btn><input ref={input} type="file" accept="application/pdf,.pdf" aria-label="Confirmation PDF" hidden onChange={e => { void pick(e.target.files?.[0]); e.target.value = '' }} />
-    <label>Or paste booking text<textarea className="chalk-input" aria-label="Booking confirmation text" value={text} maxLength={150000} onChange={e => { setText(e.target.value); setReview(null) }} /></label>
+    <label>Or paste booking text<textarea placeholder="Enter booking confirmation text…" className="chalk-input" aria-label="Booking confirmation text" value={text} maxLength={150000} onChange={e => { setText(e.target.value); setReview(null) }} /></label>
     <Btn kind="ghost" disabled={busy || !text.trim()} onClick={async () => { setBusy(true); try { await parse(text, { id: uid(), name: 'booking-text.txt', mime: 'text/plain', bytes: new TextEncoder().encode(text), addedAt: new Date().toISOString() }) } catch (e) { setMessage((e as Error).message) } finally { setBusy(false) } }}>review extracted details</Btn>
     {busy && <p role="status">Reading confirmation…</p>}
     {review && <form className="details-form arrangement-form" aria-label="Review confirmation" onSubmit={async e => {

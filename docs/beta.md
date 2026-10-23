@@ -2,6 +2,10 @@
 
 Source review: October 22, 2026. Candidate version: **0.1.0-beta.1**. Scope: one owner plus ten testers, on the existing website and Supabase project.
 
+## Profile and hands-on guide refinement — October 22
+
+Your Space shows compact Wajo and printer controls, four printing-default selects, Preferences, Vault, and data export/import. Policies, printer tips and sources are footer links; account/device panels are removed from this view. The guide advances on saved work and keeps uploads and external authorizations in the user’s hands. It handles native-dialog layering and moves the vault highlight to Save after file selection. Empty text fields have placeholders, with specific examples where available.
+
 ## Device-first correction — October 22
 
 The owner requires direct app entry with no Tatada invitation or signup. The website build now enables a device-local workspace that remains stable across connecting, disconnecting and expiry of Wajo. Profile stores the printer locally before connecting. Backend access is an optional Wajo connection; credentials stay sealed server-side. Preparing a PDF shares its destination/settings with the backend, and delivery still needs explicit approval. Existing cloud workspace rows are retained separately; there is no automatic migration into the device workspace. Legacy invitation deployment instructions below are historical.

@@ -106,7 +106,7 @@ function ReadOnlyCheck() {
   )
 }
 
-export function FoConnection() {
+export function FoConnection({compact=false}:{compact?:boolean}={}) {
   const { workspace } = useStore()
   const { info, refresh, logout } = useServer()
   const [busy, setBusy] = useState(false)
@@ -132,6 +132,8 @@ export function FoConnection() {
     }
   }
 
+  if(compact&&(browserOnly||workspace.storageKey.endsWith(':preview')))return <p>Connect Wajo in live Tatada.</p>
+  if(compact)return <div className="connection-simple">{info.foConnected?<><span>Connected</span><button className="linkbtn" disabled={busy} onClick={disconnect}>Disconnect</button></>:<><p>Please connect your Wajo account.</p><a className="btn btn-solid" href={apiUrl('/api/auth/wajo/start')} onClick={beginSignIn}>Connect Wajo</a></>}{disconnectError&&<p role="alert">{disconnectError}</p>}</div>
   if (browserOnly) return <section className="fo-connection"><h2 className="section-h">Fo · connect the live app</h2><p className="dim">This browser-only build saves your trips and closet here. Wajo sign-in and live actions require the connected Tatada backend.</p></section>
 
   if (workspace.storageKey.endsWith(':preview')) return <section className="fo-connection"><h2 className="section-h">Fo preview</h2><p className="dim">This sample workspace uses simulated actions. Return to live Tatada to authorize Fo.</p></section>

@@ -19,12 +19,12 @@ test('device workspace opens directly and retains preferences and printer withou
  await page.evaluate(()=>location.hash='/welcome')
  await page.locator('[data-tour="wajo"]').click();await expect(page.getByRole('link',{name:'Connect Wajo',exact:true})).toBeVisible()
  await page.locator('[data-tour="printer"]').click();await page.getByLabel('Printer email address').fill('fixture@print.epsonconnect.com')
- await page.getByRole('button',{name:'Save printing profile',exact:true}).click();await expect(page.getByRole('status')).toContainText('Printing profile saved')
- await page.locator('[data-tour="preferences"]').click();await page.getByRole('button',{name:'edit my details'}).click();await page.getByLabel('Your name').fill('Device tester')
+ await page.getByRole('button',{name:'Save',exact:true}).click();await expect(page.getByRole('status')).toContainText('Saved.')
+ await page.locator('[data-tour="preferences"]').click();await page.getByLabel('Your name').fill('Device tester')
  await page.getByRole('button',{name:'next',exact:true}).click();await page.getByRole('button',{name:'next',exact:true}).click();await page.getByRole('button',{name:'save details',exact:true}).click()
- await expect(page.locator('.screen.welcome')).toHaveCount(0);await page.evaluate(()=>location.hash='/welcome');await page.locator('[data-tour="wajo"]').click();await page.getByRole('link',{name:'Connect Wajo',exact:true}).click();await expect(page.getByText('Your Wajo account is connected. You can reopen your conversations here.')).toBeVisible();await page.reload();await expect(page.getByRole('heading',{name:'Hello, Device tester.'})).toBeVisible()
+ await expect(page.locator('.screen.welcome')).toHaveCount(0);await page.evaluate(()=>location.hash='/welcome');await page.locator('[data-tour="wajo"]').click();await page.getByRole('link',{name:'Connect Wajo',exact:true}).click();await expect(page.getByText('Connected',{exact:true})).toBeVisible();await page.reload();await expect(page.getByRole('heading',{name:'Hello, Device tester.'})).toBeVisible()
  await expect(page.getByRole('heading',{name:'Hello, Device tester.'})).toBeVisible();await page.locator('[data-tour="printer"]').click();await expect(page.getByLabel('Printer email address')).toHaveValue('fixture@print.epsonconnect.com')
- if(await page.locator('[data-tour="wajo"]').locator('..').getAttribute('open')===null)await page.locator('[data-tour="wajo"]').click();await page.getByRole('button',{name:'disconnect',exact:true}).click();await expect(page.getByRole('heading',{name:'Hello, Device tester.'})).toBeVisible();
+ if(await page.locator('[data-tour="wajo"]').locator('..').getAttribute('open')===null)await page.locator('[data-tour="wajo"]').click();await page.getByRole('button',{name:'Disconnect',exact:true}).click();await expect(page.getByRole('heading',{name:'Hello, Device tester.'})).toBeVisible();
  expect(cloudWrites).toBe(0);expect(printerCalls).toBe(0)
  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('tatada:v1:device')!).trips.length)).toBe(0)
 })

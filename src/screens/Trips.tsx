@@ -47,7 +47,7 @@ export function Trips({ initial = 'trips' }: { initial?: 'trips' | 'history' }) 
       <TopBar back="/" />
       <Heading>Trips</Heading>
       {location.hash.includes('cleanup=needed')&&<p role="alert">Trip deleted. Some device originals or recovery data could not be cleaned up. Open Profile → Your data to review original confirmations and recovery copies.</p>}
-      <details className="trip-sharing-entry"><summary>Have a friend’s trip?</summary><SharedTripImport /></details>
+      <div className="trip-sharing-entry" data-tour="import-trip"><span>Have a friend’s trip?</span><SharedTripImport compact/></div>
       {!focusTripId && <nav className="seg" aria-label="Trips views"><button className={view === 'trips' ? 'on' : ''} onClick={() => setView('trips')}>my trips</button><button className={view === 'history' && !focusTripId ? 'on' : ''} onClick={() => setView('history')}>my maps & timeline</button></nav>}
       {view === 'history' && !focusTripId ? <Suspense fallback={<p>Opening your map…</p>}><TravelHistory /></Suspense> : <div className="trip-list">
         <Box dashed className="trip-card new tour-new-trip" onClick={() => go('/new')}>

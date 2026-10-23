@@ -13,7 +13,7 @@ export function SpeechButton({ onText, disabled = false }: { onText: (text: stri
     if (!Constructor) { setMessage('Voice isn’t available here. You can type.'); return }
     const speech = new Constructor(); instance.current = speech
     speech.lang = navigator.language; speech.continuous = false; speech.interimResults = false
-    speech.onresult = (e) => { let text = ''; for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) text += e.results[i][0].transcript + ' '; if (text.trim()) onText(text.trim()) }
+    speech.onresult = (e) => { let text = ''; for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) text += e.results[i][0].transcript + ' '; if (text.trim()){onText(text.trim());window.dispatchEvent(new Event('tatada-dictated'))} }
     let failed=false
     speech.onerror = () => { failed=true; setListening(false); setMessage('Microphone unavailable. You can type.') }
     speech.onend = () => { setListening(false); if(!failed)setMessage('') }

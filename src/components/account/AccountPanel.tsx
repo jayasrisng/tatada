@@ -18,7 +18,7 @@ const download = (name: string, text: string) => {
 }
 
 /** Account, sign-out, and your data: export, import, recovery. */
-export function AccountPanel() {
+export function AccountPanel({compact=false}:{compact?:boolean}={}) {
   const { state, dispatch, workspace } = useStore()
   const server = useServer()
   const { info } = server
@@ -37,7 +37,7 @@ export function AccountPanel() {
   const exportAll = () => {
     const out = buildExport(state, workspace.storageKey.endsWith(':preview') ? [] : Object.values(server.actions))
     download(`tatada-export-${out.exportedAt.slice(0, 10)}.json`, JSON.stringify(out, null, 2))
-    setMsg({ ok: true, text: 'Exported. The file holds your trips, closet photos, saved outfits, travel-photo timeline, tasks, memories, Magic history and past requests. No passwords or tokens.' })
+    window.dispatchEvent(new Event('tatada-exported'));setMsg({ ok: true, text: 'Exported. The file holds your trips, closet photos, saved outfits, travel-photo timeline, tasks, memories, Magic history and past requests. No passwords or tokens.' })
   }
 
   const pick = async (f?: File) => {
@@ -50,7 +50,7 @@ export function AccountPanel() {
 
   return (
     <section className="account-panel" aria-labelledby="acct-h">
-      <h2 id="acct-h" className="section-h">
+      <h2 hidden={compact} id="acct-h" className="section-h">
         <Doodle name="heart" size={20} /> you
       </h2>
       {(workspace.kind === 'wajo' || workspace.kind === 'connected') && (
@@ -72,16 +72,16 @@ export function AccountPanel() {
         </>
       )}
       {workspace.kind === 'owner' && <p className="dim">Your private workspace on this computer. Fo authorization is managed below.</p>}
-      {workspace.kind !== 'wajo' && workspace.kind !== 'owner' && workspace.kind !== 'connected' && <p className="dim">{browserOnly || workspace.kind==='device' ? 'Saved in this browser on this device. Export a backup before clearing browser data or moving to another device.' : "Demo workspace with sample data. It isn't a real account."}</p>}
+      {!compact&&workspace.kind !== 'wajo' && workspace.kind !== 'owner' && workspace.kind !== 'connected' && <p className="dim">{browserOnly || workspace.kind==='device' ? 'Saved in this browser on this device. Export a backup before clearing browser data or moving to another device.' : "Demo workspace with sample data. It isn't a real account."}</p>}
 
       {workspace.kind === 'connected' && info.authMethod!=='supabase' && <p className="dim small">Wajo did not provide a stable account ID. This is a private connection session, not a reusable Wajo account. Download an account recovery key before signing out. Use it on a new device to restore this workspace before reconnecting Wajo. Keep an export as a separate data backup.</p>}
       {info.authMethod!=='supabase'&&(workspace.kind==='connected'||workspace.kind==='wajo')&&<div><h3>Account recovery</h3><p className="small">Save a one-use recovery key before signing out or changing devices. Anyone with the key can access this workspace; keep it privately. A new key replaces the old one.</p><Btn kind="ghost" onClick={async()=>{try{const result=await api<{key:string}>('/api/account/recovery-key',{method:'POST',json:{}});download('tatada-account-recovery.json',JSON.stringify({recoveryKey:result.key,notice:'Keep privately. One use; restore in Tatada before reconnecting Wajo.'},null,2));setMsg({ok:true,text:'Recovery key downloaded. Store it somewhere private outside this browser.'})}catch(e){setMsg({ok:false,text:(e as Error).message})}}}>download account recovery key</Btn></div>}
       <h3 className="section-h small-h">your data</h3>
       <div className="ac-buttons">
-        <Btn kind="ghost" icon="book" onClick={exportAll}>
+        <Btn data-tour="export-data" kind="ghost" icon="book" onClick={exportAll}>
           export
         </Btn>
-        <Btn kind="ghost" icon="plus" onClick={() => file.current?.click()}>
+        <Btn data-tour="import-data" kind="ghost" icon="plus" onClick={() => file.current?.click()}>
           import
         </Btn>
         <input ref={file} type="file" accept="application/json,.json" hidden onChange={(e) => (pick(e.target.files?.[0]), (e.target.value = ''))} aria-label="Import a Tatada export" />
@@ -101,7 +101,7 @@ export function AccountPanel() {
             <Btn
               kind="solid"
               onClick={() => {
-                dispatch({ type: 'reset', state: pending.state })
+                dispatch({ type: 'reset', state: pending.state });window.dispatchEvent(new Event('tatada-workspace-imported'))
                 setPending(null)
                 setMsg({ ok: true, text: 'Imported.' })
                 go('/')
@@ -120,7 +120,7 @@ export function AccountPanel() {
           {msg.text}
         </p>
       )}
-      <AccountLifecycle exportOnly />
+      {!compact&&<AccountLifecycle exportOnly />}
       {(state.archivedActions?.length ?? 0) > 0 && <p className="dim small">{state.archivedActions!.length} past requests kept as read-only history.</p>}
     </section>
   )

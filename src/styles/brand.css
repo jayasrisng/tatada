@@ -628,3 +628,17 @@ input::placeholder, textarea::placeholder { color:var(--chalk-3); opacity:1; }
 .meal-option a,.meal-record a { margin-right:14px; }
 .meal-option .btn { display:block; margin-top:12px; }
 .trip-tool-popup .itinerary-editor { padding:0; border:0; }
+.profile-connection {padding:20px 0;border-bottom:1px solid var(--chalk-line)}
+.profile-connection h2 {font:600 23px var(--title);margin:0 0 12px}
+.connection-simple {display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.connection-simple p {margin:0;flex:1}
+.profile-tour-button {margin:8px 0 20px;border:1px solid var(--yellow);border-radius:12px;padding:12px 18px}
+.profile-shortcuts {display:flex;flex-wrap:wrap;gap:10px;margin:24px 0}
+.profile-footer {display:flex;flex-wrap:wrap;gap:18px;margin:30px 0;font-size:16px}
+.printing-options {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+.printing-options select {width:100%;min-width:0;padding:10px 6px;border:1px solid var(--chalk-line);border-radius:8px;background:var(--board-2);color:var(--chalk)}
+.trip-sharing-entry {display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.trip-sharing-entry .share-panel {padding:0;margin:0;border:0}
+.trip-sharing-entry .share-panel:has(h3) {flex-basis:100%}
+.star-tour select {max-width:100%;margin-bottom:8px;background:var(--board-2);color:var(--chalk);border:1px solid var(--chalk-line);border-radius:6px;padding:6px}
+dialog .star-tour-card {font-family:var(--body)}

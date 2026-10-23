@@ -28,10 +28,10 @@ export function ChangePassword(){
     await signOutAuth();location.hash='/welcome?password_changed=1';await refresh()
    }catch(e){setMessage((e as Error).message)}finally{setBusy(false)}
   }}>
-   <label>Current temporary password<input className="chalk-input" type="password" autoComplete="current-password" maxLength={1024} required value={current} onChange={e=>setCurrent(e.target.value)}/></label>
-   <label>New password<input className="chalk-input" type="password" autoComplete="new-password" minLength={12} maxLength={1024} required value={password} onChange={e=>setPassword(e.target.value)}/></label>
-   <label>Confirm new password<input className="chalk-input" type="password" autoComplete="new-password" minLength={12} maxLength={1024} required value={confirm} onChange={e=>setConfirm(e.target.value)}/></label>
-   {factor&&<label>Authenticator code<input className="chalk-input" autoComplete="one-time-code" inputMode="numeric" required value={code} onChange={e=>setCode(e.target.value)}/></label>}
+   <label>Current temporary password<input placeholder="Enter your passphrase" className="chalk-input" type="password" autoComplete="current-password" maxLength={1024} required value={current} onChange={e=>setCurrent(e.target.value)}/></label>
+   <label>New password<input placeholder="Enter your passphrase" className="chalk-input" type="password" autoComplete="new-password" minLength={12} maxLength={1024} required value={password} onChange={e=>setPassword(e.target.value)}/></label>
+   <label>Confirm new password<input placeholder="Enter your passphrase" className="chalk-input" type="password" autoComplete="new-password" minLength={12} maxLength={1024} required value={confirm} onChange={e=>setConfirm(e.target.value)}/></label>
+   {factor&&<label>Authenticator code<input placeholder="Type here…" className="chalk-input" autoComplete="one-time-code" inputMode="numeric" required value={code} onChange={e=>setCode(e.target.value)}/></label>}
    <button className="btn btn-solid" disabled={busy||!ready}>Change password</button>
    <button className="linkbtn" type="button" disabled={busy} onClick={()=>void logout().catch(e=>setMessage((e as Error).message))}>Sign out</button>
    {message&&<p role="status">{message}</p>}

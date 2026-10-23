@@ -1,7 +1,7 @@
 import {ContextPicker} from '../components/assistant/ContextPicker'
 import {printRoute} from '../print/intent'
 import {go} from '../state/ui'
-import { lazy, Suspense, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import type { DressCode, Garment, GarmentCategory, ItineraryItem, Trip } from '../types'
 import { uid, useStore } from '../state/store'
 import { Doodle } from '../components/layout/Doodle'
@@ -47,6 +47,7 @@ export function Style() {
   const [tripId, setTripId] = useState<string | undefined>(undefined)
   const [tab, setTab] = useState<Tab>('swipe')
   const [importing, setImporting] = useState(false)
+  useEffect(()=>{const open=()=>setTab('closet');window.addEventListener('tatada-tour-closet',open);return()=>window.removeEventListener('tatada-tour-closet',open)},[])
   const chosen = trips.find((t) => t.id === (focusTripId ?? tripId))
   const trip = chosen ?? todayTrip()
   const wardrobe = state.wardrobe ?? []

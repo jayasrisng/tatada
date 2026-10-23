@@ -33,32 +33,32 @@ export function DocumentVault() {
     if (!envelope) return
     const url = URL.createObjectURL(new Blob([JSON.stringify(envelope)], { type: 'application/json' })), a = document.createElement('a')
     a.href = url; a.download = 'tatada-encrypted-documents.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
-    setMessage('Encrypted backup downloaded. Keep your passphrase separately. Ordinary trip exports do not contain these documents.')
+    setMessage('Backup downloaded. Keep your passphrase separately.')
   }
   return <section className="privacy-card" aria-label="Private travel documents">
-    <h3>Your travel documents</h3>
-    <p className="small dim">Passport, visa, TSA PreCheck, Global Entry, or other travel papers. Encrypted on this device, separate from your trips. Unlock with your passphrase; auto-locks after 5 minutes of inactivity. No password reset or automatic device sync.</p>
+    <p>This is your vault.</p>
+    <p className="small dim">Encrypted here. Keep your passphrase safe; it cannot be reset.</p>
     {!key ? <form onSubmit={(e) => { e.preventDefault(); void run(async () => {
       const target = restoring ?? envelope
       if (target) {
         const out = await unlockVault(passphrase, target)
         if (restoring) { const saved = await encryptVault(out.key, target.salt, out.docs, (envelope?.revision ?? 0) + 1); await writeVault(namespace, saved, envelope?.revision ?? 0); setEnvelope(saved); setRestoring(null) }
-        setKey(out.key); setDocs(out.docs)
+        setKey(out.key); setDocs(out.docs);window.dispatchEvent(new Event('tatada-vault-ready'))
       }
-      else { const out = await newVault(passphrase); await writeVault(namespace, out.envelope, 0); setEnvelope(out.envelope); setKey(out.key); setDocs([]) }
+      else { const out = await newVault(passphrase); await writeVault(namespace, out.envelope, 0); setEnvelope(out.envelope); setKey(out.key); setDocs([]);window.dispatchEvent(new Event('tatada-vault-ready')) }
       setPassphrase('')
     }) }}>
-      <label>Vault passphrase<input className="chalk-input" placeholder="Vault passphrase" type="password" autoComplete="off" minLength={12} required value={passphrase} onChange={(e) => setPassphrase(e.target.value)} /></label>
+      <label>Vault passphrase<input className="chalk-input" placeholder="At least 12 characters" type="password" autoComplete="off" minLength={12} required value={passphrase} onChange={(e) => setPassphrase(e.target.value)} /></label>
       {restoring && <button type="button" className="linkbtn" onClick={() => { setRestoring(null); setMessage('Restore canceled. Existing device data is unchanged.') }}>cancel restore</button>}
       <Btn type="submit" disabled={busy || envelope === undefined}>{busy ? 'unlocking…' : restoring ? 'unlock and restore backup' : envelope ? 'unlock documents' : 'create private vault'}</Btn>
     </form> : <>
-      <div className="ac-buttons"><Btn onClick={() => upload.current?.click()} disabled={busy}>add a document</Btn><Btn kind="ghost" onClick={lock}>lock</Btn></div>
-      <input hidden type="file" ref={upload} accept="application/pdf,image/jpeg,image/png" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void run(async () => { const bytes = await documentBytes(f); setEditing({ id: crypto.randomUUID(), kind: 'passport', name: f.name, mime: f.type, file: bytes, addedAt: Date.now(), fields: {} }) }) }} />
-      {editing && <form onSubmit={(e) => { e.preventDefault(); void run(async () => { await save([...docs.filter((d) => d.id !== editing.id), editing]); setEditing(null) }) }}>
+      <div className="ac-buttons"><Btn data-tour="vault-upload" onClick={() => upload.current?.click()} disabled={busy}>add a document</Btn><Btn kind="ghost" onClick={lock}>lock</Btn></div>
+      <input aria-label="Upload vault document" hidden type="file" ref={upload} accept="application/pdf,image/jpeg,image/png" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void run(async () => { const bytes = await documentBytes(f); setEditing({ id: crypto.randomUUID(), kind: 'passport', name: f.name, mime: f.type, file: bytes, addedAt: Date.now(), fields: {} }) }) }} />
+      {editing && <form onSubmit={(e) => { e.preventDefault(); void run(async () => { await save([...docs.filter((d) => d.id !== editing.id), editing]); setEditing(null);window.dispatchEvent(new Event('tatada-document-saved')) }) }}>
         <label>Document type<select className="chalk-input" value={editing.kind} onChange={(e) => setEditing({ ...editing, kind: e.target.value })}>{['passport', 'visa', 'TSA PreCheck', 'Global Entry', 'other'].map((v) => <option key={v}>{v}</option>)}</select></label>
         <p className="small dim">Enter the fields you want available for travel. Nothing is extracted, inferred, or sent automatically.</p>
-        {FIELDS.map((field) => <label key={field}>{field}<input className="chalk-input" placeholder={field} maxLength={300} value={editing.fields[field] ?? ''} onChange={(e) => setEditing({ ...editing, fields: { ...editing.fields, [field]: e.target.value } })} /></label>)}
-        <div className="ac-buttons"><Btn type="submit" disabled={busy}>save encrypted</Btn><Btn kind="ghost" type="button" onClick={() => setEditing(null)}>cancel</Btn></div>
+        <details><summary>Details (optional)</summary>{FIELDS.map((field) => <label key={field}>{field}<input className="chalk-input" placeholder={{'Full name':'Alex Morgan','Nationality':'Canadian','Date of birth':'YYYY-MM-DD','Document number':'Document number','Expiration date':'YYYY-MM-DD','Sex / gender as recorded':'As printed','Issuing country':'Canada','Program / visa notes':'Optional travel notes'}[field]} maxLength={300} value={editing.fields[field] ?? ''} onChange={(e) => setEditing({ ...editing, fields: { ...editing.fields, [field]: e.target.value } })} /></label>)}</details>
+        <div className="ac-buttons"><Btn data-tour="vault-save" type="submit" disabled={busy}>save encrypted</Btn><Btn kind="ghost" type="button" onClick={() => setEditing(null)}>cancel</Btn></div>
       </form>}
       {docs.map((doc) => <details key={doc.id}><summary>{doc.kind} · {doc.name}</summary>
         <ul className="disclosure-list">{Object.entries(doc.fields).filter(([, value]) => value).map(([field, value]) => { const id = `${doc.id}:${field}`; return <li key={id}><label><input type="checkbox" checked={selected.includes(id)} onChange={(e) => setSelected((all) => e.target.checked ? [...all, id] : all.filter((v) => v !== id))} /> {field}: {value}</label></li> })}</ul>

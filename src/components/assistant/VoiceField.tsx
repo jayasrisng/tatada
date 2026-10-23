@@ -5,5 +5,5 @@ export function VoiceField({label,ariaLabel,value,onChange,placeholder,maxLength
 }) {
  const id=useId(), latest=useRef({value,onChange})
  latest.current={value,onChange}
- return <div className="voice-field">{label&&<label htmlFor={id}>{label}</label>}<div className="voice-composer"><textarea id={id} ref={inputRef} aria-label={ariaLabel} value={value} onChange={e=>onChange(e.target.value)} maxLength={maxLength} disabled={disabled} required={required} placeholder={placeholder}/><div className="voice-composer-controls"><SpeechButton disabled={disabled} onText={text=>latest.current.onChange([latest.current.value,text].filter(Boolean).join(' ').slice(0,maxLength))}/>{actions}</div></div></div>
+ return <div className="voice-field">{label&&<label htmlFor={id}>{label}</label>}<div className="voice-composer"><textarea id={id} ref={inputRef} aria-label={ariaLabel} value={value} onChange={e=>onChange(e.target.value)} maxLength={maxLength} disabled={disabled} required={required} placeholder={placeholder??'Tell me what you have in mind…'}/><div className="voice-composer-controls"><SpeechButton disabled={disabled} onText={text=>latest.current.onChange([latest.current.value,text].filter(Boolean).join(' ').slice(0,maxLength))}/>{actions}</div></div></div>
 }

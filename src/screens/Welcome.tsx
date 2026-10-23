@@ -1,14 +1,12 @@
+import {Popup} from '../components/layout/Popup'
 import { ProfileCredits } from '../components/account/ProfileCredits'
 import {useServer} from '../state/server'
 import {BetaOwner} from '../components/account/Beta'
 import {SecurityGate} from '../components/account/SecurityGate'
-import {AccountSecurity} from '../components/account/AccountSecurity'
 import {ProfilePrinting} from '../components/printing/ProfilePrinting'
 import {browserOnly} from '../config'
 import {AccountRecovery} from '../components/account/AccountRecovery'
-import {AccountLifecycle} from '../components/account/AccountLifecycle'
-import {ProfileWeather} from '../components/discovery/ProfileWeather'
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { useStore } from '../state/store'
 import { go } from '../state/ui'
 import { Doodle } from '../components/layout/Doodle'
@@ -26,6 +24,8 @@ const toggle = (arr: string[], v: string) => (arr.includes(v) ? arr.filter((x) =
 function WelcomeContent() {
   const {info}=useServer()
   const { state, dispatch, resetDemo, workspace } = useStore()
+  const [panel,setPanel]=useState<'vault'|'data'|'sources'|'printer-tips'>()
+  useEffect(()=>{const open=(e:Event)=>setPanel((e as CustomEvent).detail);window.addEventListener('tatada-tour-panel',open);return()=>window.removeEventListener('tatada-tour-panel',open)},[])
   const [step, setStep] = useState(0)
   const [p, setP] = useState(state.profile)
   const [newBase, setNewBase] = useState('')
@@ -33,7 +33,8 @@ function WelcomeContent() {
   const [newMembership, setNewMembership] = useState('')
 
   const finish = () => {
-    dispatch({ type: 'onboard', profile: p })
+    setStep(0);dispatch({ type: 'onboard', profile: p })
+    window.dispatchEvent(new Event('tatada-profile-saved'))
     go(state.onboarded ? '/' : '/tour')
   }
 
@@ -41,13 +42,19 @@ function WelcomeContent() {
     <div className="screen welcome">
       {state.onboarded && <button className="iconbtn profile-close" aria-label="Close profile" onClick={() => go('/')}><Doodle name="x" size={24} /></button>}
       {step === 0 && state.onboarded && <div className="profile-overview">
-        <span className="section-eyebrow">YOUR SPACE</span><h1 className="wizard-q">{state.profile.name ? `Hello, ${state.profile.name}.` : 'Make yourself at home.'}</h1><p className="dim">Your connections and preferences, in one place.</p>
-        <button className="btn" onClick={() => go('/tour')}>Take a quick tour</button>
-        <div className="setup-connections"><details className="profile-section" open={window.location.hash.includes('wajo=connected')}><summary data-tour="wajo"><span className="step-number">1</span> Wajo account</summary><FoConnection/><p className="small dim">Connect your own Wajo account. Available actions depend on your connection.</p></details><details className="profile-section" open={window.location.hash.includes('printing=1')}><summary data-tour="printer"><span className="step-number">2</span> Your printer</summary><ProfilePrinting/></details></div>
-        <details className="profile-section"><summary data-tour="preferences">Travel preferences</summary><p className="small dim">Name, home base, food and accessibility needs. Add only what helps your trip.</p><Btn onClick={()=>setStep(1)}>edit my details</Btn><ProfileWeather/></details>
-        <details className="profile-section"><summary data-tour="documents">Documents &amp; saved data</summary><details><summary>Private travel documents</summary><Suspense fallback={<p>Opening private documents…</p>}><DocumentVault/></Suspense></details><AccountPanel/></details>
-        <details className="profile-section"><summary>{workspace.kind==='device'?'This device':'Account & security'}</summary>{workspace.kind!=='device'&&<AccountSecurity/>}<AccountLifecycle deleteOnly/></details>
-        <ProfileCredits/><nav className="profile-policies" aria-label="Policies"><a href="#/policies/terms">Terms &amp; conditions</a><a href="#/policies/privacy">Privacy</a></nav>{(workspace.kind === 'demo' || workspace.kind === 'local-demo') && <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>}
+        <h1 className="wizard-q">{state.profile.name ? `Hello, ${state.profile.name}.` : 'Your space'}</h1>
+        <button className="btn btn-solid profile-tour-button" onClick={() => go('/tour')}>Take a quick tour <span aria-hidden="true">↗</span></button>
+        <section className="profile-connection" data-tour="wajo"><h2>Wajo</h2><FoConnection compact/></section>
+        <section className="profile-connection" data-tour="printer"><h2>Printer email address</h2><ProfilePrinting/></section>
+        <div className="profile-shortcuts"><button className="btn" data-tour="preferences" onClick={()=>setStep(1)}>Preferences</button><button className="btn" data-tour="documents" onClick={()=>setPanel('vault')}>Vault</button><button className="btn" data-tour="saved-data" onClick={()=>setPanel('data')}>Export / import</button></div>
+        {panel&&<Popup title={{vault:'Your vault',data:'Your data',sources:'Sources', 'printer-tips':'Printer tips'}[panel]} onClose={()=>setPanel(undefined)}>
+          {panel==='vault'&&<Suspense fallback={<p>Opening vault…</p>}><DocumentVault/></Suspense>}
+          {panel==='data'&&<AccountPanel compact/>}{panel==='sources'&&<ProfileCredits inline/>}
+          {panel==='printer-tips'&&<ul><li>Find your printer email in Epson Connect.</li><li>Allow Fo’s sender address in Epson settings.</li><li>Turn off email body and sender information printing.</li><li>Set paper size in Epson. Duplex needs printer support.</li><li>Review the PDF before sending.</li></ul>}
+        </Popup>}
+        <nav className="profile-footer" aria-label="Policies"><a href="#/policies/terms">T&amp;C</a><a href="#/policies/privacy">Privacy</a><a href="#/welcome" onClick={e=>{e.preventDefault();setPanel('printer-tips')}}>Printer tips</a><a href="#/welcome" onClick={e=>{e.preventDefault();setPanel('sources')}}>Sources</a></nav>
+        {(workspace.kind==='demo'||workspace.kind==='local-demo')&&<button className="linkbtn" onClick={()=>(resetDemo(true),setStep(0))}>reset demo data</button>}
+
       </div>}
       {step === 0 && !state.onboarded && (
         <div className="welcome-hero">
@@ -57,7 +64,7 @@ function WelcomeContent() {
           <p className="welcome-description">A plan for your days. A copy for the road. Space for the memories.</p>
           {!browserOnly&&info.available&&<section className="welcome-setup"><p className="small">{info.foConnected?'✓ Wajo connected. Add your printer and you’re ready to plan.':'Connect Wajo and add your printer when you’re ready.'}</p>{!info.foConnected&&<FoConnection/>}<ProfilePrinting/></section>}
           <Btn kind="solid" onClick={finish}>Show me around</Btn>
-          <button className="linkbtn" onClick={() => { dispatch({ type: 'onboard', profile: p }); go('/') }}>Skip tour and start planning</button>
+          <button className="linkbtn" onClick={() => { setStep(0);dispatch({ type: 'onboard', profile: p }); go('/') }}>Skip tour and start planning</button>
           <button className="linkbtn" onClick={()=>setStep(1)}>Add travel preferences</button>
           <p className="small dim">Preferences are optional. You can add them anytime.</p>
           {(workspace.kind === 'demo' || workspace.kind === 'local-demo') && <button className="linkbtn" onClick={() => (resetDemo(true), setStep(0))}>reset demo data</button>}
