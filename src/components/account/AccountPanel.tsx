@@ -37,7 +37,7 @@ export function AccountPanel({compact=false}:{compact?:boolean}={}) {
   const exportAll = () => {
     const out = buildExport(state, workspace.storageKey.endsWith(':preview') ? [] : Object.values(server.actions))
     download(`tatada-export-${out.exportedAt.slice(0, 10)}.json`, JSON.stringify(out, null, 2))
-    window.dispatchEvent(new Event('tatada-exported'));setMsg({ ok: true, text: 'Exported. The file holds your trips, closet photos, saved outfits, travel-photo timeline, tasks, memories, Magic history and past requests. No passwords or tokens.' })
+    window.dispatchEvent(new Event('tatada-exported'));setMsg({ ok: true, text: compact?'Exported.':'Exported. The file holds your trips, closet photos, saved outfits, travel-photo timeline, tasks, memories, Magic history and past requests. No passwords or tokens.' })
   }
 
   const pick = async (f?: File) => {
@@ -76,7 +76,7 @@ export function AccountPanel({compact=false}:{compact?:boolean}={}) {
 
       {workspace.kind === 'connected' && info.authMethod!=='supabase' && <p className="dim small">Wajo did not provide a stable account ID. This is a private connection session, not a reusable Wajo account. Download an account recovery key before signing out. Use it on a new device to restore this workspace before reconnecting Wajo. Keep an export as a separate data backup.</p>}
       {info.authMethod!=='supabase'&&(workspace.kind==='connected'||workspace.kind==='wajo')&&<div><h3>Account recovery</h3><p className="small">Save a one-use recovery key before signing out or changing devices. Anyone with the key can access this workspace; keep it privately. A new key replaces the old one.</p><Btn kind="ghost" onClick={async()=>{try{const result=await api<{key:string}>('/api/account/recovery-key',{method:'POST',json:{}});download('tatada-account-recovery.json',JSON.stringify({recoveryKey:result.key,notice:'Keep privately. One use; restore in Tatada before reconnecting Wajo.'},null,2));setMsg({ok:true,text:'Recovery key downloaded. Store it somewhere private outside this browser.'})}catch(e){setMsg({ok:false,text:(e as Error).message})}}}>download account recovery key</Btn></div>}
-      <h3 className="section-h small-h">your data</h3>
+      <h3 hidden={compact} className="section-h small-h">your data</h3>
       <div className="ac-buttons">
         <Btn data-tour="export-data" kind="ghost" icon="book" onClick={exportAll}>
           export

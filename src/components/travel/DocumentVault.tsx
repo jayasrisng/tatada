@@ -36,7 +36,6 @@ export function DocumentVault() {
     setMessage('Backup downloaded. Keep your passphrase separately.')
   }
   return <section className="privacy-card" aria-label="Private travel documents">
-    <p>This is your vault.</p>
     <p className="small dim">Encrypted here. Keep your passphrase safe; it cannot be reset.</p>
     {!key ? <form onSubmit={(e) => { e.preventDefault(); void run(async () => {
       const target = restoring ?? envelope

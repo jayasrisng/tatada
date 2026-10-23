@@ -47,7 +47,7 @@ function WelcomeContent() {
         <section className="profile-connection" data-tour="wajo"><h2>Wajo</h2><FoConnection compact/></section>
         <section className="profile-connection" data-tour="printer"><h2>Printer email address</h2><ProfilePrinting/></section>
         <div className="profile-shortcuts"><button className="btn" data-tour="preferences" onClick={()=>setStep(1)}>Preferences</button><button className="btn" data-tour="documents" onClick={()=>setPanel('vault')}>Vault</button><button className="btn" data-tour="saved-data" onClick={()=>setPanel('data')}>Export / import</button></div>
-        {panel&&<Popup title={{vault:'Your vault',data:'Your data',sources:'Sources', 'printer-tips':'Printer tips'}[panel]} onClose={()=>setPanel(undefined)}>
+        {panel&&<Popup title={{vault:'This is your vault.',data:'Your data',sources:'Sources', 'printer-tips':'Printer tips'}[panel]} onClose={()=>setPanel(undefined)}>
           {panel==='vault'&&<Suspense fallback={<p>Opening vault…</p>}><DocumentVault/></Suspense>}
           {panel==='data'&&<AccountPanel compact/>}{panel==='sources'&&<ProfileCredits inline/>}
           {panel==='printer-tips'&&<ul><li>Find your printer email in Epson Connect.</li><li>Allow Fo’s sender address in Epson settings.</li><li>Turn off email body and sender information printing.</li><li>Set paper size in Epson. Duplex needs printer support.</li><li>Review the PDF before sending.</li></ul>}
