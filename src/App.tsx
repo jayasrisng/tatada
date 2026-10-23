@@ -1,3 +1,4 @@
+import {readOnboarding,clearOnboarding} from './state/onboarding'
 import {BetaFeedback} from './components/account/Beta'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useStore } from './state/store'
@@ -25,11 +26,12 @@ export function App() {
   const route = useRoute()
   const [arriving, setArriving] = useState(() => route.length === 0)
   const finishArrival = useCallback(() => setArriving(false), [])
-  const { state, storageWarning } = useStore()
+  const { state, storageWarning, workspace } = useStore()
   const { magic, focusTripId, setFocusTrip } = useUI()
   const [root, id, tab, sub] = route
-  const [touring, setTouring] = useState(false)
-  useEffect(() => { if (root === 'tour') { setTouring(true); go('/') } }, [root])
+  const [touring, setTouring] = useState(()=>readOnboarding(workspace.storageKey)!==null)
+  const [lesson,setLesson]=useState<string>(),[tourRun,setTourRun]=useState(0)
+  useEffect(() => { if (root === 'tour') { const selected=new URLSearchParams(location.hash.split('?')[1]??'').get('lesson')??undefined;clearOnboarding(workspace.storageKey);setLesson(selected);setTourRun(n=>n+1);setTouring(true); go('/') } }, [root])
   useEffect(() => {
     if (focusTripId && root === 'new') { setFocusTrip(undefined); return }
     if (focusTripId && root === 'trip' && id !== focusTripId && state.trips.some(t => t.id === id)) setFocusTrip(id)
@@ -90,7 +92,7 @@ export function App() {
         </div>
       )}
       <MagicSheet />
-      {touring && !arriving && <GuidedTour onClose={() => setTouring(false)} />}
+      {touring && !arriving && <GuidedTour key={`${lesson}:${tourRun}`} lesson={lesson} onClose={() => {clearOnboarding(workspace.storageKey);setTouring(false)}} />}
     </div>
   )
 }

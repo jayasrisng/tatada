@@ -10,7 +10,7 @@ The chalkboard identity, text-first recommendations, offline essentials and prin
 
 ## Mobile beta interaction
 
-The Wajo-first candidate is scoped to one phone per traveler. Overview and Itinerary use four compact tool popups. Your Space keeps Wajo, printer email, preferences, Vault and data transfer compact, with policy/tip/source links at the bottom. Printer defaults use four adjacent selects. The star guide is hands-on: it advances on a saved trip, journal photo, closet addition, dictation, profile save, vault unlock, document save and export/import. All steps can be skipped; no personal data or external action is supplied by the guide.
+The Wajo-first candidate is scoped to one phone per traveler. Overview and Itinerary use four compact tool popups. Your Space keeps Wajo, printer email, preferences, Vault and data transfer compact, with policy/tip/source links at the bottom. Printer defaults use four adjacent selects. The essential guide has five steps: connect Wajo, save printer, create a trip, enter Trip Mode, return to My World. It recognizes completed setup and resumes across the Wajo redirect or a refresh. Photos, outfits, voice, vault and export/import are separate optional lessons under Try this. Every step can be skipped; the guide never supplies personal data or approves external actions.
 
 Saved itinerary stops are shared with booking categories rather than copied into reservations. Eat can request route-aware meal suggestions using dated stops, diet and personal needs; users explicitly save a choice back to the itinerary. Suggestions are not reservations or dietary guarantees.
 

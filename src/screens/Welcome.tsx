@@ -52,6 +52,7 @@ function WelcomeContent() {
           {panel==='data'&&<AccountPanel compact/>}{panel==='sources'&&<ProfileCredits inline/>}
           {panel==='printer-tips'&&<ul><li>Find your printer email in Epson Connect.</li><li>Allow Fo’s sender address in Epson settings.</li><li>Turn off email body and sender information printing.</li><li>Set paper size in Epson. Duplex needs printer support.</li><li>Review the PDF before sending.</li></ul>}
         </Popup>}
+        <section className="try-lessons" aria-label="Optional lessons"><h2>Try this</h2><div className="lesson-links">{[['photo','Journal photo'],['outfit','Add an outfit'],['voice','Try voice'],['vault','Your vault'],['sharing','Export / import']].map(([id,label])=><button className="linkbtn" key={id} onClick={()=>go('/tour?lesson='+id)}>{label}</button>)}</div></section>
         <nav className="profile-footer" aria-label="Policies"><a href="#/policies/terms">T&amp;C</a><a href="#/policies/privacy">Privacy</a><a href="#/welcome" onClick={e=>{e.preventDefault();setPanel('printer-tips')}}>Printer tips</a><a href="#/welcome" onClick={e=>{e.preventDefault();setPanel('sources')}}>Sources</a></nav>
         {(workspace.kind==='demo'||workspace.kind==='local-demo')&&<button className="linkbtn" onClick={()=>(resetDemo(true),setStep(0))}>reset demo data</button>}
 

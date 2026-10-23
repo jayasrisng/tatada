@@ -2,6 +2,10 @@
 
 Source review: October 22, 2026. Candidate version: **0.1.0-beta.1**. Scope: one owner plus ten testers, on the existing website and Supabase project.
 
+## Five-step setup — October 22
+
+Essential onboarding is Wajo → printer → first trip → Trip Mode → My World. Connection state, persisted printer settings, saved trips and actual Trip Mode state drive progression. The guide resumes across Wajo authorization using a workspace-scoped session marker containing only its step number. The marker is cleared on exit or completion. Photos, wardrobe, voice, vault and data sharing are separate optional lessons; photo and sharing lessons guide a traveler without a trip through creating one first. Every step can be skipped.
+
 ## Profile and hands-on guide refinement — October 22
 
 Your Space shows compact Wajo and printer controls, four printing-default selects, Preferences, Vault, and data export/import. Policies, printer tips and sources are footer links; account/device panels are removed from this view. The guide advances on saved work and keeps uploads and external authorizations in the user’s hands. It handles native-dialog layering and moves the vault highlight to Save after file selection. Empty text fields have placeholders, with specific examples where available.

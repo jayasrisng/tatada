@@ -642,3 +642,7 @@ input::placeholder, textarea::placeholder { color:var(--chalk-3); opacity:1; }
 .trip-sharing-entry .share-panel:has(h3) {flex-basis:100%}
 .star-tour select {max-width:100%;margin-bottom:8px;background:var(--board-2);color:var(--chalk);border:1px solid var(--chalk-line);border-radius:6px;padding:6px}
 dialog .star-tour-card {font-family:var(--body)}
+.try-lessons {margin:22px 0}
+.try-lessons h2 {font:600 22px var(--title);margin:0 0 6px}
+.lesson-links {display:flex;flex-wrap:wrap;gap:8px 16px;margin:8px 0 16px}
+.lesson-links button {min-height:40px;text-align:left}

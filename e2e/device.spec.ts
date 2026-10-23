@@ -28,3 +28,28 @@ test('device workspace opens directly and retains preferences and printer withou
  expect(cloudWrites).toBe(0);expect(printerCalls).toBe(0)
  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('tatada:v1:device')!).trips.length)).toBe(0)
 })
+
+test('five-step setup resumes after Wajo and waits for each essential action',async({page})=>{
+ let connected=false
+ await page.route('**/api/**',async r=>{const url=new URL(r.request().url()),path=url.pathname,ok=(json:unknown)=>r.fulfill({json})
+  if(path.endsWith('/auth/wajo/start'))return r.fulfill({status:302,headers:{location:`${deviceURL}#/?auth_exchange=guide-fixture&auth_attempt=${url.searchParams.get('attempt')}`}})
+  if(path.endsWith('/auth/exchange')){connected=true;return ok({sessionToken:'fixture-setup-session'})}
+  if(path.endsWith('/session'))return ok({provider:'live',authenticated:connected,foConnected:connected,...connected?{account:{id:'guide-fixture',kind:'connected'}}:{}})
+  return ok({actions:[],chats:[],mode:'legacy'})
+ })
+ await page.goto('./');await expect(page.getByRole('button',{name:'Home',exact:true})).toBeVisible();await page.evaluate(()=>location.hash='/welcome');await page.getByRole('button',{name:'Take a quick tour'}).click()
+ const guide=page.getByRole('complementary',{name:'Star guide'})
+ await expect(guide).toContainText('1 of 5');await expect(guide.getByRole('button',{name:'Done',exact:true})).toHaveCount(0)
+ await page.getByRole('link',{name:'Connect Wajo',exact:true}).click();await expect(guide).toContainText('2 of 5');await page.reload();await expect(guide).toContainText('2 of 5')
+ await page.getByLabel('Printer email address').fill('guide-fixture@print.epsonconnect.com');await expect(guide).toContainText('2 of 5');await page.getByRole('button',{name:'Save',exact:true}).click();await expect(guide).toContainText('3 of 5')
+ await page.locator('.tour-new-trip').click();await expect(guide).toContainText('3 of 5');await page.getByRole('button',{name:'edit details myself'}).click();await page.getByLabel('Build my itinerary from these details and my saved preferences').uncheck();await page.getByPlaceholder('Where are we going?').fill('First setup trip');await page.getByRole('button',{name:'create my trip',exact:true}).click()
+ await expect(guide).toContainText('4 of 5');await page.getByRole('button',{name:'Enter trip mode',exact:true}).click();await expect(guide).toContainText('5 of 5');await expect(page.getByRole('button',{name:'My World',exact:true})).toBeVisible();await page.getByRole('button',{name:'My World',exact:true}).click();await expect(guide).toContainText('ready to explore')
+ expect(await page.evaluate(()=>sessionStorage.getItem('tatada:v1:device:onboarding'))).toBeNull();await guide.getByRole('button',{name:'Done',exact:true}).click();await expect(guide).toHaveCount(0)
+})
+
+test('essential setup can be skipped without a trip or a connection',async({page})=>{
+ await page.route('**/api/**',r=>r.fulfill({json:{provider:'live',authenticated:false,foConnected:false,actions:[],chats:[]}}))
+ await page.goto('./');await expect(page.getByRole('button',{name:'Home',exact:true})).toBeVisible();await page.evaluate(()=>location.hash='/tour');const guide=page.getByRole('complementary',{name:'Star guide'});await expect(guide).toContainText('1 of 5')
+ for(const step of ['2 of 5','3 of 5','ready to explore']){await guide.getByRole('button',{name:'Skip step',exact:true}).click();await expect(guide).toContainText(step)}
+ await guide.getByRole('button',{name:'Done',exact:true}).click();await page.reload();await expect(guide).toHaveCount(0)
+})

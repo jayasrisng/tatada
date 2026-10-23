@@ -11,7 +11,7 @@ export function ProfilePrinting(){
  const defaults=profile.defaults??empty.defaults!
  const changeDefault=(value:Partial<typeof defaults>)=>setProfile({...profile,defaults:{...defaults,...value}})
  if(browserOnly)return <p>Printing connections require a connected Tatada account. PDF previews remain available.</p>
- return <form className="printer-settings" onSubmit={async e=>{e.preventDefault();if(busy)return;setBusy(true);try{setProfile(await savePrinter({...profile,printingConsent:true}));setMessage('Saved.')}catch(e){setMessage((e as Error).message)}finally{setBusy(false)}}}>
+ return <form className="printer-settings" onSubmit={async e=>{e.preventDefault();if(busy)return;setBusy(true);try{setProfile(await savePrinter({...profile,printingConsent:true}));setMessage('Saved.');window.dispatchEvent(new Event('tatada-printer-saved'))}catch(e){setMessage((e as Error).message)}finally{setBusy(false)}}}>
   <label className="sr-only" htmlFor="printer-email">Printer email address</label><input id="printer-email" className="chalk-input" type="email" required placeholder="abc@print.epsonconnect.com" value={profile.email} onChange={e=>setProfile({...profile,email:e.target.value})}/>
   <details className="advanced-printer"><summary>Default printing settings</summary><div className="printing-options">
   <select aria-label="Default color" value={defaults.color??'grayscale'} onChange={e=>changeDefault({color:e.target.value as 'color'|'grayscale'})}><option value="grayscale">Black & white</option><option value="color">Color</option></select>

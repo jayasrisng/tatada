@@ -80,25 +80,21 @@ test('primary trip actions and quiet secondary controls remain discoverable',asy
  await page.getByRole('button',{name:'Preferences',exact:true}).click();await expect(page.getByLabel('Your name')).toBeVisible()
 })
 
-test('star guide advances on saved work and guides real vault uploads',async({page})=>{
- await route(page,'/welcome');await page.getByRole('button',{name:'Take a quick tour'}).click()
+test('optional lessons guide saved photos, vault uploads and reviewed exports',async({page})=>{
+ await route(page,'/tour?lesson=photo')
  const tour=page.getByRole('complementary',{name:'Star guide'})
- await expect(page.locator('.tour-new-trip')).toHaveClass(/star-tour-target/);await page.locator('.tour-new-trip').click()
- await expect(page.locator('#star-tour-copy')).toContainText('Save your trip')
- await page.getByRole('button',{name:'edit details myself'}).click();await page.getByLabel('Build my itinerary from these details and my saved preferences').uncheck()
- await page.getByPlaceholder('Where are we going?').fill('QA tour trip')
- await page.getByRole('button',{name:'create my trip',exact:true}).click()
  await expect(page.locator('#star-tour-copy')).toContainText('journal photo')
  await page.locator('.moment-attach input').setInputFiles({name:'first-photo.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64')})
- await page.getByRole('button',{name:'save moment',exact:true}).click();await expect(page.locator('#star-tour-copy')).toContainText('Tap Closet')
- await tour.getByLabel('Guide topic').selectOption({label:'Create your vault'})
+ await page.getByRole('button',{name:'save moment',exact:true}).click();await expect(page.locator('#star-tour-copy')).toContainText('ready to explore')
+ await tour.getByRole('button',{name:'Your vault',exact:true}).click()
  await page.getByLabel('Vault passphrase').fill('synthetic-tour-passphrase');await page.getByRole('button',{name:'create private vault',exact:true}).click()
  await expect(page.locator('#star-tour-copy')).toContainText('Choose a document')
  const pdf=await PDFDocument.create();pdf.addPage();await page.getByLabel('Upload vault document').setInputFiles({name:'synthetic.pdf',mimeType:'application/pdf',buffer:Buffer.from(await pdf.save())})
- await page.getByRole('button',{name:'save encrypted',exact:true}).click();await expect(page.locator('#star-tour-copy')).toContainText('Click Export')
+ await page.getByRole('button',{name:'save encrypted',exact:true}).click();await expect(page.locator('#star-tour-copy')).toContainText('ready to explore')
+ await tour.getByRole('button',{name:'Export / import',exact:true}).click()
  const download=page.waitForEvent('download');await page.locator('[data-tour="export-data"]').click();await download;await expect(page.locator('#star-tour-copy')).toContainText('Have a backup?')
- await tour.getByLabel('Guide topic').selectOption({label:'Export a trip'});await page.getByRole('button',{name:'Share trip',exact:true}).click();await page.getByRole('checkbox',{name:'I reviewed exactly what will be shared'}).check();await page.evaluate(()=>Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>false}));const share=page.waitForEvent('download');await page.getByRole('button',{name:'share trip file',exact:true}).click();await share;await expect(page.locator('#star-tour-copy')).toContainText('Tap here to enter Trip Mode')
- await tour.getByRole('button',{name:'Skip',exact:true}).click();await expect(tour).toHaveCount(0)
+ await tour.getByLabel('Guide topic').selectOption({label:'Export a trip'});await page.getByRole('button',{name:'Share trip',exact:true}).click();await page.getByRole('checkbox',{name:'I reviewed exactly what will be shared'}).check();await page.evaluate(()=>Object.defineProperty(navigator,'canShare',{configurable:true,value:()=>false}));const share=page.waitForEvent('download');await page.getByRole('button',{name:'share trip file',exact:true}).click();await share;await expect(page.locator('#star-tour-copy')).toContainText('ready to explore')
+ await tour.getByRole('button',{name:'Done',exact:true}).click();await expect(tour).toHaveCount(0)
 })
 
 test('trip mode has four destinations and one persistent exit',async({page})=>{
@@ -126,7 +122,7 @@ test('trip mode has four destinations and one persistent exit',async({page})=>{
 test('first-time setup offers a skippable introduction',async({page})=>{
  await route(page,'/welcome');await page.getByRole('button',{name:'reset demo data',exact:true}).click()
  await page.getByRole('button',{name:'Show me around',exact:true}).click();await expect(page.getByRole('complementary',{name:'Star guide'})).toBeVisible()
- await page.getByRole('button',{name:'Skip',exact:true}).click();await expect(page.getByRole('button',{name:'Trips',exact:true})).toBeVisible()
+ await page.getByRole('button',{name:'Close tour',exact:true}).click();await expect(page.getByRole('button',{name:'Take a quick tour'})).toBeVisible()
 })
 
 
